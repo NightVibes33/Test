@@ -1,0 +1,42 @@
+name: iOS build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test parser and action interpreter
+        run: swift test
+      - name: Build iOS Simulator app
+        run: xcodebuild -project SwiftFileRunner.xcodeproj -scheme SwiftFileRunner -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Run iOS Simulator UI tests
+        run: xcodebuild test -project SwiftFileRunner.xcodeproj -scheme SwiftFileRunner -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' CODE_SIGNING_ALLOWED=NO
+      - name: Package unsigned iOS IPA
+        run: |
+          set -euo pipefail
+          archive_path="$RUNNER_TEMP/SwiftFileRunner.xcarchive"
+          package_path="$RUNNER_TEMP/SwiftFileRunner-ipa"
+          xcodebuild \
+            -project SwiftFileRunner.xcodeproj \
+            -scheme SwiftFileRunner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive_path" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            archive
+          mkdir -p "$package_path/Payload"
+          ditto "$archive_path/Products/Applications/SwiftFileRunner.app" "$package_path/Payload/SwiftFileRunner.app"
+          (cd "$package_path" && ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/SwiftFileRunner-unsigned.ipa")
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SwiftFileRunner-unsigned-ipa
+          path: SwiftFileRunner-unsigned.ipa
+          if-no-files-found: error
