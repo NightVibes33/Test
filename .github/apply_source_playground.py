@@ -41,6 +41,11 @@ destination.mkdir(parents=True, exist_ok=True)
 for source in source_dir.glob("*.swift"):
     shutil.copy2(source, destination / source.name)
 
+# Compile the same interpreter in LiveContainerSwiftUI; the Swift package above
+# remains the host-side test target, while these source files form the iOS UI.
+interpreter = root / "SwiftSourcePlayground/Sources/SwiftSourcePlayground/Interpreter.swift"
+shutil.copy2(interpreter, destination / interpreter.name)
+
 # Add the SwiftSyntax parser products to the synchronized LiveContainerSwiftUI target.
 pbx = lc / "LiveContainer.xcodeproj/project.pbxproj"
 text = pbx.read_text()
