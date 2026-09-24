@@ -52,7 +52,10 @@ public struct SwiftFileInterpreter {
         // Swift real parser diagnostics and removes tokenizer guesswork from
         // the syntax-validation boundary. Evaluation remains interpreted and
         // allowlisted; no source is compiled or loaded as executable code.
-        let syntaxTree = SwiftParser.Parser.parse(source: source)
+        let sourceBytes = Array(source.utf8)
+        let syntaxTree = sourceBytes.withUnsafeBufferPointer { bytes in
+            SwiftParser.Parser.parse(source: bytes, maximumNestingLevel: 256)
+        }
         let syntaxDiagnostics = ParseDiagnosticsGenerator.diagnostics(for: syntaxTree)
         if !syntaxDiagnostics.isEmpty {
             let converter = SourceLocationConverter(fileName: "Imported.swift", tree: syntaxTree)
