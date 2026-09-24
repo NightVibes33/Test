@@ -16,7 +16,12 @@ jobs:
         run: xcodebuild -project SwiftFileRunner.xcodeproj -scheme SwiftFileRunner -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
       - name: Run iOS Simulator UI tests
         run: xcodebuild test -project SwiftFileRunner.xcodeproj -scheme SwiftFileRunner -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -derivedDataPath "$RUNNER_TEMP/SwiftFileRunner-UI-DerivedData" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO
-      - name: Package unsigned iOS IPA
+
+  package-ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive unsigned iOS app
         run: |
           set -euo pipefail
           archive_path="$RUNNER_TEMP/SwiftFileRunner.xcarchive"
