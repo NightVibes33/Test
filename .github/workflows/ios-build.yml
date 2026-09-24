@@ -1,0 +1,50 @@
+name: LiveContainer iOS build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  archive:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
+
+      - name: Archive upstream LiveContainer without signing
+        run: |
+          set -euo pipefail
+          cd LiveContainer
+          xcodebuild archive \
+            -project LiveContainer.xcodeproj \
+            -scheme LiveContainer \
+            -sdk iphoneos \
+            -arch arm64 \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/LiveContainer.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          package_path="$RUNNER_TEMP/LiveContainer-ipa"
+          mkdir -p "$package_path/Payload"
+          ditto "$RUNNER_TEMP/LiveContainer.xcarchive/Products/Applications/LiveContainer.app" "$package_path/Payload/LiveContainer.app"
+          (cd "$package_path" && ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/LiveContainer-unsigned.ipa")
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiveContainer-unsigned-ipa
+          path: LiveContainer-unsigned.ipa
+          if-no-files-found: error
