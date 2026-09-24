@@ -18,20 +18,26 @@ jobs:
         with:
           xcode-version: "26.2"
 
-      - name: Archive upstream LiveContainer without signing
+      - name: Test Swift source interpreter
+        run: swift test --package-path SwiftSourcePlayground
+
+      - name: Apply Swift Playground to LiveContainer
+        run: python3 .github/apply_source_playground.py
+
+      - name: Archive LiveContainer without signing
         run: |
           set -euo pipefail
           cd LiveContainer
-          xcodebuild archive \
-            -project LiveContainer.xcodeproj \
-            -scheme LiveContainer \
-            -sdk iphoneos \
-            -arch arm64 \
-            -configuration Release \
-            -archivePath "$RUNNER_TEMP/LiveContainer.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
+          xcodebuild archive \\
+            -project LiveContainer.xcodeproj \\
+            -scheme LiveContainer \\
+            -sdk iphoneos \\
+            -arch arm64 \\
+            -configuration Release \\
+            -archivePath "$RUNNER_TEMP/LiveContainer.xcarchive" \\
+            CODE_SIGNING_ALLOWED=NO \\
+            CODE_SIGNING_REQUIRED=NO \\
+            CODE_SIGN_IDENTITY="" \\
             archive
 
       - name: Package unsigned IPA

@@ -1,0 +1,4 @@
+*.ipa
+*.zip
+.DS_Store
+SwiftSourcePlayground/.build/
