@@ -28,17 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           cd LiveContainer
-          xcodebuild archive \\
-            -project LiveContainer.xcodeproj \\
-            -scheme LiveContainer \\
-            -sdk iphoneos \\
-            -arch arm64 \\
-            -configuration Release \\
-            -archivePath "$RUNNER_TEMP/LiveContainer.xcarchive" \\
-            CODE_SIGNING_ALLOWED=NO \\
-            CODE_SIGNING_REQUIRED=NO \\
-            CODE_SIGN_IDENTITY="" \\
-            archive
+          xcodebuild archive -project LiveContainer.xcodeproj -scheme LiveContainer -sdk iphoneos -arch arm64 -configuration Release -archivePath "$RUNNER_TEMP/LiveContainer.xcarchive" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 
       - name: Package unsigned IPA
         run: |
