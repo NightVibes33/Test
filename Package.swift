@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SwiftFileRunner",
-    platforms: [.iOS(.v17)],
+    platforms: [.iOS(.v17), .macOS(.v10_15)],
     products: [.library(name: "SwiftFileRunner", targets: ["SwiftFileRunner"])],
     dependencies: [
         // Use Apple's parser implementation to validate and, in the next
