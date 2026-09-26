@@ -59,7 +59,7 @@ jobs:
           require 'json'
 
           RSpec.describe 'Encoded diff path traversal guard probe', feature_category: :code_review_workflow do
-            let_it_be(:project) { create(:project, :repository) }
+            let(:project) { build_stubbed(:project) }
 
             it 'prints detector and browser-normalization behavior for encoded dot segments' do
               encoded_path = 'x/%2e%2e/%2e%2e/%2e%2e/%2e%2e/raw/main'
