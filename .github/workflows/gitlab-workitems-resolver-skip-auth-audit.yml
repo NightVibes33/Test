@@ -35,8 +35,19 @@ jobs:
             echo "=== skip_field_authorization references ==="
             git grep -n -C 35 "skip_field_authorization" -- 'app/**' 'ee/app/**' 'spec/**' || true
             echo
-            echo "=== WorkItemsFinder hidden/read policy logic ==="
-            git grep -n -C 30 -E "class WorkItemsFinder|hidden|read_work_item|banned" -- 'app/finders/work_items*' 'app/finders/**work_item**' 'ee/app/finders/**work_item**' || true
+            echo "=== WorkItemsFinder exact locations ==="
+            git grep -l "class WorkItemsFinder" -- app ee || true
+            echo
+            for file in $(git grep -l "class WorkItemsFinder" -- app ee || true); do
+              echo "===== $file ====="
+              sed -n '1,360p' "$file"
+            done
+            echo
+            echo "=== authorize_issue_types_in_finder references ==="
+            git grep -n -C 35 "authorize_issue_types_in_finder" -- app ee spec || true
+            echo
+            echo "=== hidden / banned filtering in finder tree ==="
+            git grep -n -C 25 -E "hidden|banned|read_work_item" -- app/finders ee/app/finders || true
             echo
             echo "=== GraphQL WorkItemsResolver specs ==="
             git grep -n -C 30 -E "WorkItemsResolver|skip_type_authorization|workItems" -- 'spec/graphql/resolvers/**work_item**' 'spec/requests/api/graphql/**work_item**' || true
