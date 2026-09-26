@@ -1,0 +1,50 @@
+name: GitLab 19.4.1 EE Trace Auth Source Audit
+
+on:
+  push:
+    branches:
+      - h1-gitlab-ee-trace-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          echo "REVISION=$(git rev-parse HEAD)"
+          echo "TAG=$(git describe --tags --exact-match)"
+
+      - name: Enumerate EE job-trace and Duo readers
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          echo '=== read_build_trace references ==='
+          grep -RIn --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git \
+            -E 'read_build_trace|build\.trace|job\.trace|trace\.raw|trace\.read|raw_range' ee app lib 2>/dev/null \
+            | head -n 1500
+          echo '=== troubleshooting / trace API candidates ==='
+          grep -RIn --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git \
+            -E 'troubleshoot|troubleshooting|job.?trace|build.?trace' ee/lib ee/app 2>/dev/null \
+            | head -n 1500
+
+      - name: Print surrounding source for EE trace readers
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          files=$(grep -RIl --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git \
+            -E 'build\.trace|job\.trace|trace\.raw|trace\.read|raw_range' ee 2>/dev/null | head -n 100 || true)
+          for f in $files; do
+            echo "===== FILE: $f ====="
+            sed -n '1,280p' "$f"
+          done
