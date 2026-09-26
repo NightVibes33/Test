@@ -1,0 +1,40 @@
+name: GitLab 19.4.1 Work Item Equivalence Auth Audit
+on:
+  push:
+    branches: [h1-gitlab-workitem-equivalence-auth-audit]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          git rev-parse HEAD | tee ../gitlab-revision.txt
+          git describe --tags --exact-match | tee ../gitlab-tag.txt
+      - name: Audit authorization equivalence shortcuts
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          {
+            echo "=== WorkItem property equality checks near auth-sensitive code ==="
+            git grep -n -C 15 -E "namespace_id ==|resource_parent ==|work_item_type_id ==|confidential ==|confidential\?" -- app lib ee/app ee/lib 2>/dev/null | grep -E -B15 -A15 "WorkItem|work_item|read_work_item|Ability|authorize|can\?" || true
+            echo
+            echo "=== manual read_work_item checks and nearby shortcuts ==="
+            git grep -n -C 18 -E "read_work_item" -- app lib ee/app ee/lib 2>/dev/null || true
+          } | tee ../workitem-equivalence-auth-audit.log
+      - name: Preserve evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-workitem-equivalence-auth-audit
+          path: |
+            gitlab-revision.txt
+            gitlab-tag.txt
+            workitem-equivalence-auth-audit.log
