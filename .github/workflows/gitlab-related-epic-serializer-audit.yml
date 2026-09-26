@@ -1,0 +1,45 @@
+name: GitLab 19.4.1 Related Epic Serializer Audit
+
+on:
+  push:
+    branches:
+      - h1-gitlab-related-epic-serializer-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          echo "REVISION=$(git rev-parse HEAD)"
+          echo "TAG=$(git describe --tags --exact-match)"
+
+      - name: Print related Epic entities and ban policy
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+
+          echo '=== entity matches ==='
+          grep -RIl --exclude-dir=.git -E 'class RelatedEpic(Link)?|module RelatedEpic(Link)?|RelatedEpicLink' ee/lib/api/entities ee/lib ee/app 2>/dev/null | sort | head -n 100
+
+          files=$(grep -RIl --exclude-dir=.git -E 'class RelatedEpic(Link)?|module RelatedEpic(Link)?' ee/lib/api/entities ee/lib 2>/dev/null | head -n 50 || true)
+          for f in $files; do
+            echo "===== FILE: $f ====="
+            sed -n '1,320p' "$f"
+          done
+
+          echo '===== GROUP POLICY BAN SECTION ====='
+          sed -n '220,410p' ee/app/policies/ee/group_policy.rb
+
+          echo '===== FINDER ====='
+          sed -n '1,300p' ee/app/finders/work_items/legacy_epics/related_links_finder.rb
