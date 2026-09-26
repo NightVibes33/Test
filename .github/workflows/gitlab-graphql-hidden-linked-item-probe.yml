@@ -58,10 +58,18 @@ jobs:
           RSpec.describe 'GraphQL hidden linked WorkItem authorization', feature_category: :team_planning do
             include GraphqlHelpers
 
+            let_it_be(:source_author) { create(:user) }
             let_it_be(:banned_author) { create(:user, :banned) }
             let_it_be(:group) { create(:group, :public) }
             let_it_be(:source_item) do
-              create(:work_item, :epic, project: nil, namespace: group, title: 'H1-GQL-SOURCE-9da812')
+              create(
+                :work_item,
+                :epic,
+                project: nil,
+                namespace: group,
+                author: source_author,
+                title: 'H1-GQL-SOURCE-9da812'
+              )
             end
             let_it_be(:hidden_item) do
               create(
