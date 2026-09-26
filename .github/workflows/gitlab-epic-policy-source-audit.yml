@@ -1,0 +1,49 @@
+name: GitLab 19.4.1 Epic Policy Source Audit
+
+on:
+  push:
+    branches:
+      - h1-gitlab-epic-policy-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          echo "REVISION=$(git rev-parse HEAD)"
+          echo "TAG=$(git describe --tags --exact-match)"
+
+      - name: Find related epic and work item policy files
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          echo '=== candidate files ==='
+          find app ee -type f \( -name '*issue_policy*.rb' -o -name '*work_item_policy*.rb' -o -name '*related_epic*.rb' -o -name '*related_link*.rb' \) | sort
+          echo '=== read_work_item / read_issue prevents in policies ==='
+          grep -RIn -E 'prevent .*read_(issue|work_item)|prevent_all|user_banned_from_namespace|external.*authorization|work_item_type_available' app/policies ee/app/policies 2>/dev/null | head -n 1200
+          echo '=== related epic link code ==='
+          grep -RIn -E 'can_read_link|related_epic_links|RelatedLinksFinder' app ee/lib ee/app 2>/dev/null | head -n 1200
+
+      - name: Print candidate source
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          for f in             app/policies/issue_policy.rb             app/policies/work_item_policy.rb             ee/app/policies/ee/issue_policy.rb             ee/app/policies/ee/work_item_policy.rb             ee/lib/api/related_epic_links.rb             ee/app/finders/work_items/legacy_epics/related_links_finder.rb
+          do
+            if [ -f "$f" ]; then
+              echo "===== FILE: $f ====="
+              sed -n '1,360p' "$f"
+            fi
+          done
