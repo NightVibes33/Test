@@ -40,6 +40,9 @@ jobs:
             echo
             echo "=== LinkedItems resolver and field definitions ==="
             sed -n '1,180p' app/graphql/resolvers/work_items/linked_items_resolver.rb
+            echo
+            echo "=== LinkedItemType ==="
+            sed -n '1,220p' app/graphql/types/work_items/linked_item_type.rb
             git grep -n -C 18 "LinkedItemsResolver" -- 'app/graphql/**' 'ee/app/graphql/**' || true
             git grep -n -C 18 "linked_items" -- 'app/graphql/types/work_items/widgets/**' || true
           } | tee ../graphql-auth-fastpath-audit.log
