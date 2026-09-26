@@ -1,0 +1,52 @@
+name: GitLab 19.4.1 EE Epic API Source Audit
+
+on:
+  push:
+    branches:
+      - h1-gitlab-ee-epic-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          echo "REVISION=$(git rev-parse HEAD)"
+          echo "TAG=$(git describe --tags --exact-match)"
+
+      - name: Inventory Epic and WorkItem API files
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          echo '=== API FILE INVENTORY ==='
+          find ee/lib/api lib/api -type f -name '*.rb' \
+            | grep -Ei 'epic|work.?item|issue' \
+            | sort
+          echo '=== RELATED / CHILD SERIALIZATION REFERENCES ==='
+          grep -RIn --exclude-dir=.git \
+            -E 'related_epic|related.*epic|child.*work.?item|work.?item.*child|epic_issues|read_work_item|hidden\?' \
+            ee/lib/api ee/app/services ee/app/finders lib/api app/services app/finders 2>/dev/null \
+            | head -n 2500
+
+      - name: Print candidate API source
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          files=$(find ee/lib/api lib/api -type f -name '*.rb' \
+            | grep -Ei 'epic|work.?item' \
+            | head -n 120 || true)
+          for f in $files; do
+            echo "===== FILE: $f ====="
+            sed -n '1,420p' "$f"
+          done
