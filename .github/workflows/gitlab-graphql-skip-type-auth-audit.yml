@@ -1,0 +1,41 @@
+name: GitLab 19.4.1 GraphQL Skip-Type Auth Audit
+on:
+  push:
+    branches: [h1-gitlab-graphql-skip-type-audit]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          git rev-parse HEAD | tee ../gitlab-revision.txt
+      - name: Audit skipped type authorization
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          {
+            echo "=== skip_type_authorization declarations ==="
+            git grep -n -C 20 "skip_type_authorization" -- 'app/graphql/**' 'ee/app/graphql/**' || true
+            echo
+            echo "=== authorized-by-resolver types ==="
+            git grep -n -C 12 -E "authorized by resolver|Graphql/AuthorizeTypes" -- 'app/graphql/types/**' 'ee/app/graphql/types/**' || true
+            echo
+            echo "=== authorizes_object resolver declarations ==="
+            git grep -n -C 15 -E "authorizes_object!|authorize :" -- 'app/graphql/resolvers/**' 'ee/app/graphql/resolvers/**' || true
+          } | tee ../graphql-skip-type-auth-audit.log
+      - name: Preserve evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-graphql-skip-type-auth-audit
+          path: |
+            gitlab-revision.txt
+            graphql-skip-type-auth-audit.log
