@@ -61,12 +61,13 @@ jobs:
             let_it_be(:banned_author) { create(:user, :banned) }
             let_it_be(:group) { create(:group, :public) }
             let_it_be(:source_item) do
-              create(:work_item, :epic, namespace: group, title: 'H1-GQL-SOURCE-9da812')
+              create(:work_item, :epic, project: nil, namespace: group, title: 'H1-GQL-SOURCE-9da812')
             end
             let_it_be(:hidden_item) do
               create(
                 :work_item,
                 :epic,
+                project: nil,
                 namespace: group,
                 author: banned_author,
                 title: 'H1-GQL-HIDDEN-TITLE-9da812',
@@ -109,10 +110,6 @@ jobs:
 
             before do
               stub_licensed_features(epics: true, related_epics: true)
-            end
-
-            before do
-              stub_licensed_features(epics: true)
             end
 
             it 'probes the same-parent/type/confidentiality authorization shortcut for hidden linked items' do
