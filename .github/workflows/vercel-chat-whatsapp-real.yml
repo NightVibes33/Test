@@ -1,0 +1,221 @@
+name: Vercel Chat WhatsApp Real Security Repro
+
+on:
+  push:
+    branches:
+      - h1-vercel-chat-whatsapp-real
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Clone exact upstream release
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch '@chat-adapter/whatsapp@4.41.0' https://github.com/vercel/chat.git upstream
+          cd upstream
+          git rev-parse HEAD | tee ../git-revision.txt
+          git describe --tags --exact-match | tee ../git-tag.txt
+
+      - name: Install exact workspace dependencies
+        run: |
+          set -euxo pipefail
+          corepack enable
+          cd upstream
+          pnpm install --frozen-lockfile
+
+      - name: Add focused regression reproduction
+        run: |
+          cat > upstream/packages/adapter-whatsapp/src/security.phone-isolation.test.ts <<'EOF'
+          import { createHmac } from "node:crypto";
+          import {
+            createMockChatInstance,
+            createMockLogger,
+          } from "@chat-adapter/tests";
+          import { describe, expect, it, vi } from "vitest";
+          import { WhatsAppAdapter } from "./index";
+          import type { WhatsAppWebhookPayload } from "./types";
+
+          const APP_SECRET = "shared-app-secret";
+          const CONFIGURED_PHONE = "111111111";
+          const FOREIGN_PHONE = "222222222";
+          const USER = "15551234567";
+
+          function signedWebhook(payload: WhatsAppWebhookPayload): Request {
+            const body = JSON.stringify(payload);
+            const signature =
+              "sha256=" +
+              createHmac("sha256", APP_SECRET).update(body).digest("hex");
+
+            return new Request("https://example.test/webhooks/whatsapp", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-hub-signature-256": signature,
+              },
+              body,
+            });
+          }
+
+          function foreignPhonePayload(): WhatsAppWebhookPayload {
+            return {
+              object: "whatsapp_business_account",
+              entry: [
+                {
+                  id: "waba-test",
+                  changes: [
+                    {
+                      field: "messages",
+                      value: {
+                        messaging_product: "whatsapp",
+                        metadata: {
+                          display_phone_number: "15550000002",
+                          phone_number_id: FOREIGN_PHONE,
+                        },
+                        contacts: [
+                          {
+                            profile: { name: "Phone B User" },
+                            wa_id: USER,
+                          },
+                        ],
+                        messages: [
+                          {
+                            id: "wamid.phone-b",
+                            from: USER,
+                            timestamp: "1700000000",
+                            type: "text",
+                            text: { body: "cross-number-trigger" },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            };
+          }
+
+          describe("WhatsApp phone_number_id isolation reproduction", () => {
+            it("dispatches a correctly signed Phone B event through an adapter configured for Phone A", async () => {
+              const adapter = new WhatsAppAdapter({
+                accessToken: "test-access-token",
+                appSecret: APP_SECRET,
+                phoneNumberId: CONFIGURED_PHONE,
+                verifyToken: "verify-token",
+                userName: "phone-a-bot",
+                logger: createMockLogger(),
+              });
+              const chat = createMockChatInstance();
+              await adapter.initialize(chat);
+
+              const response = await adapter.handleWebhook(
+                signedWebhook(foreignPhonePayload())
+              );
+
+              expect(response.status).toBe(200);
+              expect(chat.processMessage).toHaveBeenCalledOnce();
+
+              const [, threadId, message] =
+                vi.mocked(chat.processMessage).mock.calls[0];
+
+              expect(threadId).toBe(
+                `whatsapp:${FOREIGN_PHONE}:${USER}`
+              );
+              expect(message.text).toBe("cross-number-trigger");
+              expect(message.raw.phoneNumberId).toBe(FOREIGN_PHONE);
+            });
+
+            it("uses configured Phone A for an outbound reply to the foreign Phone B-derived thread", async () => {
+              const adapter = new WhatsAppAdapter({
+                accessToken: "test-access-token",
+                appSecret: APP_SECRET,
+                phoneNumberId: CONFIGURED_PHONE,
+                verifyToken: "verify-token",
+                userName: "phone-a-bot",
+                logger: createMockLogger(),
+              });
+              const chat = createMockChatInstance();
+              await adapter.initialize(chat);
+
+              const response = await adapter.handleWebhook(
+                signedWebhook(foreignPhonePayload())
+              );
+              expect(response.status).toBe(200);
+              const [, foreignThreadId] =
+                vi.mocked(chat.processMessage).mock.calls[0];
+
+              const fetchSpy = vi
+                .spyOn(globalThis, "fetch")
+                .mockResolvedValue(
+                  new Response(
+                    JSON.stringify({
+                      messaging_product: "whatsapp",
+                      contacts: [{ input: USER, wa_id: USER }],
+                      messages: [{ id: "wamid.reply-from-a" }],
+                    }),
+                    {
+                      status: 200,
+                      headers: { "content-type": "application/json" },
+                    }
+                  )
+                );
+
+              try {
+                await adapter.postMessage(foreignThreadId, {
+                  markdown: "reply-from-handler",
+                });
+
+                expect(fetchSpy).toHaveBeenCalledOnce();
+                const [url, init] = fetchSpy.mock.calls[0];
+
+                expect(String(url)).toContain(
+                  `/${CONFIGURED_PHONE}/messages`
+                );
+                expect(String(url)).not.toContain(
+                  `/${FOREIGN_PHONE}/messages`
+                );
+
+                const sent = JSON.parse(String(init?.body));
+                expect(sent.to).toBe(USER);
+                expect(sent.text.body).toBe("reply-from-handler");
+              } finally {
+                fetchSpy.mockRestore();
+              }
+            });
+          });
+          EOF
+
+      - name: Run reproduction against real 4.41.0 package
+        run: |
+          set -o pipefail
+          cd upstream
+          pnpm --filter @chat-adapter/whatsapp exec vitest run src/security.phone-isolation.test.ts --reporter=verbose 2>&1 | tee ../reproduction.log
+
+      - name: Run official WhatsApp adapter test suite
+        run: |
+          set -o pipefail
+          cd upstream
+          pnpm --filter @chat-adapter/whatsapp test 2>&1 | tee ../official-suite.log
+
+      - name: Preserve exact evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vercel-chat-whatsapp-real-repro
+          if-no-files-found: warn
+          path: |
+            git-revision.txt
+            git-tag.txt
+            reproduction.log
+            official-suite.log
+            upstream/packages/adapter-whatsapp/src/security.phone-isolation.test.ts
