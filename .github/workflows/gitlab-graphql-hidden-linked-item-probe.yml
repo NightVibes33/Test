@@ -59,6 +59,7 @@ jobs:
             include GraphqlHelpers
 
             let_it_be(:source_author) { create(:user) }
+            let_it_be(:normal_author) { create(:user) }
             let_it_be(:banned_author) { create(:user, :banned) }
             let_it_be(:group) { create(:group, :public) }
             let_it_be(:source_item) do
