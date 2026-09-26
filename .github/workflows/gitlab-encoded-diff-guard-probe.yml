@@ -50,8 +50,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p gitlab/spec/security
-          cat > gitlab/spec/security/encoded_diff_path_probe_spec.rb <<'RUBY'
+          mkdir -p gitlab/spec/lib/gitlab/diff
+          cat > gitlab/spec/lib/gitlab/diff/encoded_diff_path_probe_spec.rb <<'RUBY'
           # frozen_string_literal: true
 
           require 'spec_helper'
@@ -103,7 +103,7 @@ jobs:
         run: |
           set -o pipefail
           cd gitlab
-          bin/rspec spec/security/encoded_diff_path_probe_spec.rb --format documentation 2>&1 | tee ../probe.log
+          bin/rspec spec/lib/gitlab/diff/encoded_diff_path_probe_spec.rb --format documentation 2>&1 | tee ../probe.log
 
       - name: Preserve evidence
         if: always()
@@ -116,4 +116,4 @@ jobs:
             gitlab-tag.txt
             prepare-build.log
             probe.log
-            gitlab/spec/security/encoded_diff_path_probe_spec.rb
+            gitlab/spec/lib/gitlab/diff/encoded_diff_path_probe_spec.rb
