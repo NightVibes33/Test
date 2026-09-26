@@ -59,16 +59,16 @@ jobs:
             include GraphqlHelpers
 
             let_it_be(:banned_author) { create(:user, :banned) }
-            let_it_be(:project) { create(:project, :public) }
+            let_it_be(:group) { create(:group, :public) }
             let_it_be(:source_item) do
-              create(:work_item, project: project, title: 'H1-GQL-SOURCE-9da812')
+              create(:work_item, :epic, namespace: group, title: 'H1-GQL-SOURCE-9da812')
             end
             let_it_be(:hidden_item) do
               create(
                 :work_item,
-                project: project,
+                :epic,
+                namespace: group,
                 author: banned_author,
-                work_item_type: source_item.work_item_type,
                 title: 'H1-GQL-HIDDEN-TITLE-9da812',
                 description: 'H1-GQL-HIDDEN-DESCRIPTION-9da812'
               )
@@ -104,6 +104,10 @@ jobs:
 
             let(:query) do
               graphql_query_for('workItem', { 'id' => source_item.to_global_id.to_s }, fields)
+            end
+
+            before do
+              stub_licensed_features(epics: true, related_epics: true)
             end
 
             it 'probes the same-parent/type/confidentiality authorization shortcut for hidden linked items' do
