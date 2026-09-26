@@ -1,0 +1,157 @@
+name: GitLab 19.4.1 GraphQL Hidden Linked Item Probe
+
+on:
+  push:
+    branches:
+      - h1-gitlab-graphql-hidden-linked-item
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    container:
+      image: registry.gitlab.com/gitlab-org/gitlab-build-images/ci/debian-trixie-slim-ruby-3.3.12-golang-1.25-node-22.12-python-3.12-postgresql-17:rubygems-3.6-git-2.51-lfs-2.9-chrome-151-yarn-1.22-graphicsmagick-1.3.36-poetry-2.2
+
+    services:
+      postgres:
+        image: registry.gitlab.com/gitlab-org/gitlab-build-images:postgres-17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+      redis:
+        image: redis:7.2-alpine
+
+    env:
+      RAILS_ENV: test
+      NODE_ENV: test
+      POSTGRES_HOST_AUTH_METHOD: trust
+      USE_REDIS_CLUSTER: "false"
+      DECOMPOSED_DB: "false"
+      CI_JOB_NAME: "rspec graphql hidden linked item probe"
+      BUNDLE_WITHOUT: ""
+      SETUP_DB: "true"
+      GITLAB_TEST_EAGER_LOAD: "0"
+
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          git rev-parse HEAD | tee ../gitlab-revision.txt
+          git describe --tags --exact-match | tee ../gitlab-tag.txt
+
+      - name: Add focused GraphQL probe
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat > gitlab/spec/requests/api/graphql/work_item_hidden_linked_item_security_spec.rb <<'RUBY'
+          # frozen_string_literal: true
+
+          require 'spec_helper'
+
+          RSpec.describe 'GraphQL hidden linked WorkItem authorization', feature_category: :team_planning do
+            include GraphqlHelpers
+
+            let_it_be(:banned_author) { create(:user, :banned) }
+            let_it_be(:project) { create(:project, :public) }
+            let_it_be(:source_item) do
+              create(:work_item, project: project, title: 'H1-GQL-SOURCE-9da812')
+            end
+            let_it_be(:hidden_item) do
+              create(
+                :work_item,
+                project: project,
+                author: banned_author,
+                work_item_type: source_item.work_item_type,
+                title: 'H1-GQL-HIDDEN-TITLE-9da812',
+                description: 'H1-GQL-HIDDEN-DESCRIPTION-9da812'
+              )
+            end
+            let_it_be(:link) do
+              create(:work_item_link, source: source_item, target: hidden_item, link_type: 'relates_to')
+            end
+
+            let(:fields) do
+              <<~GRAPHQL
+                id
+                title
+                features {
+                  linkedItems {
+                    linkedItems {
+                      nodes {
+                        linkId
+                        linkType
+                        linkCreatedAt
+                        linkUpdatedAt
+                        workItem {
+                          id
+                          title
+                          description
+                          hidden
+                        }
+                      }
+                    }
+                  }
+                }
+              GRAPHQL
+            end
+
+            let(:query) do
+              graphql_query_for('workItem', { 'id' => source_item.to_global_id.to_s }, fields)
+            end
+
+            it 'probes the same-parent/type/confidentiality authorization shortcut for hidden linked items' do
+              expect(hidden_item.hidden?).to be(true)
+              expect(hidden_item.confidential?).to be(false)
+              expect(source_item.confidential?).to be(false)
+              expect(source_item.work_item_type_id).to eq(hidden_item.work_item_type_id)
+              expect(source_item.resource_parent).to eq(hidden_item.resource_parent)
+              expect(Ability.allowed?(nil, :read_work_item, hidden_item)).to be(false)
+
+              post_graphql(query, current_user: nil)
+
+              data = graphql_data
+              errors = json_response['errors']
+              nodes = data.dig('workItem', 'features', 'linkedItems', 'linkedItems', 'nodes')
+
+              puts "GQL_HIDDEN_PROBE hidden=#{hidden_item.hidden?} allowed=#{Ability.allowed?(nil, :read_work_item, hidden_item)}"
+              puts "GQL_HIDDEN_PROBE nodes=#{nodes.inspect}"
+              puts "GQL_HIDDEN_PROBE errors=#{errors.inspect}"
+
+              expect(data.dig('workItem', 'id')).to eq(source_item.to_global_id.to_s)
+            end
+          end
+          RUBY
+
+      - name: Prepare GitLab test environment
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd gitlab
+          bash -lc '. scripts/prepare_build.sh' 2>&1 | tee ../prepare-build.log
+
+      - name: Run GraphQL probe
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          bin/rspec spec/requests/api/graphql/work_item_hidden_linked_item_security_spec.rb --format documentation 2>&1 | tee ../probe.log
+
+      - name: Preserve evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-graphql-hidden-linked-item-probe
+          if-no-files-found: warn
+          path: |
+            gitlab-revision.txt
+            gitlab-tag.txt
+            prepare-build.log
+            probe.log
+            gitlab/spec/requests/api/graphql/work_item_hidden_linked_item_security_spec.rb
