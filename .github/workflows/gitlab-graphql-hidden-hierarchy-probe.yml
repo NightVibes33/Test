@@ -57,11 +57,12 @@ jobs:
 
             let_it_be(:banned_author) { create(:user, :banned) }
             let_it_be(:group) { create(:group, :public) }
-            let_it_be(:parent_item) { create(:work_item, :epic, namespace: group, title: 'H1-HIER-PARENT') }
+            let_it_be(:parent_item) { create(:work_item, :epic, project: nil, namespace: group, title: 'H1-HIER-PARENT') }
             let_it_be(:hidden_child) do
               create(
                 :work_item,
                 :epic,
+                project: nil,
                 namespace: group,
                 author: banned_author,
                 title: 'H1-HIER-HIDDEN-CHILD-71e4a9'
