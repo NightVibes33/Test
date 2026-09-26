@@ -1,0 +1,52 @@
+name: GitLab 19.4.1 MR Linked WorkItem Auth Audit
+
+on:
+  push:
+    branches:
+      - h1-gitlab-mr-linked-workitem-auth-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          git rev-parse HEAD | tee ../gitlab-revision.txt
+          git describe --tags --exact-match | tee ../gitlab-tag.txt
+
+      - name: Inspect MR linked WorkItem authorization
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          {
+            echo "=== LinkedWorkItemType ==="
+            sed -n '1,180p' app/graphql/types/merge_requests/linked_work_item_type.rb
+            echo
+            echo "=== references to LinkedWorkItemType ==="
+            git grep -n -C 30 "MergeRequests::LinkedWorkItemType" -- 'app/graphql/**' 'ee/app/graphql/**' || true
+            echo
+            echo "=== MergeRequestLinkedWorkItem graphql name references ==="
+            git grep -n -C 30 "MergeRequestLinkedWorkItem" -- 'app/graphql/**' 'ee/app/graphql/**' 'spec/**' || true
+            echo
+            echo "=== linked work item resolver candidates ==="
+            git grep -n -C 35 -E "linked_work_items|linkedWorkItems|linked work item" -- 'app/graphql/resolvers/**' 'ee/app/graphql/resolvers/**' || true
+          } | tee ../mr-linked-workitem-auth-audit.log
+
+      - name: Preserve evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-mr-linked-workitem-auth-audit
+          path: |
+            gitlab-revision.txt
+            gitlab-tag.txt
+            mr-linked-workitem-auth-audit.log
