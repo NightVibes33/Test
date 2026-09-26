@@ -29,17 +29,20 @@ jobs:
           set -o pipefail
           cd gitlab
           {
-            echo "=== work_item_rest_api references ==="
-            git grep -n -C 8 "work_item_rest_api" -- 'lib/api/**' 'app/**' || true
+            echo "=== authorization helper ==="
+            sed -n '1,260p' lib/api/helpers/work_items/authorization.rb
             echo
-            echo "=== read_work_item authorization calls ==="
-            git grep -n -C 12 "read_work_item" -- 'lib/api/**' || true
+            echo "=== rendering helper ==="
+            sed -n '1,220p' lib/api/helpers/work_items/rendering.rb
             echo
-            echo "=== parent_work_item helpers ==="
-            git grep -n -C 12 "parent_work_item" -- 'lib/api/**' || true
+            echo "=== preloads helper ==="
+            sed -n '140,220p' lib/api/helpers/work_items/preloads.rb
             echo
-            echo "=== linked_items REST references ==="
-            git grep -n -C 12 "linked_items" -- 'lib/api/**' || true
+            echo "=== linked_items route ==="
+            sed -n '1,180p' lib/api/work_items/linked_items.rb
+            echo
+            echo "=== work_item_for helper definitions ==="
+            git grep -n -C 20 "def work_item_for" -- 'lib/api/**' || true
           } | tee ../workitem-rest-auth-audit.log
 
       - name: Preserve evidence
