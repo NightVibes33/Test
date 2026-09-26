@@ -37,6 +37,15 @@ jobs:
             echo
             echo "=== resolver-side property shortcut patterns ==="
             git grep -n -C 18 -E "return true if .*==|return true if .*same|\.select \{.*Ability\.allowed|next unless .*Ability\.allowed" -- 'app/graphql/resolvers/**' 'ee/app/graphql/resolvers/**' || true
+            echo
+            echo "=== MergeRequests::LinkedWorkItemType ==="
+            sed -n '1,180p' app/graphql/types/merge_requests/linked_work_item_type.rb
+            echo
+            echo "=== resolvers/fields returning MergeRequests::LinkedWorkItemType ==="
+            git grep -n -C 30 "MergeRequests::LinkedWorkItemType" -- 'app/graphql/**' 'ee/app/graphql/**' || true
+            echo
+            echo "=== linked work item MR resolver candidates ==="
+            git grep -n -C 30 -E "linked_work_item|LinkedWorkItem" -- 'app/graphql/resolvers/**' 'ee/app/graphql/resolvers/**' || true
           } | tee ../graphql-skip-auth-audit.log
 
       - name: Preserve evidence
