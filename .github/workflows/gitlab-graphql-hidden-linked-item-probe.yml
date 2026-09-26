@@ -89,6 +89,7 @@ jobs:
                         linkType
                         linkCreatedAt
                         linkUpdatedAt
+                        workItemState
                         workItem {
                           id
                           title
