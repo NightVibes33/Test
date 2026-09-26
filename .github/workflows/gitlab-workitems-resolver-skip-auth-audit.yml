@@ -1,0 +1,52 @@
+name: GitLab 19.4.1 WorkItemsResolver Skip Auth Audit
+
+on:
+  push:
+    branches:
+      - h1-gitlab-workitems-resolver-skip-auth-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          git rev-parse HEAD | tee ../gitlab-revision.txt
+          git describe --tags --exact-match | tee ../gitlab-tag.txt
+
+      - name: Inspect WorkItemsResolver skip authorization logic
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          {
+            echo "=== WorkItemsResolver full relevant source ==="
+            sed -n '1,280p' app/graphql/resolvers/work_items_resolver.rb
+            echo
+            echo "=== skip_field_authorization references ==="
+            git grep -n -C 35 "skip_field_authorization" -- 'app/**' 'ee/app/**' 'spec/**' || true
+            echo
+            echo "=== WorkItemsFinder hidden/read policy logic ==="
+            git grep -n -C 30 -E "class WorkItemsFinder|hidden|read_work_item|banned" -- 'app/finders/work_items*' 'app/finders/**work_item**' 'ee/app/finders/**work_item**' || true
+            echo
+            echo "=== GraphQL WorkItemsResolver specs ==="
+            git grep -n -C 30 -E "WorkItemsResolver|skip_type_authorization|workItems" -- 'spec/graphql/resolvers/**work_item**' 'spec/requests/api/graphql/**work_item**' || true
+          } | tee ../workitems-resolver-skip-auth-audit.log
+
+      - name: Preserve evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-workitems-resolver-skip-auth-audit
+          path: |
+            gitlab-revision.txt
+            gitlab-tag.txt
+            workitems-resolver-skip-auth-audit.log
