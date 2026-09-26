@@ -1,0 +1,45 @@
+name: GitLab 19.4.1 Related Epic Method Audit
+
+on:
+  push:
+    branches:
+      - h1-gitlab-related-epic-method-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          echo "REVISION=$(git rev-parse HEAD)"
+          echo "TAG=$(git describe --tags --exact-match)"
+
+      - name: Inspect Epic entity and related_epics implementation
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+
+          echo '=== EPIC ENTITY FILES ==='
+          find ee -path '*api/entities/epic.rb' -o -path '*api/entities/related_epic*.rb' | sort
+          for f in $(find ee -path '*api/entities/epic.rb' -o -path '*api/entities/related_epic*.rb' | sort); do
+            echo "===== FILE: $f ====="
+            sed -n '1,360p' "$f"
+          done
+
+          echo '=== RELATED_EPICS METHODS ==='
+          grep -RIn --exclude-dir=.git -E 'def related_epics|related_epics\(' ee/app ee/lib app lib 2>/dev/null | head -n 300
+          files=$(grep -RIl --exclude-dir=.git -E 'def related_epics' ee/app ee/lib app lib 2>/dev/null | head -n 30 || true)
+          for f in $files; do
+            echo "===== FILE: $f ====="
+            grep -n -A100 -B30 'def related_epics' "$f"
+          done
