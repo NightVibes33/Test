@@ -1,0 +1,39 @@
+name: GitLab 19.4.1 WorkItem Fastpath Audit
+
+on:
+  push:
+    branches:
+      - h1-gitlab-workitem-fastpath-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact GitLab release
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          echo "REVISION=$(git rev-parse HEAD)"
+          echo "TAG=$(git describe --tags --exact-match)"
+
+      - name: Search authorization fast paths
+        run: |
+          set -o pipefail
+          cd gitlab
+          echo '=== files mentioning read_work_item + confidential/namespace ==='
+          files=$(grep -RIl --exclude-dir=.git 'read_work_item' app ee lib 2>/dev/null | head -n 1000 || true)
+          for f in $files; do
+            if grep -Eq 'confidential\?|namespace_id|same namespace|same_namespace' "$f"; then
+              echo "===== FILE: $f ====="
+              grep -n -E -A16 -B16 'read_work_item|confidential\?|namespace_id|same namespace|same_namespace' "$f" | head -n 500
+            fi
+          done
+
+          echo '=== raw same-namespace shortcuts ==='
+          grep -RIn --exclude-dir=.git -E 'namespace_id.*==|==.*namespace_id|same_namespace' app ee lib 2>/dev/null | head -n 1600
