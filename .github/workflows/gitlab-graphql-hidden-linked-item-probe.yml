@@ -111,6 +111,10 @@ jobs:
               stub_licensed_features(epics: true, related_epics: true)
             end
 
+            before do
+              stub_licensed_features(epics: true)
+            end
+
             it 'probes the same-parent/type/confidentiality authorization shortcut for hidden linked items' do
               expect(hidden_item.hidden?).to be(true)
               expect(hidden_item.confidential?).to be(false)
