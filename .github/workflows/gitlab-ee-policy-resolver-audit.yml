@@ -1,0 +1,37 @@
+name: GitLab EE security-policy resolver audit
+
+on:
+  push:
+    branches: [h1-gitlab-hidden-linked-item-real]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: docker pull gitlab/gitlab-ee:19.4.1-ee.0
+      - name: Extract policy GraphQL resolvers
+        run: |
+          docker run --rm gitlab/gitlab-ee:19.4.1-ee.0 bash -lc '
+            cd /opt/gitlab/embedded/service/gitlab-rails
+            for f in               ee/app/graphql/resolvers/security_orchestration/approval_policy_resolver.rb               ee/app/graphql/resolvers/security_orchestration/security_policy_resolver.rb               ee/app/graphql/resolvers/compliance_management/security_policies/all_policies_resolver.rb               ee/app/graphql/resolvers/compliance_management/security_policies/scan_result_policy_resolver.rb               ee/app/graphql/resolvers/compliance_management/security_policies/pipeline_execution_policy_resolver.rb               ee/app/graphql/resolvers/concerns/construct_approval_policies.rb               ee/app/graphql/resolvers/concerns/construct_security_policies.rb               ee/app/graphql/types/security_orchestration/approval_policy_type.rb               ee/app/graphql/types/security_orchestration/approval_policy_attributes_type.rb               ee/app/graphql/ee/types/project_type.rb               ee/app/graphql/ee/types/namespace_type.rb; do
+              echo "===== $f ====="
+              cat "$f"
+            done
+          ' | tee policy-resolvers.txt
+      - name: Search all ApprovalPolicy return sites
+        run: |
+          docker run --rm gitlab/gitlab-ee:19.4.1-ee.0 bash -lc '
+            cd /opt/gitlab/embedded/service/gitlab-rails
+            grep -RInE "ApprovalPolicyType|construct_scan_result_policies|to_policy_hash" ee/app/graphql 2>/dev/null | head -n 1000
+          ' | tee approval-policy-sites.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-ee-security-policy-resolver-audit
+          path: |
+            policy-resolvers.txt
+            approval-policy-sites.txt
