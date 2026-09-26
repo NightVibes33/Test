@@ -1,0 +1,143 @@
+name: GitLab 19.4.1 Banned Viewer Related Epic Probe
+
+on:
+  push:
+    branches:
+      - h1-gitlab-banned-viewer-related-epic
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    container:
+      image: registry.gitlab.com/gitlab-org/gitlab-build-images/ci/debian-trixie-slim-ruby-3.3.12-golang-1.25-node-22.12-python-3.12-postgresql-17:rubygems-3.6-git-2.51-lfs-2.9-chrome-151-yarn-1.22-graphicsmagick-1.3.36-poetry-2.2
+
+    services:
+      postgres:
+        image: registry.gitlab.com/gitlab-org/gitlab-build-images:postgres-17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+      redis:
+        image: redis:7.2-alpine
+
+    env:
+      RAILS_ENV: test
+      NODE_ENV: test
+      POSTGRES_HOST_AUTH_METHOD: trust
+      USE_REDIS_CLUSTER: "false"
+      DECOMPOSED_DB: "false"
+      CI_JOB_NAME: "rspec banned viewer security probe"
+      BUNDLE_WITHOUT: ""
+      SETUP_DB: "true"
+      GITLAB_TEST_EAGER_LOAD: "0"
+
+    steps:
+      - name: Clone exact GitLab release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v19.4.1-ee https://gitlab.com/gitlab-org/gitlab.git gitlab
+          cd gitlab
+          git rev-parse HEAD | tee ../gitlab-revision.txt
+          git describe --tags --exact-match | tee ../gitlab-tag.txt
+
+      - name: Add focused banned-viewer probe
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat > gitlab/ee/spec/requests/api/related_epic_links_banned_viewer_security_spec.rb <<'RUBY'
+          # frozen_string_literal: true
+
+          require 'spec_helper'
+
+          RSpec.describe API::RelatedEpicLinks, feature_category: :portfolio_management do
+            let_it_be(:viewer) { create(:user) }
+            let_it_be(:group) { create(:group, :private) }
+            let_it_be(:source_epic) { create(:epic, group: group, title: 'H1-SOURCE') }
+            let_it_be(:target_epic) do
+              create(
+                :epic,
+                group: group,
+                title: 'H1-BANNED-VIEWER-TARGET-2f4e9a',
+                description: 'H1-BANNED-VIEWER-DESCRIPTION-2f4e9a'
+              )
+            end
+            let_it_be(:related_link) { create(:related_epic_link, source: source_epic, target: target_epic) }
+            let_it_be(:namespace_ban) { create(:namespace_ban, user: viewer, namespace: group.root_ancestor) }
+
+            before do
+              stub_licensed_features(epics: true, related_epics: true)
+              group.add_reporter(viewer)
+              allow_any_instance_of(Group).to receive(:unique_project_download_limit_enabled?).and_return(true)
+            end
+
+            it 'probes whether a namespace-banned member can reach the optimized related-link path' do
+              target_work_item = target_epic.work_item
+
+              banned = viewer.banned_from_namespace?(group.root_ancestor)
+              can_read_group = Ability.allowed?(viewer, :read_group, group)
+              can_read_target = Ability.allowed?(viewer, :read_work_item, target_work_item)
+
+              puts "BAN_PROBE banned=#{banned} can_read_group=#{can_read_group} can_read_target=#{can_read_target}"
+              expect(banned).to be(true)
+              expect(can_read_group).to be(false)
+              expect(can_read_target).to be(false)
+              expect(target_work_item.confidential?).to be(false)
+              expect(source_epic.work_item.namespace_id).to eq(target_work_item.namespace_id)
+
+              get api("/groups/#{group.id}/related_epic_links", viewer)
+
+              body = begin
+                json_response
+              rescue StandardError
+                response.body
+              end
+
+              leaked = if body.is_a?(Array)
+                         body.find { |entry| entry['id'] == related_link.id }
+                       end
+
+              puts "BAN_PROBE status=#{response.status}"
+              puts "BAN_PROBE response=#{body.inspect}"
+              puts "BAN_PROBE leaked=#{!leaked.nil?}"
+              if leaked
+                puts "BAN_PROBE leaked_title=#{leaked.dig('target_epic', 'title')}"
+                puts "BAN_PROBE leaked_description=#{leaked.dig('target_epic', 'description')}"
+              end
+
+              expect(response.status).to be_between(200, 599)
+            end
+          end
+          RUBY
+
+      - name: Prepare GitLab test environment
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd gitlab
+          bash -lc '. scripts/prepare_build.sh' 2>&1 | tee ../prepare-build.log
+
+      - name: Run banned-viewer probe
+        shell: bash
+        run: |
+          set -o pipefail
+          cd gitlab
+          bin/rspec ee/spec/requests/api/related_epic_links_banned_viewer_security_spec.rb --format documentation 2>&1 | tee ../probe.log
+
+      - name: Preserve evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-banned-viewer-related-epic-probe
+          if-no-files-found: warn
+          path: |
+            gitlab-revision.txt
+            gitlab-tag.txt
+            prepare-build.log
+            probe.log
+            gitlab/ee/spec/requests/api/related_epic_links_banned_viewer_security_spec.rb
