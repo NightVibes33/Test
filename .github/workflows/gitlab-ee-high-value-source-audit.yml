@@ -1,0 +1,64 @@
+name: GitLab EE high-value source audit
+
+on:
+  push:
+    branches: [h1-gitlab-hidden-linked-item-real]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Pull exact EE releases
+        run: |
+          docker pull gitlab/gitlab-ee:19.4.0-ee.0
+          docker pull gitlab/gitlab-ee:19.4.1-ee.0
+
+      - name: Extract security-policy authorization paths
+        run: |
+          docker run --rm gitlab/gitlab-ee:19.4.1-ee.0 bash -lc '
+            cd /opt/gitlab/embedded/service/gitlab-rails
+            files="$(grep -RIlE "class ScanResultPolicyResolver|class AllPoliciesFinder|module ResolvesOrchestrationPolicy" ee/app 2>/dev/null | sort -u)"
+            for f in $files; do echo "===== $f ====="; cat "$f"; done
+          ' > security-policy-auth.txt
+
+      - name: Extract vulnerability MCP source
+        run: |
+          docker run --rm gitlab/gitlab-ee:19.4.1-ee.0 bash -lc '
+            cd /opt/gitlab/embedded/service/gitlab-rails
+            files="$(grep -RIlE "list_vulnerabilities|get_vulnerability|save_vulnerability|SaveVulnerability|GetVulnerability|ListVulnerabilities" ee/app app 2>/dev/null | sort -u)"
+            for f in $files; do echo "===== $f ====="; cat "$f"; done
+          ' > vulnerability-mcp.txt
+
+      - name: Diff Duo job troubleshooting security fix
+        run: |
+          for tag in 19.4.0-ee.0 19.4.1-ee.0; do
+            docker run --rm gitlab/gitlab-ee:$tag bash -lc '
+              cd /opt/gitlab/embedded/service/gitlab-rails
+              files="$(grep -RIlE "RootCause|root_cause|troubleshoot|troubleshooting" ee/app ee/lib app lib 2>/dev/null | grep -Ei "duo|ai|job|trace" | sort -u | head -n 120)"
+              for f in $files; do echo "===== $f ====="; cat "$f"; done
+            ' > "duo-$tag.txt"
+          done
+          diff -u duo-19.4.0-ee.0.txt duo-19.4.1-ee.0.txt > duo-security-diff.txt || true
+
+      - name: Find sensitive GraphQL fields and authorization
+        run: |
+          docker run --rm gitlab/gitlab-ee:19.4.1-ee.0 bash -lc '
+            cd /opt/gitlab/embedded/service/gitlab-rails
+            grep -RInE "field :(token|secret|variables|trace|raw_|content|credentials|password|private_key)" ee/app/graphql app/graphql 2>/dev/null | head -n 3000
+          ' > sensitive-fields.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-ee-high-value-source-audit
+          path: |
+            security-policy-auth.txt
+            vulnerability-mcp.txt
+            duo-19.4.0-ee.0.txt
+            duo-19.4.1-ee.0.txt
+            duo-security-diff.txt
+            sensitive-fields.txt
