@@ -1,0 +1,67 @@
+name: GitLab EE 19.4 policy source diff
+
+on:
+  push:
+    branches: [h1-gitlab-hidden-linked-item-real]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Pull exact EE releases
+        run: |
+          docker pull gitlab/gitlab-ee:19.4.0-ee.0
+          docker pull gitlab/gitlab-ee:19.4.1-ee.0
+
+      - name: Extract matching source from 19.4.0
+        run: |
+          docker run --rm gitlab/gitlab-ee:19.4.0-ee.0 bash -lc '
+            cd /opt/gitlab/embedded/service/gitlab-rails
+            grep -RIlE "dependent_security_policies|dependentSecurityPolicies" ee app 2>/dev/null |
+              sort |
+              tee /tmp/files.txt
+            while read -r f; do
+              echo "===== $f ====="
+              cat "$f"
+            done < /tmp/files.txt
+          ' > source-19.4.0.txt
+
+      - name: Extract matching source from 19.4.1
+        run: |
+          docker run --rm gitlab/gitlab-ee:19.4.1-ee.0 bash -lc '
+            cd /opt/gitlab/embedded/service/gitlab-rails
+            grep -RIlE "dependent_security_policies|dependentSecurityPolicies" ee app 2>/dev/null |
+              sort |
+              tee /tmp/files.txt
+            while read -r f; do
+              echo "===== $f ====="
+              cat "$f"
+            done < /tmp/files.txt
+          ' > source-19.4.1.txt
+
+      - name: Diff shipped source
+        run: |
+          diff -u source-19.4.0.txt source-19.4.1.txt > policy-diff.txt || true
+          cat policy-diff.txt
+
+      - name: Find related approval-policy GraphQL code
+        run: |
+          docker run --rm gitlab/gitlab-ee:19.4.1-ee.0 bash -lc '
+            cd /opt/gitlab/embedded/service/gitlab-rails
+            grep -RIlE "ApprovalPolicy|security_policies|SecurityPolicies" ee/app/graphql 2>/dev/null | sort
+          ' > related-files.txt
+          cat related-files.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-ee-policy-source-diff
+          path: |
+            source-19.4.0.txt
+            source-19.4.1.txt
+            policy-diff.txt
+            related-files.txt
