@@ -41,8 +41,8 @@ const result = {
   responses: rows,
 };
 
-fs.mkdirSync('artifacts', { recursive: true });
-fs.writeFileSync('artifacts/browser-network.json', JSON.stringify(result, null, 2));
+fs.mkdirSync('security/hubspot-ctf/artifacts', { recursive: true });
+fs.writeFileSync('security/hubspot-ctf/artifacts/browser-network.json', JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result, null, 2));
 
 await browser.close();
