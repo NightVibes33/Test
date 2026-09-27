@@ -22,20 +22,33 @@ jobs:
           cd security/vercel-flags-precompute-replay/e2e
           npm install --no-audit --no-fund
 
-      - name: Start Next.js
+      - name: Start Next.js and fail fast with logs
         run: |
           cd security/vercel-flags-precompute-replay/e2e
           npm run dev > /tmp/next.log 2>&1 &
           echo $! > /tmp/next.pid
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then break; fi
+          ready=0
+          for i in $(seq 1 20); do
+            if curl --max-time 2 -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$(cat /tmp/next.pid)" 2>/dev/null; then
+              break
+            fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:3000/ >/dev/null
+          echo "===== NEXT LOG ====="
+          cat /tmp/next.log || true
+          if [ "$ready" -ne 1 ]; then
+            echo "E2E server_ready=false"
+            exit 1
+          fi
+          echo "E2E server_ready=true"
 
       - name: Inspect public rewrite response
         run: |
-          curl -sS -D /tmp/root.headers -o /tmp/root.body http://127.0.0.1:3000/
+          curl --max-time 5 -sS -D /tmp/root.headers -o /tmp/root.body http://127.0.0.1:3000/
           echo "===== ROOT HEADERS ====="
           cat /tmp/root.headers
           echo "===== ROOT BODY ====="
@@ -60,7 +73,7 @@ jobs:
           NODE
 
           ROOT_CODE="$(cat /tmp/root.code)"
-          curl -sS -D /tmp/replay.headers -o /tmp/replay.body             "http://127.0.0.1:3000/$ROOT_CODE/pricing/$ROOT_CODE"
+          curl --max-time 5 -sS -D /tmp/replay.headers -o /tmp/replay.body             "http://127.0.0.1:3000/$ROOT_CODE/pricing/$ROOT_CODE"
 
           echo "===== REPLAY BODY ====="
           cat /tmp/replay.body
