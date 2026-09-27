@@ -99,6 +99,23 @@ ISSUE_IID="$(jq -r '.iid' <<<"$ISSUE_JSON")"
 NOTE_BODY="H1 MCP GPAT write proof $STAMP"
 NOTEABLE_GID="gid://gitlab/Issue/$ISSUE_ID"
 
+echo "===== MCP CONTROL: REST-backed get_issue must enforce read_issue and deny this GPAT ====="
+MCP_REST_CONTROL_BODY="$(jq -cn --arg p "$PROJECT_PATH" --argjson iid "$ISSUE_IID" '{
+  jsonrpc:"2.0",
+  id:"h1-rest-control",
+  method:"tools/call",
+  params:{name:"get_issue",arguments:{id:$p,issue_iid:$iid}}
+}')"
+MCP_REST_CONTROL="$(curl -sS --fail-with-body \
+  -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
+  --data-binary "$MCP_REST_CONTROL_BODY" "$BASE/api/v4/mcp")"
+printf '%s\n' "$MCP_REST_CONTROL" | tee "$OUT/mcp-rest-get-issue-control.json"
+
+if jq -e '.result.isError == false' <<<"$MCP_REST_CONTROL" >/dev/null 2>&1; then
+  echo "ISOLATION_INVALID: REST-backed MCP get_issue accepted token without read_issue"
+  exit 24
+fi
+
 echo "===== WRITE CONTROL: direct GraphQL with same GPAT must NOT create note ====="
 DIRECT_NOTE_BODY="$(jq -cn --arg id "$NOTEABLE_GID" --arg body "$NOTE_BODY" '{
   query:"mutation($input: CreateNoteInput!) { createNote(input:$input) { note { id body } errors } }",
@@ -136,6 +153,7 @@ WRITE_COUNT="$(jq --arg body "$NOTE_BODY" '[.[] | select(.body == $body)] | leng
   echo "Granular PAT scope: execute_mcp_tool @ user boundary only"
   echo "Direct GraphQL project result: $(jq -c '.data.project // null' <<<"$DIRECT")"
   echo "MCP returned project path: ${MCP_PATH:-<none>}"
+  echo "MCP REST get_issue control isError: $(jq -r '.result.isError // "no-result"' <<<"$MCP_REST_CONTROL")"
   echo "Direct GraphQL create-note result: $(jq -c '.data.createNote // null' <<<"$DIRECT_NOTE")"
   echo "MCP-created matching note count: $WRITE_COUNT"
 } | tee "$OUT/summary.txt"
