@@ -25,19 +25,29 @@ jobs:
             --shm-size 256m \
             -p 8080:80 \
             -e GITLAB_ROOT_PASSWORD='H1-Local-Only-Root-9z!Q7p' \
-            -e GITLAB_OMNIBUS_CONFIG="external_url 'http://gitlab.local'; prometheus_monitoring['enable']=false; alertmanager['enable']=false; node_exporter['enable']=false; redis_exporter['enable']=false; postgres_exporter['enable']=false; gitlab_exporter['enable']=false; sidekiq['concurrency']=5" \
+            -e GITLAB_OMNIBUS_CONFIG="external_url 'http://gitlab.local'; sidekiq['concurrency']=5" \
             "$GITLAB_IMAGE"
 
       - name: Wait for GitLab
         run: |
           for i in $(seq 1 100); do
+            if ! docker inspect -f '{{.State.Running}}' gitlab 2>/dev/null | grep -qx true; then
+              echo "GitLab container exited during initialization"
+              docker logs --tail 500 gitlab
+              exit 1
+            fi
             if curl -fsS http://127.0.0.1:8080/-/readiness >/dev/null 2>&1; then
+              echo "GitLab ready"
               docker exec gitlab cat /opt/gitlab/embedded/service/gitlab-rails/VERSION || true
               exit 0
             fi
+            if (( i % 6 == 0 )); then
+              echo "Still initializing ($i/100)"
+              docker exec gitlab gitlab-ctl status puma 2>/dev/null || true
+            fi
             sleep 10
           done
-          docker logs --tail 400 gitlab
+          docker logs --tail 500 gitlab
           exit 1
 
       - name: Run differential PoC
