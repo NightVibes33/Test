@@ -27,11 +27,11 @@ This appears to bypass the security boundary introduced for CVE-2026-15307.
 
 ## Affected versions / branches
 
-The unsafe bytes exception is present in:
+Dynamically confirmed vulnerable:
 
-- `stable/5.2.x`
-- `stable/6.0.x`
-- `stable/6.1.x`
+- Django 5.2.18 (`stable/5.2.x`)
+- Django 6.0.9 (`stable/6.0.x`)
+- Django 6.1.2 (`stable/6.1.x`)
 - current Django main was also dynamically reproduced at commit `9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26`
 
 The corresponding security documentation on the supported branches explicitly says bytes remain accepted because they use `/vsimem/`.
@@ -176,6 +176,12 @@ Workflow:
 Proposed fix:
 
 `django-gdal-vrt-bytes-proposed-fix.diff`
+
+Cross-version request-body + blind-SSRF workflow run:
+
+`36353403093`
+
+All three matrix jobs completed successfully for Django 5.2.18, 6.0.9, and 6.1.2.
 
 Initial current-main workflow run that confirmed outbound VRT requests:
 
