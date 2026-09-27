@@ -112,11 +112,18 @@ HITS_AFTER_PREP= []
 
 No network request is needed merely to parse the outer in-memory VRT.
 
-The normal PostGIS adapter then serializes the raster:
+Django's normal database-preparation API then invokes the PostGIS adapter:
 
 ```python
-adapter = PostGISAdapter(prepared)
-_ = adapter.ewkb
+from django.db import connection
+
+adapter = field.get_db_prep_value(attacker_bytes, connection)
+```
+
+The resulting object is Django's PostGIS adapter:
+
+```
+DB_PREP_ADAPTER= PostGISAdapter
 ```
 
 At that point GDAL dereferences the VRT source. In the successful-target control, the loopback server observes:
@@ -177,11 +184,11 @@ Proposed fix:
 
 `django-gdal-vrt-bytes-proposed-fix.diff`
 
-Cross-version request-body + blind-SSRF workflow run:
+Final cross-version request-body + Django DB-preparation + blind-SSRF workflow run:
 
-`36353403093`
+`36353533599`
 
-All three matrix jobs completed successfully for Django 5.2.18, 6.0.9, and 6.1.2.
+All three matrix jobs completed successfully for Django 5.2.18, 6.0.9, and 6.1.2. The PoC uses `RasterField.get_db_prep_value(attacker_bytes, connection)`, which returns `PostGISAdapter` and causes the outbound requests.
 
 Initial current-main workflow run that confirmed outbound VRT requests:
 
