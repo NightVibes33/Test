@@ -1,0 +1,69 @@
+name: GitLab GPAT boundary escape PoC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - h1-gitlab-granular-pat-boundary-escape
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GITLAB_IMAGE: gitlab/gitlab-ee:19.4.1-ee.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner capacity
+        run: |
+          free -h
+          df -h
+          docker version
+
+      - name: Pull GitLab 19.4.1 EE
+        run: docker pull "$GITLAB_IMAGE"
+
+      - name: Start isolated GitLab
+        run: |
+          docker run -d --name gitlab \
+            --hostname gitlab.local \
+            --shm-size 256m \
+            -p 8080:80 \
+            -e GITLAB_ROOT_PASSWORD='H1-Local-Only-Root-9z!Q7p' \
+            -e GITLAB_OMNIBUS_CONFIG="external_url 'http://gitlab.local'; prometheus_monitoring['enable']=false; grafana['enable']=false; alertmanager['enable']=false; node_exporter['enable']=false; redis_exporter['enable']=false; postgres_exporter['enable']=false; gitlab_exporter['enable']=false; sidekiq['concurrency']=5" \
+            "$GITLAB_IMAGE"
+
+      - name: Wait for GitLab
+        run: |
+          set -e
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/-/readiness >/dev/null 2>&1; then
+              echo "GitLab ready"
+              docker exec gitlab cat /opt/gitlab/embedded/service/gitlab-rails/VERSION || true
+              exit 0
+            fi
+            echo "waiting ($i/90)"
+            sleep 10
+          done
+          docker logs --tail 400 gitlab
+          exit 1
+
+      - name: Run isolated differential PoC
+        run: bash security/gitlab-granular-pat/poc.sh
+
+      - name: Container diagnostics
+        if: always()
+        run: |
+          docker ps -a
+          docker logs --tail 500 gitlab > gitlab-container.log 2>&1 || true
+
+      - name: Upload redacted evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-gpat-boundary-evidence
+          path: |
+            artifacts/
+            gitlab-container.log
+          if-no-files-found: warn
