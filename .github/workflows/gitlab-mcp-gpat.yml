@@ -20,6 +20,7 @@ jobs:
 
       - name: Start isolated GitLab
         run: |
+          echo "127.0.0.1 gitlab.local" | sudo tee -a /etc/hosts
           docker run -d --name gitlab \
             --hostname gitlab.local \
             --shm-size 256m \
@@ -35,7 +36,7 @@ jobs:
               docker logs --tail 500 gitlab
               exit 1
             fi
-            if curl -fsS http://127.0.0.1:8080/-/readiness >/dev/null 2>&1; then
+            if curl -fsS http://gitlab.local:8080/-/readiness >/dev/null 2>&1; then
               echo "GitLab ready"
               docker exec gitlab cat /opt/gitlab/embedded/service/gitlab-rails/VERSION || true
               exit 0
