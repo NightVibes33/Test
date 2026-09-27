@@ -56,13 +56,29 @@ printf '%s\n' "$PROJECT_JSON" >"$OUT/project.json"
 
 echo "===== Seed one private repository fixture ====="
 FIXTURE_VALUE="H1_PRIVATE_FIXTURE_$STAMP"
-COMMIT_JSON="$(api "$ROOT_TOKEN" POST "/projects/$PROJECT_ID/repository/commits" \
-  --data-urlencode "branch=main" \
-  --data-urlencode "commit_message=Add local H1 fixture" \
-  --data-urlencode "actions[0][action]=create" \
-  --data-urlencode "actions[0][file_path]=h1-private-fixture.txt" \
-  --data-urlencode "actions[0][content]=$FIXTURE_VALUE")"
-printf '%s\n' "$COMMIT_JSON" >"$OUT/seed-commit.json"
+SEED_OK=false
+for i in $(seq 1 12); do
+  SEED_BODY="$OUT/seed-file-attempt.json"
+  SEED_STATUS="$(curl -sS -o "$SEED_BODY" -w '%{http_code}' \
+    --request POST \
+    --header "PRIVATE-TOKEN: $ROOT_TOKEN" \
+    --data-urlencode "branch=main" \
+    --data-urlencode "commit_message=Add local H1 fixture" \
+    --data-urlencode "content=$FIXTURE_VALUE" \
+    "$BASE/api/v4/projects/$PROJECT_ID/repository/files/h1-private-fixture.txt")"
+  if [[ "$SEED_STATUS" == "201" ]]; then
+    SEED_OK=true
+    cp "$SEED_BODY" "$OUT/seed-file.json"
+    break
+  fi
+  echo "fixture seed attempt $i returned HTTP $SEED_STATUS"
+  cat "$SEED_BODY" || true
+  sleep 2
+done
+if [[ "$SEED_OK" != true ]]; then
+  echo "Failed to seed private fixture"
+  exit 26
+fi
 
 echo "===== create GPAT with ONLY execute_mcp_tool on user boundary ====="
 docker cp security/gitlab-mcp-gpat/create_gpat.rb "$CONTAINER:/tmp/h1-create-mcp-gpat.rb"
