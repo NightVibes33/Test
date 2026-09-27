@@ -1,0 +1,94 @@
+diff --git a/django/utils/http.py b/django/utils/http.py
+--- a/django/utils/http.py
++++ b/django/utils/http.py
+@@ -202,12 +202,32 @@ def split_header_value(value, sep=","):
+-    """Yield stripped parts of an HTTP header value split by sep.
+-
+-    Use only with headers whose values are token lists (e.g. Vary,
+-    Cache-Control). Do not use with headers that allow quoted strings in values
+-    (e.g. Set-Cookie), as commas inside values will be used as separators.
+-    """
+-    for part in value.split(sep):
+-        if stripped := part.strip():
+-            yield stripped
++    """Yield stripped parts of an HTTP header value split by sep.
++
++    Separators inside quoted strings aren't treated as list delimiters.
++    """
++    if len(sep) != 1:
++        for part in value.split(sep):
++            if stripped := part.strip():
++                yield stripped
++        return
++
++    start = 0
++    in_quote = False
++    escaped = False
++    for index, char in enumerate(value):
++        if escaped:
++            escaped = False
++        elif in_quote and char == "\\":
++            escaped = True
++        elif char == '"':
++            in_quote = not in_quote
++        elif char == sep and not in_quote:
++            if stripped := value[start:index].strip():
++                yield stripped
++            start = index + 1
++
++    if stripped := value[start:].strip():
++        yield stripped
+ 
+ 
+ def split_directive_names(value):
+diff --git a/tests/utils_tests/test_http.py b/tests/utils_tests/test_http.py
+--- a/tests/utils_tests/test_http.py
++++ b/tests/utils_tests/test_http.py
+@@ -355,6 +355,12 @@ class SplitHeaderValueTests(unittest.TestCase):
+         for value, expected in tests:
+             with self.subTest(value=value):
+                 self.assertEqual(list(split_header_value(value, sep=";")), expected)
++
++    def test_separator_inside_quoted_string(self):
++        self.assertEqual(
++            list(split_header_value('x-example="foo, public, bar", max-age=60')),
++            ['x-example="foo, public, bar"', "max-age=60"],
++        )
+ 
+ 
+ class SplitDirectiveNamesTests(unittest.TestCase):
+@@ -372,6 +378,10 @@ class SplitDirectiveNamesTests(unittest.TestCase):
+             ("myprivate", ["myprivate"]),
+             # A nameless directive yields an empty name.
+             ('="Set-Cookie"', [""]),
++            (
++                'x-example="foo, public, bar", max-age=60',
++                ["x-example", "max-age"],
++            ),
+         ]
+         for value, expected in tests:
+             with self.subTest(value=value):
+diff --git a/tests/cache/tests.py b/tests/cache/tests.py
+--- a/tests/cache/tests.py
++++ b/tests/cache/tests.py
+@@ -3132,6 +3132,17 @@ class CacheMiddlewareTest(SimpleTestCase):
+         response = view(request, "1")
+         self.assertIs(has_vary_header(response, "Authorization"), False)
+ 
++    def test_authorization_header_public_inside_quoted_extension_value(self):
++        @cache_page(3)
++        def view(request, value):
++            return HttpResponse(
++                f"Hello World {value}",
++                headers={
++                    "Cache-Control": 'x-example="foo, public, bar", max-age=60'
++                },
++            )
++
++        request = self.factory.get("/view/", headers={"Authorization": "token"})
++        response = view(request, "1")
++        self.assertIs(has_vary_header(response, "Authorization"), True)
++
+     def test_vary_asterisk_not_cached(self):
+         views_with_cache = (
+             cache_page(3)(hello_world_view_patch_vary_headers_asterisk),
