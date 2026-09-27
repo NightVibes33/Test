@@ -1,0 +1,44 @@
+name: Vercel Flags documented multi-group replay
+
+on:
+  push:
+    branches:
+      - h1-vercel-flags-precompute-context-replay
+  workflow_dispatch:
+
+jobs:
+  sandbox-a:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install stable package
+        run: |
+          cd security/vercel-flags-precompute-replay
+          npm init -y
+          npm install --no-audit --no-fund flags@4.3.1
+      - name: Reproduce documented multi-group replay
+        run: |
+          cd security/vercel-flags-precompute-replay
+          node documented-multiple-groups.mjs
+
+  sandbox-b:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install stable package independently
+        run: |
+          mkdir -p /tmp/flags-second-sandbox
+          cp security/vercel-flags-precompute-replay/documented-multiple-groups.mjs /tmp/flags-second-sandbox/poc.mjs
+          cd /tmp/flags-second-sandbox
+          npm init -y
+          npm install --no-audit --no-fund flags@4.3.1
+      - name: Reproduce independently
+        run: |
+          cd /tmp/flags-second-sandbox
+          node poc.mjs
