@@ -14,7 +14,9 @@ use Piwik\Tests\Framework\TestCase\IntegrationTestCase;
 
 class CacheAuthIsolationTest extends IntegrationTestCase
 {
-    private int $idSite;
+    private int $siteA;
+    private int $siteB;
+    private int $reportId;
 
     public function setUp(): void
     {
@@ -30,34 +32,49 @@ class CacheAuthIsolationTest extends IntegrationTestCase
         ]);
         Manager::getInstance()->installLoadedPlugins();
 
-        $this->idSite = (int) SitesManagerAPI::getInstance()->addSite(
-            'H1 ScheduledReports cache auth test',
-            ['https://example.test']
+        $this->siteA = (int) SitesManagerAPI::getInstance()->addSite(
+            'H1 private site A',
+            ['https://a.example.test']
+        );
+        $this->siteB = (int) SitesManagerAPI::getInstance()->addSite(
+            'H1 unrelated site B',
+            ['https://b.example.test']
         );
 
         $users = new UsersManagerModel();
-        foreach ([
-            ['cache_user_a', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
-            ['cache_user_b', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
-        ] as [$login, $token]) {
-            $users->addUser(
-                $login,
-                'not-a-login-password',
-                $login . '@example.test',
-                Date::now()->getDatetime()
-            );
-            $users->addUserAccess($login, 'view', [$this->idSite]);
-            $users->addTokenAuth(
-                $login,
-                $token,
-                'H1 cache isolation token',
-                Date::now()->getDatetime()
-            );
-        }
+        $now = Date::now()->getDatetime();
+
+        $users->addUser(
+            'cache_user_a',
+            'not-a-login-password',
+            'cache_user_a@example.test',
+            $now
+        );
+        $users->addUserAccess('cache_user_a', 'view', [$this->siteA]);
+        $users->addTokenAuth(
+            'cache_user_a',
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'H1 user A token',
+            $now
+        );
+
+        $users->addUser(
+            'cache_user_b',
+            'not-a-login-password',
+            'cache_user_b@example.test',
+            $now
+        );
+        $users->addUserAccess('cache_user_b', 'view', [$this->siteB]);
+        $users->addTokenAuth(
+            'cache_user_b',
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            'H1 user B token',
+            $now
+        );
 
         $model = new ScheduledReportsModel();
-        $model->createReport([
-            'idsite' => $this->idSite,
+        $this->reportId = (int) $model->createReport([
+            'idsite' => $this->siteA,
             'login' => 'cache_user_a',
             'description' => 'USER_A_PRIVATE_REPORT',
             'idsegment' => null,
@@ -73,7 +90,7 @@ class CacheAuthIsolationTest extends IntegrationTestCase
                 'additionalEmails' => ['user-a-private@example.test'],
                 'evolutionGraph' => false,
             ]),
-            'ts_created' => Date::now()->getDatetime(),
+            'ts_created' => $now,
             'ts_last_sent' => null,
             'deleted' => 0,
             'evolution_graph_within_period' => 0,
@@ -83,50 +100,54 @@ class CacheAuthIsolationTest extends IntegrationTestCase
         ScheduledReportsAPI::$cache = [];
     }
 
-    public function testBulkRequestLeaksUserAReportToUserBThroughStaticCache(): void
+    public function testBulkRequestLeaksCrossUserCrossSiteReportThroughStaticCache(): void
     {
-        $reportId = 1;
-
-        // Control: B alone must not be able to fetch A's report.
+        // Secure control: B has some Matomo view access (site B), but neither
+        // ownership of A's report nor access to A's site. A direct B-only call
+        // must therefore fail.
         ScheduledReportsAPI::$cache = [];
         $control = BulkAPI::getInstance()->getBulkRequest([
-            $this->bulkUrl('cache_user_b', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', $reportId),
+            $this->bulkUrl('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
         ]);
 
-        fwrite(STDOUT, "\nCONTROL_B_ALONE=" . json_encode($control) . "\n");
+        fwrite(STDOUT, "\nSITE_A={$this->siteA} SITE_B={$this->siteB} REPORT_ID={$this->reportId}\n");
+        fwrite(STDOUT, "CONTROL_B_ALONE=" . json_encode($control) . "\n");
         self::assertSame('error', $control[0]['result'] ?? null);
 
-        // Candidate: A populates ScheduledReports::$cache, then B asks for the exact
-        // same idReport/cache key in the same bulk request under B's real token.
+        // Candidate: A populates ScheduledReports::$cache under an idReport-only
+        // key. B then asks for the identical key in the same bulk request.
+        // The cache-hit return occurs before login ownership and idSite checks.
         ScheduledReportsAPI::$cache = [];
         $result = BulkAPI::getInstance()->getBulkRequest([
-            $this->bulkUrl('cache_user_a', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', $reportId),
-            $this->bulkUrl('cache_user_b', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', $reportId),
+            $this->bulkUrl('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+            $this->bulkUrl('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
         ]);
 
         fwrite(STDOUT, "BULK_RESULT=" . json_encode($result) . "\n");
 
         self::assertSame('cache_user_a', $result[0][0]['login'] ?? null);
+        self::assertSame($this->siteA, (int) ($result[0][0]['idsite'] ?? 0));
         self::assertSame('USER_A_PRIVATE_REPORT', $result[0][0]['description'] ?? null);
 
-        // This assertion demonstrates the authorization failure: B receives A's
-        // cached object, including A's configured recipient address.
+        // Authorization failure: B gets A's object for site A despite B having
+        // view access only to site B.
         self::assertSame('cache_user_a', $result[1][0]['login'] ?? null);
+        self::assertSame($this->siteA, (int) ($result[1][0]['idsite'] ?? 0));
         self::assertSame('USER_A_PRIVATE_REPORT', $result[1][0]['description'] ?? null);
         self::assertSame(
             ['user-a-private@example.test'],
             $result[1][0]['parameters']['additionalEmails'] ?? null
         );
 
-        fwrite(STDOUT, "H1_RESULT=PASS cross-user ScheduledReports cache disclosure via API.getBulkRequest\n");
+        fwrite(STDOUT, "H1_RESULT=PASS cross-user cross-site ScheduledReports disclosure via API.getBulkRequest\n");
     }
 
-    private function bulkUrl(string $login, string $token, int $reportId): string
+    private function bulkUrl(string $token): string
     {
         return rawurlencode(http_build_query([
             'module' => 'API',
             'method' => 'ScheduledReports.getReports',
-            'idReport' => $reportId,
+            'idReport' => $this->reportId,
             'token_auth' => $token,
             'format' => 'json',
         ], '', '&', PHP_QUERY_RFC3986));
