@@ -21,7 +21,7 @@ test -n "$ROOT_TOKEN"
 STAMP="$(date +%s)"
 USERNAME="h1mcp$STAMP"
 EMAIL="$USERNAME@example.test"
-PASSWORD="H1-Mcp-Test-$STAMP-Aa1!"
+PASSWORD="Y7!mQ9#pV4@zN2$kR8^xC5&w$STAMP"
 
 echo "===== create isolated user/group/private project ====="
 USER_JSON="$(api "$ROOT_TOKEN" POST /users \
