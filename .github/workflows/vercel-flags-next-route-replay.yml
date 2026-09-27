@@ -71,7 +71,7 @@ jobs:
           const code = matches[0][0];
           fs.writeFileSync('/tmp/root.code', code);
           console.log('E2E observable_root_code=true');
-          console.log('E2E code_source=public_response');
+          console.log('E2E code_source=public_html_body');
           NODE
 
       - name: Replay root token as pricing token
