@@ -1,0 +1,38 @@
+name: Django ASGI disconnect resource close
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - h1-django-asgi-disconnect-resource-close
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: before-todays-fix
+            install: git+https://github.com/django/django.git@4fab678a0739d54401ccee7eb587553657c9f76e
+          - name: todays-fix
+            install: git+https://github.com/django/django.git@9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26
+          - name: django-6.1.1
+            install: Django==6.1.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install target
+        run: python -m pip install "${{ matrix.install }}"
+      - name: Run ASGI disconnect regression
+        shell: bash
+        run: |
+          set -o pipefail
+          python django-asgi-disconnect-resource-close.py 2>&1 | tee evidence.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: asgi-disconnect-${{ matrix.name }}
+          path: evidence.txt
