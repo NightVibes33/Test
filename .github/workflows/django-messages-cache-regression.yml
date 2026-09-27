@@ -13,10 +13,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: django-6.1.1
+          - name: django-6.1.1-fallback
             install: Django==6.1.1
-          - name: django-main
+            storage: django.contrib.messages.storage.fallback.FallbackStorage
+            expect_leak: "1"
+          - name: django-6.1.1-cookie
+            install: Django==6.1.1
+            storage: django.contrib.messages.storage.cookie.CookieStorage
+            expect_leak: "1"
+          - name: django-6.1.1-session-control
+            install: Django==6.1.1
+            storage: django.contrib.messages.storage.session.SessionStorage
+            expect_leak: "0"
+          - name: django-main-fallback
             install: git+https://github.com/django/django.git@9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26
+            storage: django.contrib.messages.storage.fallback.FallbackStorage
+            expect_leak: "1"
+          - name: django-main-cookie
+            install: git+https://github.com/django/django.git@9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26
+            storage: django.contrib.messages.storage.cookie.CookieStorage
+            expect_leak: "1"
+          - name: django-main-session-control
+            install: git+https://github.com/django/django.git@9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26
+            storage: django.contrib.messages.storage.session.SessionStorage
+            expect_leak: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,8 +44,11 @@ jobs:
           python-version: "3.14"
       - name: Install Django target
         run: python -m pip install "${{ matrix.install }}"
-      - name: Run HTTP regression
-        run: python django-messages-cache-regression.py | tee django-messages-cache-evidence.txt
+      - name: Run storage isolation matrix
+        env:
+          MESSAGE_STORAGE: ${{ matrix.storage }}
+          EXPECT_LEAK: ${{ matrix.expect_leak }}
+        run: python django-messages-cache-storage-matrix.py | tee django-messages-cache-evidence.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
