@@ -8,15 +8,17 @@ mkdir -p "$OUT"
 
 api() {
   local token="$1" method="$2" path="$3"; shift 3
-  curl -sS --fail-with-body --request "$method" \
+  curl -sS --max-time 60 --fail-with-body --request "$method" \
     --header "PRIVATE-TOKEN: $token" "$@" "$BASE/api/v4$path"
 }
 
 echo "===== enable MCP + bootstrap root token ====="
 docker cp security/gitlab-mcp-gpat/bootstrap.rb "$CONTAINER:/tmp/h1-mcp-bootstrap.rb"
-BOOT="$(docker exec "$CONTAINER" gitlab-rails runner /tmp/h1-mcp-bootstrap.rb)"
+echo "rails-bootstrap:start"
+BOOT="$(timeout 180s docker exec "$CONTAINER" gitlab-rails runner /tmp/h1-mcp-bootstrap.rb)"
 ROOT_TOKEN="$(printf '%s\n' "$BOOT" | sed -n 's/^H1_ROOT_TOKEN=//p' | tail -1)"
 test -n "$ROOT_TOKEN"
+echo "rails-bootstrap:done"
 
 STAMP="$(date +%s)"
 USERNAME="h1mcp$STAMP"
@@ -82,14 +84,16 @@ fi
 
 echo "===== create GPAT with ONLY execute_mcp_tool on user boundary ====="
 docker cp security/gitlab-mcp-gpat/create_gpat.rb "$CONTAINER:/tmp/h1-create-mcp-gpat.rb"
-SETUP="$(docker exec -e H1_USER_ID="$USER_ID" "$CONTAINER" gitlab-rails runner /tmp/h1-create-mcp-gpat.rb)"
+echo "gpat-create:start"
+SETUP="$(timeout 180s docker exec -e H1_USER_ID="$USER_ID" "$CONTAINER" gitlab-rails runner /tmp/h1-create-mcp-gpat.rb)"
 printf '%s\n' "$SETUP" | sed -E 's/(H1_GPAT=).*/\1[REDACTED]/' | tee "$OUT/gpat-scope.txt"
 GPAT="$(printf '%s\n' "$SETUP" | sed -n 's/^H1_GPAT=//p' | tail -1)"
 test -n "$GPAT"
+echo "gpat-create:done"
 
 echo "===== CONTROL: direct GraphQL with same GPAT must NOT read private project ====="
 DIRECT_BODY="$(jq -cn --arg q "query { project(fullPath: \"$PROJECT_PATH\") { id name fullPath visibility webUrl } }" '{query:$q}')"
-DIRECT="$(curl -sS --fail-with-body \
+DIRECT="$(curl -sS --max-time 60 --fail-with-body \
   -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
   --data-binary "$DIRECT_BODY" "$BASE/api/graphql")"
 printf '%s\n' "$DIRECT" | tee "$OUT/direct-graphql.json"
@@ -107,7 +111,7 @@ MCP_BODY="$(jq -cn --arg p "$PROJECT_PATH" '{
   params:{name:"get_project",arguments:{project_id:$p}}
 }')"
 
-MCP="$(curl -sS --fail-with-body \
+MCP="$(curl -sS --max-time 60 --fail-with-body \
   -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
   --data-binary "$MCP_BODY" "$BASE/api/v4/mcp")"
 printf '%s\n' "$MCP" | tee "$OUT/mcp-get-project.json"
@@ -135,7 +139,7 @@ MCP_FILE_BODY="$(jq -cn --arg p "$PROJECT_PATH" '{
   method:"tools/call",
   params:{name:"get_repository_file",arguments:{project_id:$p,file_path:"h1-private-fixture.txt",ref:"main"}}
 }')"
-MCP_FILE="$(curl -sS --fail-with-body \
+MCP_FILE="$(curl -sS --max-time 60 --fail-with-body \
   -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
   --data-binary "$MCP_FILE_BODY" "$BASE/api/v4/mcp")"
 printf '%s\n' "$MCP_FILE" | tee "$OUT/mcp-get-repository-file.json"
@@ -164,7 +168,7 @@ MCP_REST_CONTROL_BODY="$(jq -cn --arg p "$PROJECT_PATH" --argjson iid "$ISSUE_II
   method:"tools/call",
   params:{name:"get_issue",arguments:{id:$p,issue_iid:$iid}}
 }')"
-MCP_REST_CONTROL="$(curl -sS --fail-with-body \
+MCP_REST_CONTROL="$(curl -sS --max-time 60 --fail-with-body \
   -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
   --data-binary "$MCP_REST_CONTROL_BODY" "$BASE/api/v4/mcp")"
 printf '%s\n' "$MCP_REST_CONTROL" | tee "$OUT/mcp-rest-get-issue-control.json"
@@ -179,7 +183,7 @@ DIRECT_NOTE_BODY="$(jq -cn --arg id "$NOTEABLE_GID" --arg body "$NOTE_BODY" '{
   query:"mutation($input: CreateNoteInput!) { createNote(input:$input) { note { id body } errors } }",
   variables:{input:{noteableId:$id,body:$body}}
 }')"
-DIRECT_NOTE="$(curl -sS --fail-with-body \
+DIRECT_NOTE="$(curl -sS --max-time 60 --fail-with-body \
   -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
   --data-binary "$DIRECT_NOTE_BODY" "$BASE/api/graphql")"
 printf '%s\n' "$DIRECT_NOTE" | tee "$OUT/direct-graphql-create-note.json"
@@ -196,7 +200,7 @@ MCP_NOTE_BODY="$(jq -cn --arg p "$PROJECT_PATH" --argjson iid "$ISSUE_IID" --arg
   method:"tools/call",
   params:{name:"save_note",arguments:{project_id:$p,work_item_iid:$iid,body:$body}}
 }')"
-MCP_NOTE="$(curl -sS --fail-with-body \
+MCP_NOTE="$(curl -sS --max-time 60 --fail-with-body \
   -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
   --data-binary "$MCP_NOTE_BODY" "$BASE/api/v4/mcp")"
 printf '%s\n' "$MCP_NOTE" | tee "$OUT/mcp-save-note.json"
