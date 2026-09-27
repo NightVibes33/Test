@@ -24,7 +24,6 @@ jobs:
             --hostname gitlab.local \
             --shm-size 256m \
             -p 8080:80 \
-            -e GITLAB_ROOT_PASSWORD='H1-Local-Only-Root-9z!Q7p' \
             -e GITLAB_OMNIBUS_CONFIG="external_url 'http://gitlab.local'; sidekiq['concurrency']=5" \
             "$GITLAB_IMAGE"
 
