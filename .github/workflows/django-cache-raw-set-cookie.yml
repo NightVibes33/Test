@@ -1,0 +1,89 @@
+name: Django raw Set-Cookie cache replay PoC
+
+on:
+  push:
+    branches: [h1-django-cache-raw-set-cookie]
+  workflow_dispatch:
+
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install current Django
+        run: |
+          python -m pip install -U pip
+          python -m pip install "Django @ git+https://github.com/django/django.git@9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26"
+      - name: Reproduce cache replay
+        run: |
+          cat > poc.py <<'PY'
+          from django.conf import settings
+
+          settings.configure(
+              SECRET_KEY="poc",
+              ALLOWED_HOSTS=["testserver"],
+              CACHES={
+                  "default": {
+                      "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                      "LOCATION": "raw-set-cookie-poc",
+                  }
+              },
+              CACHE_MIDDLEWARE_SECONDS=60,
+              CACHE_MIDDLEWARE_KEY_PREFIX="",
+              USE_I18N=False,
+              USE_TZ=False,
+          )
+
+          import django
+          django.setup()
+
+          from django.http import HttpResponse
+          from django.middleware.cache import CacheMiddleware
+          from django.test import RequestFactory
+          from django.utils.cache import patch_vary_headers
+
+          calls = {"n": 0}
+
+          def private_view(request):
+              calls["n"] += 1
+              response = HttpResponse(f"origin-call-{calls['n']}")
+              # Deliberately use Django's generic response-header API instead
+              # of response.set_cookie().
+              response["Set-Cookie"] = (
+                  f"sessionid=user-{calls['n']}-secret; Path=/; HttpOnly; SameSite=Lax"
+              )
+              patch_vary_headers(response, ("Cookie",))
+              print("VIEW_RESPONSE_COOKIES_LEN=", len(response.cookies))
+              print("VIEW_RAW_SET_COOKIE=", response["Set-Cookie"])
+              print("VIEW_VARY=", response["Vary"])
+              return response
+
+          middleware = CacheMiddleware(private_view, cache_timeout=60)
+          rf = RequestFactory()
+
+          # Client A: first cookie-less request.
+          req1 = rf.get("/account/bootstrap")
+          resp1 = middleware(req1)
+          print("FIRST_BODY=", resp1.content.decode())
+          print("FIRST_SET_COOKIE=", resp1["Set-Cookie"])
+          print("CALLS_AFTER_FIRST=", calls["n"])
+
+          # Client B: a different cookie-less client makes the same request.
+          req2 = rf.get("/account/bootstrap")
+          resp2 = middleware(req2)
+          print("SECOND_BODY=", resp2.content.decode())
+          print("SECOND_SET_COOKIE=", resp2["Set-Cookie"])
+          print("CALLS_AFTER_SECOND=", calls["n"])
+          print("SECOND_AGE=", resp2.get("Age"))
+
+          assert len(resp1.cookies) == 0
+          assert len(resp2.cookies) == 0
+          assert calls["n"] == 1, "second request was not served from cache"
+          assert resp2["Set-Cookie"] == "sessionid=user-1-secret; Path=/; HttpOnly; SameSite=Lax"
+          assert resp2.content == b"origin-call-1"
+          print("POC_RESULT=RAW_SET_COOKIE_CACHE_REPLAY_CONFIRMED")
+          PY
+          python poc.py
