@@ -1,4 +1,4 @@
-name: Vercel Flags Next.js route replay E2E
+name: Vercel Flags Next.js production route replay E2E
 
 on:
   push:
@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FLAGS_SECRET: Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M
+      NEXT_TELEMETRY_DISABLED: 1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,10 +23,15 @@ jobs:
           cd security/vercel-flags-precompute-replay/e2e
           npm install --no-audit --no-fund
 
-      - name: Start Next.js and fail fast with logs
+      - name: Production build
         run: |
           cd security/vercel-flags-precompute-replay/e2e
-          npm run dev > /tmp/next.log 2>&1 &
+          npm run build
+
+      - name: Start production server
+        run: |
+          cd security/vercel-flags-precompute-replay/e2e
+          npm run start > /tmp/next.log 2>&1 &
           echo $! > /tmp/next.pid
           ready=0
           for i in $(seq 1 20); do
@@ -40,44 +46,55 @@ jobs:
           done
           echo "===== NEXT LOG ====="
           cat /tmp/next.log || true
-          if [ "$ready" -ne 1 ]; then
-            echo "E2E server_ready=false"
-            exit 1
-          fi
+          test "$ready" -eq 1
           echo "E2E server_ready=true"
 
-      - name: Inspect public rewrite response
+      - name: Inspect public response and extract signed code
         run: |
           curl --max-time 5 -sS -D /tmp/root.headers -o /tmp/root.body http://127.0.0.1:3000/
           echo "===== ROOT HEADERS ====="
           cat /tmp/root.headers
-          echo "===== ROOT BODY ====="
-          cat /tmp/root.body
+          echo "===== ROOT BODY SNIPPET ====="
+          head -c 4000 /tmp/root.body
           echo
 
-      - name: Extract any observable signed code and replay into pricing group
-        run: |
           node <<'NODE'
           const fs = require('fs');
           const headers = fs.readFileSync('/tmp/root.headers','utf8');
           const body = fs.readFileSync('/tmp/root.body','utf8');
           const all = headers + '\n' + body;
-          const match = all.match(/[A-Za-z0-9_-]+\.([A-Za-z0-9_-]*)\.[A-Za-z0-9_-]+/);
-          if (!match) {
+          const matches = [...all.matchAll(/[A-Za-z0-9_-]+\.([A-Za-z0-9_-]*)\.[A-Za-z0-9_-]+/g)];
+          if (!matches.length) {
             console.log('E2E observable_root_code=false');
             process.exit(2);
           }
-          fs.writeFileSync('/tmp/root.code', match[0]);
+          const code = matches[0][0];
+          fs.writeFileSync('/tmp/root.code', code);
           console.log('E2E observable_root_code=true');
-          console.log('E2E code_source=response');
+          console.log('E2E code_source=public_response');
           NODE
 
+      - name: Replay root token as pricing token
+        run: |
           ROOT_CODE="$(cat /tmp/root.code)"
           curl --max-time 5 -sS -D /tmp/replay.headers -o /tmp/replay.body             "http://127.0.0.1:3000/$ROOT_CODE/pricing/$ROOT_CODE"
 
-          echo "===== REPLAY BODY ====="
-          cat /tmp/replay.body
+          echo "===== REPLAY BODY SNIPPET ====="
+          head -c 4000 /tmp/replay.body
           echo
 
-          grep -q 'discount=vip' /tmp/replay.body
-          echo 'E2E cross_group_replay=PASS'
+          node <<'NODE'
+          const fs = require('fs');
+          const body = fs.readFileSync('/tmp/replay.body','utf8');
+          const rendered = body
+            .replace(/<!--.*?-->/g, '')
+            .replace(/<[^>]+>/g, ' ');
+          if (!rendered.includes('discount=vip')) {
+            console.log('E2E cross_group_replay=FAIL');
+            process.exit(1);
+          }
+          console.log('E2E target_default=none');
+          console.log('E2E replayed_target=vip');
+          console.log('E2E token_modified=false');
+          console.log('E2E cross_group_replay=PASS');
+          NODE
