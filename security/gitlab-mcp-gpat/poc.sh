@@ -101,6 +101,37 @@ if [[ -z "$MCP_PATH" ]]; then
   MCP_PATH="$(jq -r '.result.content[0].text // empty' <<<"$MCP" 2>/dev/null | jq -r '.path_with_namespace // .fullPath // empty' 2>/dev/null || true)"
 fi
 
+echo "===== READ CONTROL: direct repository-file API with same GPAT ====="
+DIRECT_FILE_BODY="$OUT/direct-file-body.txt"
+DIRECT_FILE_STATUS="$(curl -sS -o "$DIRECT_FILE_BODY" -w '%{http_code}' \
+  -H "PRIVATE-TOKEN: $GPAT" \
+  "$BASE/api/v4/projects/$PROJECT_ID/repository/files/h1-private-fixture.txt/raw?ref=main")"
+printf '%s\n' "$DIRECT_FILE_STATUS" >"$OUT/direct-file-status.txt"
+if [[ "$DIRECT_FILE_STATUS" == "200" ]]; then
+  echo "ISOLATION_INVALID: direct repository-file API accepted token without read_repository_file"
+  exit 25
+fi
+
+echo "===== MCP READ: same GPAT calls get_repository_file ====="
+MCP_FILE_BODY="$(jq -cn --arg p "$PROJECT_PATH" '{
+  jsonrpc:"2.0",
+  id:"h1-file",
+  method:"tools/call",
+  params:{name:"get_repository_file",arguments:{project_id:$p,file_path:"h1-private-fixture.txt",ref:"main"}}
+}')"
+MCP_FILE="$(curl -sS --fail-with-body \
+  -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
+  --data-binary "$MCP_FILE_BODY" "$BASE/api/v4/mcp")"
+printf '%s\n' "$MCP_FILE" | tee "$OUT/mcp-get-repository-file.json"
+MCP_FILE_CONTENT="$(jq -r '.result.structuredContent.content // empty' <<<"$MCP_FILE" 2>/dev/null || true)"
+if [[ -z "$MCP_FILE_CONTENT" ]]; then
+  MCP_FILE_CONTENT="$(jq -r '.result.content[0].text // empty' <<<"$MCP_FILE" 2>/dev/null | jq -r '.content // empty' 2>/dev/null || true)"
+fi
+FIXTURE_MATCH=false
+if [[ "$MCP_FILE_CONTENT" == *"$FIXTURE_VALUE"* ]]; then
+  FIXTURE_MATCH=true
+fi
+
 echo "===== WRITE IMPACT SETUP: create one owned test issue ====="
 ISSUE_JSON="$(api "$ROOT_TOKEN" POST "/projects/$PROJECT_ID/issues" \
   --data-urlencode "title=H1 MCP granular PAT write proof $STAMP")"
