@@ -1,0 +1,36 @@
+name: WordPress private notes oracle PoC
+
+on:
+  push:
+    branches:
+      - wp-notes-oracle-poc
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-overlay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare WordPress PHPUnit overlay
+        run: |
+          mkdir -p overlay/tests/phpunit/tests/rest-api
+          cp wp-h1-tests/wp-notes-search-oracle.php overlay/tests/phpunit/tests/rest-api/wp-notes-search-oracle.php
+      - name: Upload test overlay
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp-notes-oracle-overlay
+          path: overlay
+          if-no-files-found: error
+          retention-days: 1
+
+  verify:
+    needs: prepare-overlay
+    uses: WordPress/wordpress-develop/.github/workflows/reusable-phpunit-tests-v3.yml@trunk
+    with:
+      repository: WordPress/wordpress-develop
+      ref: trunk
+      php: '8.4'
+      phpunit-test-groups: wp-notes-oracle
+      overlay-artifact: wp-notes-oracle-overlay
