@@ -34,6 +34,9 @@ jobs:
       - name: Debug trial signup rendering (read-only)
         run: node security/hubspot-ctf/signup-debug.mjs
 
+      - name: Probe current postMessage behavior (scoped target only)
+        run: node security/hubspot-ctf/postmessage-probe.mjs
+
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
