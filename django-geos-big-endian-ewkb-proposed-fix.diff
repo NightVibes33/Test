@@ -1,0 +1,33 @@
+diff --git a/django/contrib/gis/geos/prototypes/io.py b/django/contrib/gis/geos/prototypes/io.py
+--- a/django/contrib/gis/geos/prototypes/io.py
++++ b/django/contrib/gis/geos/prototypes/io.py
+@@
+             try:
+                 geometry_type = int(wkb[index + 2 : index + 10], 16)
+             except ValueError:
+                 continue
+-            geometry_type = _byteswap_uint32(geometry_type)
++            # HEX WKB stores the type bytes in the byte order declared by the
++            # leading byte-order marker. int(..., 16) already yields the
++            # correct value for big-endian (00); only little-endian (01)
++            # needs byte-swapping.
++            if byte_order == b"01":
++                geometry_type = _byteswap_uint32(geometry_type)
+             # Match GEOS WKBReader's geometry-type normalization.
+             if (geometry_type & 0xFFFF) % 1000 == 7:  # GeometryCollection.
+                 count += 1
+
+diff --git a/tests/gis_tests/geos_tests/test_geos_limit.py b/tests/gis_tests/geos_tests/test_geos_limit.py
+--- a/tests/gis_tests/geos_tests/test_geos_limit.py
++++ b/tests/gis_tests/geos_tests/test_geos_limit.py
+@@
+         binary += [(wkb(c, ch, d, s), label, cg) for label, c, ch, d, s, cg in variants]
++        # Big-endian EWKB with SRID must be recognized in HEX form too.
++        binary += [
++            (
++                layer(endian=">", type_code=0x20000007, srid=0x11111111) * depth
++                + point(endian=">", type_code=0x20000001, srid=0x11111111),
++                "big-endian EWKB SRID",
++                True,
++            ),
++        ]
