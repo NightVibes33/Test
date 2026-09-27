@@ -13,6 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: django-5.2.18
+            install: Django==5.2.18
+          - name: django-6.0.8
+            install: Django==6.0.8
           - name: django-6.1.1
             install: Django==6.1.1
           - name: current-main
