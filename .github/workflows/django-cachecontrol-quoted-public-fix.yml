@@ -1,0 +1,39 @@
+name: Validate quoted Cache-Control fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - h1-django-cachecontrol-quoted-public
+    paths:
+      - django-cachecontrol-quoted-public-fix.patch
+      - .github/workflows/django-cachecontrol-quoted-public-fix.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: django/django
+          ref: 9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26
+          path: django-src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Apply proposed fix
+        run: git -C django-src apply "$GITHUB_WORKSPACE/django-cachecontrol-quoted-public-fix.patch"
+      - name: Install Django test dependencies
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ./django-src
+      - name: Run targeted tests
+        working-directory: django-src/tests
+        run: |
+          python runtests.py \
+            utils_tests.test_http.SplitHeaderValueTests \
+            utils_tests.test_http.SplitDirectiveNamesTests \
+            cache.tests.CacheMiddlewareTest.test_authorization_header_public_inside_quoted_extension_value \
+            cache.tests.CacheMiddlewareTest.test_authorization_header_exception_qualified_public_directive \
+            cache.tests.CacheMiddlewareTest.test_authorization_header_exception_superstring
