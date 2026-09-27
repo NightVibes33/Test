@@ -31,37 +31,32 @@ from django.urls import path
 
 hits = {"control": 0, "candidate": 0}
 
-
 def control_view(request):
     hits["control"] += 1
     identity = request.headers.get("Authorization", "none")
     response = HttpResponse(f"control identity={identity}; origin={hits['control']}")
-    # A valid Cache-Control extension quoted-string containing commas, but
-    # without a standalone token equal to "public".
-    response["Cache-Control"] = 'x-example="foo, publicity, bar", max-age=60'
+    # Valid extension directive with a quoted comma-containing value and no
+    # occurrence of the token/string "public".
+    response["Cache-Control"] = 'x-example="foo, harmless, bar", max-age=60'
     return response
-
 
 def candidate_view(request):
     hits["candidate"] += 1
     identity = request.headers.get("Authorization", "none")
     response = HttpResponse(f"candidate identity={identity}; origin={hits['candidate']}")
-    # Valid extension directive. "public" is data inside x-example's quoted
-    # value, not a top-level Cache-Control directive.
+    # "public" is data inside an extension directive's quoted-string value,
+    # not a top-level Cache-Control directive.
     response["Cache-Control"] = 'x-example="foo, public, bar", max-age=60'
     return response
-
 
 urlpatterns = [
     path("control/", control_view),
     path("candidate/", candidate_view),
 ]
 
-
 def get(path, identity):
     client = Client()
     return client.get(path, HTTP_AUTHORIZATION=f"Bearer {identity}")
-
 
 cache.clear()
 control_a = get("/control/", "user-A")
