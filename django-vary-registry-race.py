@@ -27,11 +27,11 @@ settings.configure(
 django.setup()
 
 from django.core.cache import cache
+from django.core.cache.backends.locmem import LocMemCache
 from django.http import HttpResponse
 from django.middleware.cache import CacheMiddleware
 from django.test import RequestFactory
-from django.utils.cache import _generate_cache_key
-from django.utils.cache import patch_vary_headers
+from django.utils.cache import _generate_cache_key, patch_vary_headers
 
 
 factory = RequestFactory()
@@ -62,7 +62,7 @@ middleware = CacheMiddleware(view)
 cache.clear()
 
 # Both requests use the same opaque value under different Vary header names.
-# Django 6.1.1/current main hashes only values, so these page keys collide.
+# Django hashes the values, but does not bind each value to its header name.
 request_a_for_key = factory.get("/resource/", HTTP_X_REGION="scope-123")
 request_b_for_key = factory.get("/resource/", HTTP_X_TENANT="scope-123")
 key_a = _generate_cache_key(
@@ -78,13 +78,16 @@ print("key B:", key_b)
 print("same key:", key_a == key_b)
 assert key_a == key_b, "Expected current Django to collide across header names."
 
-original_set = cache.set
+# Django cache connections are thread-local, but LocMemCache instances with the
+# same LOCATION share the underlying store. Patch the backend method at class
+# level so both request threads participate in the same deterministic schedule.
+original_set = LocMemCache.set
 a_header_written = threading.Event()
 b_page_written = threading.Event()
 errors = []
 
 
-def controlled_set(key, value, timeout=None, version=None):
+def controlled_set(self, key, value, timeout=None, version=None):
     is_header_registry = ".cache_header." in key
     is_page = ".cache_page." in key
     name = threading.current_thread().name
@@ -92,21 +95,21 @@ def controlled_set(key, value, timeout=None, version=None):
     if name == "A" and is_header_registry:
         # Publish A's learned Vary list, then pause before learn_cache_key()
         # returns and A writes its page object.
-        result = original_set(key, value, timeout, version)
+        result = original_set(self, key, value, timeout, version)
         a_header_written.set()
         if not b_page_written.wait(5):
             raise RuntimeError("Timed out waiting for B page write")
         return result
 
     if name == "B" and is_page:
-        result = original_set(key, value, timeout, version)
+        result = original_set(self, key, value, timeout, version)
         b_page_written.set()
         return result
 
-    return original_set(key, value, timeout, version)
+    return original_set(self, key, value, timeout, version)
 
 
-cache.set = controlled_set
+LocMemCache.set = controlled_set
 
 
 def run_a():
@@ -138,19 +141,19 @@ tb.start()
 ta.join(10)
 tb.join(10)
 
+LocMemCache.set = original_set
+
 if ta.is_alive() or tb.is_alive():
     raise RuntimeError("Worker thread did not finish")
 if errors:
     raise RuntimeError(errors)
 
-# Restore the normal cache method before the victim request.
-cache.set = original_set
-
 # Expected final state from the forced legitimate interleaving:
 # 1. A writes registry = [HTTP_X_REGION] and pauses.
 # 2. B writes registry = [HTTP_X_TENANT], then page K = B.
 # 3. A resumes and writes page K = A.
-# So the registry says "key on X-Tenant", but K contains A's X-Region response.
+# Therefore the registry says "key on X-Tenant", but K contains A's
+# X-Region representation.
 victim = factory.get("/resource/", HTTP_X_TENANT="scope-123")
 victim_response = middleware(victim)
 
