@@ -31,6 +31,9 @@ jobs:
       - name: Inspect trial signup DOM (read-only)
         run: node security/hubspot-ctf/signup-inspect.mjs
 
+      - name: Debug trial signup rendering (read-only)
+        run: node security/hubspot-ctf/signup-debug.mjs
+
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
