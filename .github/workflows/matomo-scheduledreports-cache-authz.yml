@@ -1,0 +1,38 @@
+name: Matomo ScheduledReports cache authz PoC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - h1-matomo-scheduledreports-cache-authz
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+
+      - name: Checkout current Matomo 6.x-dev
+        uses: actions/checkout@v4
+        with:
+          repository: matomo-org/matomo
+          ref: 6.x-dev
+          path: matomo
+          submodules: true
+
+      - name: Run Matomo integration PoC
+        uses: matomo-org/github-action-tests@main
+        with:
+          test-type: IntegrationTestsPlugins
+          php-version: "8.2"
+          mysql-driver: PDO_MYSQL
+          mysql-engine: Mariadb
+          mysql-version: "10.6"
+          redis-service: false
+          setup-script: harness/h1/setup-matomo-cache-poc.sh
+          phpunit-test-options: >-
+            --filter CacheAuthIsolationTest
+            plugins/ScheduledReports/tests/Integration/CacheAuthIsolationTest.php
