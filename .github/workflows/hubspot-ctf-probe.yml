@@ -1,0 +1,12 @@
+name: HubSpot CTF scoped probes
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run scoped probes
+        run: bash security/hubspot-ctf/probe.sh
