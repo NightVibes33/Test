@@ -9,13 +9,21 @@ on:
 jobs:
   reproduce:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: django-6.1.1
+            install: Django==6.1.1
+          - name: django-main
+            install: git+https://github.com/django/django.git@9e06baf2e4dd17834b5deaf3a3e6ae3bff2fcf26
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - name: Install current Django release
-        run: python -m pip install "Django==6.1.1"
+      - name: Install Django target
+        run: python -m pip install "${{ matrix.install }}"
       - name: Run in-process regression test
         run: python django-cache-regression.py | tee django-cache-evidence.txt
       - name: Run HTTP-level regression test
@@ -23,7 +31,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: django-cache-evidence
+          name: django-cache-evidence-${{ matrix.name }}
           path: |
             django-cache-evidence.txt
             django-cache-http-evidence.txt
