@@ -57,6 +57,7 @@ jobs:
           import { chromium } from 'playwright';
           import fs from 'node:fs';
           import crypto from 'node:crypto';
+          import { flag, serialize } from 'flags/next';
 
           const origin = 'http://127.0.0.1:3000';
 
@@ -72,9 +73,22 @@ jobs:
           if (!tokenMatch) throw new Error('Could not extract signed source token from public HTML');
           const token = tokenMatch[0];
 
-          const baselineHtml = await get('/pricing');
+          const secret = process.env.FLAGS_SECRET;
+          const discountFlag = flag({
+            key: 'discount',
+            options: ['none', 'vip'],
+            decide: () => 'none',
+          });
+          const legitimatePricingToken = await serialize(
+            [discountFlag],
+            ['none'],
+            secret,
+          );
+
+          const baselinePath = '/' + token + '/pricing/' + legitimatePricingToken;
+          const baselineHtml = await get(baselinePath);
           if (!baselineHtml.includes('discount=none')) {
-            throw new Error('Baseline production response did not contain discount=none');
+            throw new Error('Legitimate target token did not produce discount=none');
           }
 
           const replayPath = '/' + token + '/pricing/' + token;
@@ -106,7 +120,7 @@ jobs:
             'flags=4.3.1',
             'next=16.3.6',
             'node=' + process.version,
-            'baseline_request=/pricing',
+            'baseline_request=' + baselinePath,
             'baseline_result=discount=none',
             'replay_request=' + replayPath,
             'replay_result=discount=vip',
