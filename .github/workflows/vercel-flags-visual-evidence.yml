@@ -64,6 +64,7 @@ jobs:
 
           const browser = await chromium.launch({ headless: true });
           const context = await browser.newContext({
+            javaScriptEnabled: false,
             viewport: { width: 1280, height: 720 },
             recordVideo: { dir: 'evidence/video', size: { width: 1280, height: 720 } },
           });
@@ -97,7 +98,7 @@ jobs:
             }, {title, detail});
           }
 
-          await page.goto(origin + '/pricing', { waitUntil: 'networkidle' });
+          await page.goto(origin + '/pricing', { waitUntil: 'load' });
           await label(
             'BASELINE',
             'Target group evaluates normally. discount decide() returns none.'
@@ -108,7 +109,7 @@ jobs:
           await page.waitForTimeout(1800);
 
           const replayUrl = origin + '/' + rootCode + '/pricing/' + rootCode;
-          await page.goto(replayUrl, { waitUntil: 'networkidle' });
+          await page.goto(replayUrl, { waitUntil: 'load' });
           await label(
             'CROSS-GROUP REPLAY',
             'The SAME signed navigation token is now supplied as both rootCode and pricingCode.'
