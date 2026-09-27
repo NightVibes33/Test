@@ -195,13 +195,15 @@ WRITE_COUNT="$(jq --arg body "$NOTE_BODY" '[.[] | select(.body == $body)] | leng
   echo "Granular PAT scope: execute_mcp_tool @ user boundary only"
   echo "Direct GraphQL project result: $(jq -c '.data.project // null' <<<"$DIRECT")"
   echo "MCP returned project path: ${MCP_PATH:-<none>}"
+  echo "Direct repository-file API status: $DIRECT_FILE_STATUS"
+  echo "MCP private fixture recovered: $FIXTURE_MATCH"
   echo "MCP REST get_issue control isError: $(jq -r '.result.isError // "no-result"' <<<"$MCP_REST_CONTROL")"
   echo "Direct GraphQL create-note result: $(jq -c '.data.createNote // null' <<<"$DIRECT_NOTE")"
   echo "MCP-created matching note count: $WRITE_COUNT"
 } | tee "$OUT/summary.txt"
 
-if [[ "$MCP_PATH" == "$PROJECT_PATH" && "$WRITE_COUNT" -ge 1 ]]; then
-  echo "H1_RESULT=PASS granular-token read+write scope bypass via MCP GraphQL tools" | tee -a "$OUT/summary.txt"
+if [[ "$MCP_PATH" == "$PROJECT_PATH" && "$DIRECT_FILE_STATUS" != "200" && "$FIXTURE_MATCH" == true && "$WRITE_COUNT" -ge 1 ]]; then
+  echo "H1_RESULT=PASS granular-token repository-read plus write scope bypass via MCP GraphQL tools" | tee -a "$OUT/summary.txt"
   exit 0
 fi
 
