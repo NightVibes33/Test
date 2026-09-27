@@ -19,9 +19,9 @@ if not settings.configured:
 
 django.setup()
 
-from django.contrib.gis.db.backends.postgis.adapter import PostGISAdapter
 from django.contrib.gis.db.models import RasterField
 from django.contrib.gis.gdal import GDALRaster
+from django.db import connection
 from django.test import RequestFactory
 
 print("DJANGO_VERSION=", django.get_version())
@@ -97,7 +97,8 @@ prepared = field.get_prep_value(attacker_bytes)
 print("PREPARED_DRIVER=", prepared.driver.name)
 print("HITS_AFTER_PREP=", hits)
 
-adapter = PostGISAdapter(prepared)
+adapter = field.get_db_prep_value(attacker_bytes, connection)
+print("DB_PREP_ADAPTER=", type(adapter).__name__)
 print("ADAPTER_BYTES=", len(adapter.ewkb))
 print("HTTP_HITS=", hits)
 
