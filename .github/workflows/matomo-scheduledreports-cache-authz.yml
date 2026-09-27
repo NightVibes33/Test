@@ -23,6 +23,10 @@ jobs:
           path: matomo
           submodules: true
 
+      - name: Install PoC into Matomo test tree
+        run: |
+          cp harness/h1/CacheAuthIsolationTest.php              matomo/plugins/ScheduledReports/tests/Integration/CacheAuthIsolationTest.php
+
       - name: Run Matomo integration PoC
         uses: matomo-org/github-action-tests@main
         with:
@@ -32,7 +36,6 @@ jobs:
           mysql-engine: Mariadb
           mysql-version: "10.6"
           redis-service: false
-          setup-script: harness/h1/setup-matomo-cache-poc.sh
           phpunit-test-options: >-
             --filter CacheAuthIsolationTest
             plugins/ScheduledReports/tests/Integration/CacheAuthIsolationTest.php
