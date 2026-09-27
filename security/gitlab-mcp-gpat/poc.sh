@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE="${BASE:-http://127.0.0.1:8080}"
+BASE="${BASE:-http://gitlab.local:8080}"
 CONTAINER="${CONTAINER:-gitlab}"
 OUT="${OUT:-artifacts}"
 mkdir -p "$OUT"
