@@ -1,0 +1,70 @@
+name: Vercel Flags Next.js route replay E2E
+
+on:
+  push:
+    branches:
+      - h1-vercel-flags-precompute-context-replay
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      FLAGS_SECRET: Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install
+        run: |
+          cd security/vercel-flags-precompute-replay/e2e
+          npm install --no-audit --no-fund
+
+      - name: Start Next.js
+        run: |
+          cd security/vercel-flags-precompute-replay/e2e
+          npm run dev > /tmp/next.log 2>&1 &
+          echo $! > /tmp/next.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/ >/dev/null
+
+      - name: Inspect public rewrite response
+        run: |
+          curl -sS -D /tmp/root.headers -o /tmp/root.body http://127.0.0.1:3000/
+          echo "===== ROOT HEADERS ====="
+          cat /tmp/root.headers
+          echo "===== ROOT BODY ====="
+          cat /tmp/root.body
+          echo
+
+      - name: Extract any observable signed code and replay into pricing group
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const headers = fs.readFileSync('/tmp/root.headers','utf8');
+          const body = fs.readFileSync('/tmp/root.body','utf8');
+          const all = headers + '\n' + body;
+          const match = all.match(/[A-Za-z0-9_-]+\.([A-Za-z0-9_-]*)\.[A-Za-z0-9_-]+/);
+          if (!match) {
+            console.log('E2E observable_root_code=false');
+            process.exit(2);
+          }
+          fs.writeFileSync('/tmp/root.code', match[0]);
+          console.log('E2E observable_root_code=true');
+          console.log('E2E code_source=response');
+          NODE
+
+          ROOT_CODE="$(cat /tmp/root.code)"
+          curl -sS -D /tmp/replay.headers -o /tmp/replay.body             "http://127.0.0.1:3000/$ROOT_CODE/pricing/$ROOT_CODE"
+
+          echo "===== REPLAY BODY ====="
+          cat /tmp/replay.body
+          echo
+
+          grep -q 'discount=vip' /tmp/replay.body
+          echo 'E2E cross_group_replay=PASS'
