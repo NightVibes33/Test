@@ -10,6 +10,7 @@ if not settings.configured:
 import django
 django.setup()
 
+from django.contrib.gis.forms import GeometryField
 from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.gis.geos.libgeos import geos_version
 
@@ -53,6 +54,18 @@ def is_blocked(payload, limit):
         return False, geom.geom_type, f"srid={geom.srid}"
 
 
+def form_is_blocked(payload, limit):
+    field = GeometryField(max_geom_collections=limit)
+    try:
+        geom = field.clean(payload)
+    except ValueError as exc:
+        return True, type(exc).__name__, str(exc)
+    except Exception as exc:
+        return False, type(exc).__name__, str(exc)
+    else:
+        return False, geom.geom_type, f"srid={geom.srid}"
+
+
 def crash_child():
     depth = 100_000
     payload = nested_ewkb(">", depth).hex().upper()
@@ -61,10 +74,11 @@ def crash_child():
         f"depth={depth} hex_bytes={len(payload)}",
         flush=True,
     )
-    # Patched Django should reject before entering GEOS. Vulnerable Django's
-    # limit_hex() counts zero collections for this big-endian EWKB encoding.
-    GEOSGeometry(payload, max_geom_collections=198)
-    print("child: unexpectedly returned from GEOSGeometry()", flush=True)
+    # Public request-facing GeoDjango form path. A patched limiter should
+    # reject before entering GEOS. Vulnerable limit_hex() counts zero
+    # collections for this big-endian EWKB encoding.
+    GeometryField(max_geom_collections=198).clean(payload)
+    print("child: unexpectedly returned from GeometryField.clean()", flush=True)
 
 
 if __name__ == "__main__" and "--crash-child" in sys.argv:
@@ -101,6 +115,13 @@ if results["big-endian hex str"] or results["big-endian hex bytes"]:
 
 print("VULNERABLE: big-endian hex EWKB bypassed max_geom_collections")
 
+form_blocked, form_kind, form_detail = form_is_blocked(be.hex().upper(), limit)
+print(
+    f"GeometryField.clean(big-endian hex): blocked={form_blocked} "
+    f"result={form_kind} detail={form_detail}"
+)
+assert form_blocked is False, "expected request-facing GeometryField path to bypass limiter"
+
 # Run the large payload in a child so a GEOS stack-overflow/segfault doesn't
 # terminate the CI harness itself.
 proc = subprocess.run(
@@ -118,4 +139,4 @@ if proc.returncode == 0:
 if proc.returncode == 2:
     raise AssertionError("unexpected fixed-path return code")
 
-print("DOS_CONFIRMED: malformed request-sized HEXEWKB can reach a fatal GEOS path")
+print("DOS_CONFIRMED: GeometryField.clean() can reach a fatal GEOS path")
