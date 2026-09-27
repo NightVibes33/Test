@@ -29,5 +29,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "${{ matrix.django }}"
 
-      - name: Reproduce Vary registry/page race
+      - name: Reproduce cache registry/page write race
         run: python django-vary-registry-race.py
+
+      - name: Reproduce TemplateResponse race without cache monkeypatching
+        run: python django-vary-template-response-race.py
