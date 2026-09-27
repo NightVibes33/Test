@@ -54,6 +54,16 @@ api "$ROOT_TOKEN" POST "/groups/$GROUP_ID/members" \
 printf '%s\n' "$USER_JSON" >"$OUT/user.json"
 printf '%s\n' "$PROJECT_JSON" >"$OUT/project.json"
 
+echo "===== Seed one private repository fixture ====="
+FIXTURE_VALUE="H1_PRIVATE_FIXTURE_$STAMP"
+COMMIT_JSON="$(api "$ROOT_TOKEN" POST "/projects/$PROJECT_ID/repository/commits" \
+  --data-urlencode "branch=main" \
+  --data-urlencode "commit_message=Add local H1 fixture" \
+  --data-urlencode "actions[0][action]=create" \
+  --data-urlencode "actions[0][file_path]=h1-private-fixture.txt" \
+  --data-urlencode "actions[0][content]=$FIXTURE_VALUE")"
+printf '%s\n' "$COMMIT_JSON" >"$OUT/seed-commit.json"
+
 echo "===== create GPAT with ONLY execute_mcp_tool on user boundary ====="
 docker cp security/gitlab-mcp-gpat/create_gpat.rb "$CONTAINER:/tmp/h1-create-mcp-gpat.rb"
 SETUP="$(docker exec -e H1_USER_ID="$USER_ID" "$CONTAINER" gitlab-rails runner /tmp/h1-create-mcp-gpat.rb)"
