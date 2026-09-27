@@ -180,6 +180,10 @@ A second workflow validates the same behavior through the public QuerySet API ra
 
 `.github/workflows/django-gdal-vrt-bytes-queryset-ssrf.yml`
 
+Workflow run:
+
+`36353589548`
+
 The reproduction uses an unmanaged model with a `RasterField` and:
 
 ```python
@@ -187,7 +191,21 @@ queryset = RasterModel.objects.filter(rast__contains=request.body)
 sql, params = queryset.query.sql_with_params()
 ```
 
-SQL compilation follows Django's normal GIS lookup path and invokes the PostGIS adapter.
+On stable/5.2.x, stable/6.0.x, and stable/6.1.x, query construction causes no request, but ordinary SQL compilation triggers the outbound fetch through Django's normal GIS adapter path:
+
+```
+HITS_AFTER_FILTER_CONSTRUCTION= []
+SQL_PREFIX= SELECT "poc_raster"."id", "poc_raster"."rast" FROM "poc_raster"
+            WHERE ST_Contains("poc_raster"."rast", %s)
+HTTP_HITS_AFTER_SQL_COMPILE= [
+  ('HEAD', '/source.tif'),
+  ('GET', '/source.tif'),
+  ...
+]
+POC_RESULT=QUERYSET_REQUEST_BODY_SSRF_CONFIRMED
+```
+
+This does not require a live PostGIS server; the SSRF occurs while Django prepares the query parameter.
 
 ## Security impact
 
