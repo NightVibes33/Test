@@ -1,6 +1,9 @@
 name: HubSpot CTF scoped probes
 
 on:
+  push:
+    branches:
+      - h1-hubspot-ctf-46962361
   workflow_dispatch:
 
 jobs:
@@ -8,5 +11,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run scoped probes
+
+      - name: Run scoped HTTP probes
         run: bash security/hubspot-ctf/probe.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install browser tooling
+        run: |
+          npm init -y
+          npm install --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Capture current unauthenticated app network
+        run: node security/hubspot-ctf/browser-network.mjs
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hubspot-ctf-unauth-baseline
+          path: security/hubspot-ctf/artifacts/**
+          if-no-files-found: error
+          retention-days: 7
