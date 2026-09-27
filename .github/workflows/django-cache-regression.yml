@@ -16,10 +16,14 @@ jobs:
           python-version: "3.14"
       - name: Install current Django release
         run: python -m pip install "Django==6.1.1"
-      - name: Run regression test
+      - name: Run in-process regression test
         run: python django-cache-regression.py | tee django-cache-evidence.txt
+      - name: Run HTTP-level regression test
+        run: python django-cache-http-regression.py | tee django-cache-http-evidence.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: django-cache-evidence
-          path: django-cache-evidence.txt
+          path: |
+            django-cache-evidence.txt
+            django-cache-http-evidence.txt
