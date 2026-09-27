@@ -1,0 +1,28 @@
+name: Vercel Flags precompute context replay PoC
+
+on:
+  push:
+    branches:
+      - h1-vercel-flags-precompute-context-replay
+  workflow_dispatch:
+
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install published stable Flags SDK
+        run: |
+          cd security/vercel-flags-precompute-replay
+          npm init -y
+          npm install --no-audit --no-fund flags@4.3.1
+
+      - name: Run signed-token context replay PoC
+        run: |
+          cd security/vercel-flags-precompute-replay
+          node poc.mjs
