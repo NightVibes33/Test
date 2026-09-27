@@ -28,6 +28,9 @@ jobs:
       - name: Capture current unauthenticated app network
         run: node security/hubspot-ctf/browser-network.mjs
 
+      - name: Inspect trial signup DOM (read-only)
+        run: node security/hubspot-ctf/signup-inspect.mjs
+
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
