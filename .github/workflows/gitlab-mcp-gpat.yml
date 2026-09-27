@@ -25,7 +25,7 @@ jobs:
             --shm-size 256m \
             -p 8080:80 \
             -e GITLAB_ROOT_PASSWORD='H1-Local-Only-Root-9z!Q7p' \
-            -e GITLAB_OMNIBUS_CONFIG="external_url 'http://gitlab.local'; prometheus_monitoring['enable']=false; grafana['enable']=false; alertmanager['enable']=false; node_exporter['enable']=false; redis_exporter['enable']=false; postgres_exporter['enable']=false; gitlab_exporter['enable']=false; sidekiq['concurrency']=5" \
+            -e GITLAB_OMNIBUS_CONFIG="external_url 'http://gitlab.local'; prometheus_monitoring['enable']=false; alertmanager['enable']=false; node_exporter['enable']=false; redis_exporter['enable']=false; postgres_exporter['enable']=false; gitlab_exporter['enable']=false; sidekiq['concurrency']=5" \
             "$GITLAB_IMAGE"
 
       - name: Wait for GitLab
