@@ -42,7 +42,8 @@ PROJECT_JSON="$(api "$ROOT_TOKEN" POST /projects \
   --data-urlencode "name=private-target" \
   --data-urlencode "path=private-target" \
   --data-urlencode "namespace_id=$GROUP_ID" \
-  --data-urlencode "visibility=private")"
+  --data-urlencode "visibility=private" \
+  --data-urlencode "initialize_with_readme=true")"
 PROJECT_ID="$(jq -r '.id' <<<"$PROJECT_JSON")"
 PROJECT_PATH="$(jq -r '.path_with_namespace' <<<"$PROJECT_JSON")"
 
