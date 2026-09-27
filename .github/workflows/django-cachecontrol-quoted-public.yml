@@ -13,8 +13,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: django-5.2.18
-            install: Django==5.2.18
+          - name: django-5.2.17
+            install: Django==5.2.17
           - name: django-6.0.8
             install: Django==6.0.8
           - name: django-6.1.1
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: "3.13"
       - name: Install target
         run: python -m pip install "${{ matrix.install }}"
       - name: Run regression
