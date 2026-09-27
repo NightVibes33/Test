@@ -1,0 +1,33 @@
+name: Django GEOS big-endian EWKB limit bypass
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - h1-django-geos-big-endian-ewkb-limit-bypass
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        django:
+          - "6.1.1"
+          - "main"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GEOS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgeos-dev
+      - name: Install Django
+        run: |
+          python -m pip install --upgrade pip
+          if [ "${{ matrix.django }}" = "main" ]; then
+            python -m pip install "Django @ git+https://github.com/django/django.git@main"
+          else
+            python -m pip install "Django==${{ matrix.django }}"
+          fi
+      - name: Reproduce limiter bypass
+        run: python django-geos-big-endian-ewkb-limit-bypass.py
