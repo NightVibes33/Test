@@ -29,6 +29,15 @@ The Apple Account password is never stored by these files. Authentication happen
 
 ## iPhone / iSH setup
 
+This path does **not** require your Apple ID password in iSH, GitHub, or the PoC files. iSH only hosts two localhost pages. Apple Account authentication, if Apple requires it, happens in Safari on Apple's own sign-in flow. If Safari already has a usable CloudKit session, Apple may reuse it without asking for the password again.
+
+The only CloudKit credential entered into the PoC is a temporary **Development Web API Token** for the researcher-owned container. That token is entered into the victim page in Safari and is not committed to the repository.
+
+Container used by this PoC:
+
+- Name: `Chattest`
+- Identifier: `iCloud.com.nightvibes.prism`
+
 Clone or fetch this private branch into iSH, then run:
 
 ```sh
@@ -43,14 +52,16 @@ The local pages are:
 
 Different ports are different browser origins.
 
+The `mo1` App Store Connect signing secrets are not required for this browser/iSH validation. App Store Connect API keys and CloudKit Web API tokens are separate credential systems.
+
 ## Real-account sequence
 
 1. Open the attacker URL in Safari first.
 2. Tap **Open victim** so the attacker retains a Window reference.
-3. In the victim tab, enter only:
-   - the researcher-owned CloudKit container identifier;
-   - the temporary Web API Token;
-   - Development environment.
+3. In the victim tab:
+   - verify the pinned container is `iCloud.com.nightvibes.prism`;
+   - enter the temporary Development Web API Token;
+   - leave the environment set to Development.
 4. Tap **Configure CloudKit**.
 5. Use Apple's generated **Sign In** button.
 6. Authenticate the researcher's Apple Account on Apple's page and complete 2FA if requested.
