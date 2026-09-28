@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Real-account CloudKit JS validation harness for a researcher-owned container.
 
-Required environment variables:
-  CLOUDKIT_CONTAINER_ID
+Container:
+  iCloud.com.nightvibes.prism
+
+Required environment variable:
   CLOUDKIT_API_TOKEN
 
 Safety:
@@ -22,10 +24,10 @@ VICTIM_PORT=18133
 ATTACKER_PORT=18134
 SENTINEL="OAI_SYNTHETIC_CKSESSION_REAL_ACCOUNT_TEST_20260928"
 
-CONTAINER=os.environ.get("CLOUDKIT_CONTAINER_ID","").strip()
+CONTAINER="iCloud.com.nightvibes.prism"
 API_TOKEN=os.environ.get("CLOUDKIT_API_TOKEN","").strip()
-if not CONTAINER or not API_TOKEN:
-    raise SystemExit("Missing CLOUDKIT_CONTAINER_ID or CLOUDKIT_API_TOKEN")
+if not API_TOKEN:
+    raise SystemExit("Missing CLOUDKIT_API_TOKEN")
 
 def fp(s:str)->str:
     return hashlib.sha256(s.encode()).hexdigest()[:16]
