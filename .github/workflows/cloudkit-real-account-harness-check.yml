@@ -6,6 +6,7 @@ on:
       - apple-bounty-services-recon-20260928
     paths:
       - "apple-services-recon/cloudkit_real_account_harness.py"
+      - "apple-services-recon/cloudkit_iphone_real_account.py"
       - ".github/workflows/cloudkit-real-account-harness-check.yml"
 
 permissions:
@@ -14,17 +15,52 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Syntax check
-        run: python3 -m py_compile apple-services-recon/cloudkit_real_account_harness.py
-      - name: Ensure no literal iCloud email is committed
+
+      - name: Python syntax check
         run: |
-          if grep -RInE '[A-Za-z0-9._%+-]+@icloud\.com' apple-services-recon/cloudkit_real_account_harness.py; then
+          python3 -m py_compile             apple-services-recon/cloudkit_real_account_harness.py             apple-services-recon/cloudkit_iphone_real_account.py
+
+      - name: Extract and syntax-check inline JavaScript
+        run: |
+          python3 - <<'PY'
+          import importlib.util, pathlib, re
+          p="apple-services-recon/cloudkit_iphone_real_account.py"
+          spec=importlib.util.spec_from_file_location("iphone_harness",p)
+          m=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(m)
+          out=pathlib.Path("/tmp/ckjs")
+          out.mkdir(exist_ok=True)
+          n=0
+          for label,html in (("victim",m.VICTIM_HTML),("attacker",m.ATTACKER_HTML)):
+              for script in re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>",html,re.I|re.S):
+                  n+=1
+                  (out/f"{label}-{n}.js").write_text(script)
+          print(f"Extracted {n} inline scripts")
+          PY
+          for f in /tmp/ckjs/*.js; do node --check "$f"; done
+
+      - name: Local server smoke test
+        run: |
+          python3 apple-services-recon/cloudkit_iphone_real_account.py >/tmp/ck-harness.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          sleep 1
+          curl -fsS http://localhost:18134/ | grep -q "CloudKit real-account test"
+          curl -fsS http://localhost:18133/ | grep -q "CloudKit victim"
+
+      - name: Ensure no literal Apple account or token is committed
+        run: |
+          if grep -RInE '[A-Za-z0-9._%+-]+@icloud\.com'               apple-services-recon/cloudkit_real_account_harness.py               apple-services-recon/cloudkit_iphone_real_account.py; then
             echo "Literal iCloud email found in harness"
+            exit 1
+          fi
+          if grep -RInE 'CLOUDKIT_API_TOKEN[[:space:]]*=[[:space:]]*["'\'''][A-Za-z0-9]'               apple-services-recon/cloudkit_real_account_harness.py               apple-services-recon/cloudkit_iphone_real_account.py; then
+            echo "Literal CloudKit API token found in harness"
             exit 1
           fi
