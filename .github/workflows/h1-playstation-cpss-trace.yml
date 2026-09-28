@@ -1,4 +1,4 @@
-name: PlayStation Session Share CPSS trace
+name: PlayStation Session Share CPSS auth-flag check
 
 on:
   push:
@@ -13,60 +13,64 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Print only CPSS and JoinCTA implementation
+      - name: Compare unauthenticated CPSS responses
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 HackerOne-security-research'
-          PAGE='https://session-share.playstation.com/5kBbS_pU_'
-          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$PAGE" -o page.html
-          python3 - <<'PY'
-          import re,html
-          from urllib.parse import urljoin,urlparse
-          h=open('page.html','r',encoding='utf-8',errors='replace').read()
-          urls=[]
-          for pat in [r'<script[^>]+src=["\x27]([^"\x27]+)',r'<link[^>]+href=["\x27]([^"\x27]+)']:
-              for m in re.finditer(pat,h,re.I):
-                  u=urljoin('https://session-share.playstation.com/',html.unescape(m.group(1)))
-                  if urlparse(u).path.endswith('.js') and u not in urls: urls.append(u)
-          open('urls.txt','w').write('\n'.join(urls))
-          PY
-          mkdir -p js
-          i=0
-          while IFS= read -r u; do
-            [ -z "$u" ] && continue
-            i=$((i+1))
-            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "js/$i.js"
-          done < urls.txt
+          BASE='https://web.np.playstation.com/api/cpss/v1/sessionInfo'
 
           python3 - <<'PY'
-          import glob,re,os
-          alltext=[]
-          for f in sorted(glob.glob('js/*.js')):
-              t=open(f,'r',encoding='utf-8',errors='replace').read()
-              alltext.append((f,t))
-
-          def show(term,before=2500,after=7000,maxhits=5):
-              print('\n########',term,'########')
-              n=0
-              for f,t in alltext:
-                  start=0
-                  while n<maxhits:
-                      i=t.lower().find(term.lower(),start)
-                      if i<0: break
-                      lo=max(0,i-before); hi=min(len(t),i+after)
-                      s=t[lo:hi].replace('\n',' ')
-                      s=re.sub(r'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}','<JWT_REDACTED>',s)
-                      print('FILE',os.path.basename(f),'OFFSET',i)
-                      print(s)
-                      print('---END---')
-                      n+=1; start=i+len(term)
-                  if n>=maxhits: break
-
-          show('async function cpssRequest',3500,10000,2)
-          show('function cpssRequest',3500,10000,2)
-          show('let JoinCTA=',3500,10000,2)
-          show('JoinCTA=e=>',3500,10000,2)
-          show('steampowered.com/join/playstationsession',2500,6000,2)
-          show('SessionProvider=e=>',3000,8000,2)
+          import subprocess,json,hashlib,re
+          ids=['Lq3djkxt','5kBbS_pU_']
+          variants=[('false','isAuth=false'),('true','isAuth=true'),('absent','')]
+          for sid in ids:
+              print('\n=== SESSION',sid,'===')
+              results={}
+              for label,q in variants:
+                  url=f'https://web.np.playstation.com/api/cpss/v1/sessionInfo/{sid}?country=US&language=en'
+                  if q: url += '&'+q
+                  p=subprocess.run([
+                      'curl','-sS','-L','--max-time','20','--connect-timeout','10',
+                      '-A','Mozilla/5.0 HackerOne-security-research',
+                      '-H','Accept: application/json',
+                      '-w','\n__META__%{http_code}|%{content_type}|%{size_download}',
+                      url
+                  ],capture_output=True,text=True)
+                  raw=p.stdout
+                  body,meta=(raw.rsplit('\n__META__',1)+[''])[:2] if '\n__META__' in raw else (raw,'')
+                  h=hashlib.sha256(body.encode()).hexdigest()
+                  print(label,'META',meta,'SHA256',h,'LEN',len(body))
+                  try:
+                      obj=json.loads(body)
+                      if isinstance(obj,dict):
+                          keys=sorted(obj.keys())
+                          print(label,'TOP_KEYS',keys)
+                          safe={}
+                          for k,v in obj.items():
+                              lk=k.lower()
+                              if lk in ('id','insession','isopen','mspollinginterval','maxplayers','timestarted','timeended','country','language'):
+                                  safe[k]=v
+                              elif lk=='game' and isinstance(v,dict):
+                                  safe['game_keys']=sorted(v.keys())
+                                  plats=v.get('platforms')
+                                  if isinstance(plats,list):
+                                      safe['platform_count']=len(plats)
+                                      safe['platform_ids']=[x.get('id') for x in plats if isinstance(x,dict)]
+                                      safe['has_launch_urls']=any(bool(x.get('launchUrl')) for x in plats if isinstance(x,dict))
+                              elif lk=='players' and isinstance(v,list):
+                                  safe['player_count']=len(v)
+                                  safe['player_item_keys']=sorted(set().union(*(set(x.keys()) for x in v if isinstance(x,dict)))) if v else []
+                              elif lk=='error':
+                                  safe['error']=v
+                              elif lk=='reason':
+                                  safe['reason']=v
+                          print(label,'SAFE_SUMMARY',json.dumps(safe,sort_keys=True)[:3000])
+                      else:
+                          print(label,'JSON_TYPE',type(obj).__name__)
+                  except Exception:
+                      print(label,'BODY_PREFIX',repr(body[:300]))
+                  results[label]=(meta,h,len(body))
+              print('COMPARE false_vs_true',results.get('false')==results.get('true'))
+              print('COMPARE false_vs_absent',results.get('false')==results.get('absent'))
           PY
