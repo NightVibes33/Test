@@ -1,4 +1,4 @@
-name: PlayStation Session Share BFF auth checks
+name: PlayStation Profile public API boundary checks
 
 on:
   push:
@@ -13,62 +13,56 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check unauthenticated BFF enforcement
+      - name: Check unauthenticated profile API exposure
         shell: bash
         run: |
           set -euo pipefail
-          BASE='https://session-share.playstation.com'
           UA='Mozilla/5.0 HackerOne-security-research'
 
           probe() {
-            name="$1"; shift
+            name="$1"; url="$2"
             echo "=== $name ==="
-            rm -f /tmp/h /tmp/b
-            curl -sS --max-time 20 --connect-timeout 10 -A "$UA" \
-              -D /tmp/h -o /tmp/b -w 'HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download} REDIR=%{redirect_url}\n' \
-              "$@" || true
-            sed -n '1,30p' /tmp/h
+            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" \
+              -H 'Accept: application/json' -D /tmp/h -o /tmp/b \
+              -w 'HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download} FINAL=%{url_effective}\n' "$url" || true
+            sed -n '1,28p' /tmp/h
             python3 - <<'PY'
-          import json
-          b=open('/tmp/b','rb').read() if __import__('os').path.exists('/tmp/b') else b''
-          print('BODY_PREFIX',repr(b[:800]))
+          import json,os
+          b=open('/tmp/b','rb').read() if os.path.exists('/tmp/b') else b''
+          print('BODY_LEN',len(b),'PREFIX',repr(b[:500]))
           try:
               x=json.loads(b)
-              if isinstance(x,dict):
-                  print('JSON_KEYS',sorted(x.keys()))
-                  # avoid dumping possible device data
-                  safe={}
-                  for k,v in x.items():
-                      if k.lower() in ('error','reason','message','success','status','code'):
-                          safe[k]=v
-                      elif k=='clients' and isinstance(v,list):
-                          safe['clients_count']=len(v)
-                          safe['client_keys']=sorted(set().union(*(set(i.keys()) for i in v if isinstance(i,dict)))) if v else []
-                  print('SAFE_JSON',json.dumps(safe)[:2000])
+              def summary(v,depth=0):
+                  if depth>3: return '...'
+                  if isinstance(v,dict):
+                      out={}
+                      for k,val in v.items():
+                          lk=k.lower()
+                          if lk in ('error','reason','message','code','status'):
+                              out[k]=val
+                          elif any(s in lk for s in ('account','onlineid','personal','presence','friend','block','follower','following','trophy','avatar','share','url','language','plus')):
+                              if isinstance(val,dict): out[k]={'keys':sorted(val.keys())[:50]}
+                              elif isinstance(val,list): out[k]={'len':len(val),'item_keys':sorted(set().union(*(set(i.keys()) for i in val if isinstance(i,dict))))[:50] if val else []}
+                              elif isinstance(val,str): out[k]={'len':len(val),'prefix':val[:120]}
+                              else: out[k]=val
+                          elif depth<1 and isinstance(val,(dict,list)):
+                              out[k]=summary(val,depth+1)
+                      return out
+                  if isinstance(v,list): return {'len':len(v)}
+                  return v
+              print('JSON_SUMMARY',json.dumps(summary(x),ensure_ascii=False)[:5000])
           except Exception:
               pass
           PY
           }
 
-          probe clientsList "$BASE/clientsList"
-          probe clientsList_options -X OPTIONS "$BASE/clientsList" \
-            -H 'Origin: https://example.com' \
-            -H 'Access-Control-Request-Method: GET'
+          probe share_profile 'https://m.np.playstation.com/api/cpss/v1/share/profile/2721516955383551246'
+          probe legacy_profile 'https://us-prof.np.community.playstation.net/userProfile/v1/users/VaultTec-Co/profile2?fields=onlineId%2CaboutMe%2ClanguagesUsed%2Cplus%2CtrophySummary%2CisOfficiallyVerified%2CpersonalDetail%2CpersonalDetailSharing%2CprimaryOnlineStatus%2Cpresences%2CfriendRelation%2Cblocking%2CmutualFriendsCount%2Cfollowing%2CfollowerCount%2CfriendsCount%2CfollowingUsersCount&avatarSizes=s%2Cm%2Cl%2Cxl&profilePictureSizes=s%2Cm%2Cl%2Cxl&friendStatusSummary=true&npIdHash=true'
+          probe mobile_profile 'https://m.np.playstation.com/api/userProfile/v1/internal/users/VaultTec-Co/profiles'
 
-          # Intentionally invalid/empty body: cannot identify a device or issue a valid command.
-          probe postcommand_empty -X POST "$BASE/postcommand" \
-            -H 'Content-Type: application/json' --data '{}'
-          probe postcommand_text_plain -X POST "$BASE/postcommand" \
-            -H 'Content-Type: text/plain' --data '{}'
-          probe postcommand_options -X OPTIONS "$BASE/postcommand" \
+          echo '=== CORS SHARE PROFILE ==='
+          curl -sS -X OPTIONS --max-time 20 -A "$UA" \
             -H 'Origin: https://example.com' \
-            -H 'Access-Control-Request-Method: POST' \
-            -H 'Access-Control-Request-Headers: content-type'
-
-          # Bogus command id cannot match a real command.
-          probe observe_bogus -X POST "$BASE/observeTitle" \
-            -H 'Content-Type: application/json' --data '{"commandID":"00000000-0000-0000-0000-000000000000"}'
-          probe observe_options -X OPTIONS "$BASE/observeTitle" \
-            -H 'Origin: https://example.com' \
-            -H 'Access-Control-Request-Method: POST' \
-            -H 'Access-Control-Request-Headers: content-type'
+            -H 'Access-Control-Request-Method: GET' \
+            -D - -o /dev/null \
+            'https://m.np.playstation.com/api/cpss/v1/share/profile/2721516955383551246' || true
