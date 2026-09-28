@@ -69,6 +69,10 @@ jobs:
               raise SystemExit("Victim page is not pinned to Chattest container")
           if 'const SENTINEL="OAI_REAL_ACCOUNT_TEST_CKSESSION_20260928"' not in victim:
               raise SystemExit("Victim sentinel declaration missing")
+          if "let syntheticAccepted=false;" not in victim or "let syntheticPropagated=false;" not in victim:
+              raise SystemExit("Victim synthetic-state declarations missing")
+          if 'value="production"' in victim:
+              raise SystemExit("Static iSH harness must remain development-only")
           print("Static iSH harness preflight OK")
           PY
           for f in /tmp/ckjs-static/*.js; do node --check "$f"; done
