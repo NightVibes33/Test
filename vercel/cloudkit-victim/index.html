@@ -1,0 +1,45 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>CloudKit JS Real-Account Validation</title>
+<script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
+<style>body{font:16px system-ui;max-width:760px;margin:40px auto;padding:0 18px}input,select,button{font:inherit;padding:10px;margin:6px 0;width:100%;box-sizing:border-box}pre{white-space:pre-wrap;background:#111;color:#eee;padding:14px;border-radius:8px}.warn{padding:12px;background:#fff3cd;border:1px solid #ffe69c;border-radius:8px}</style>
+</head><body>
+<h1>CloudKit JS real-account validation</h1>
+<p class="warn">Use only a CloudKit container you own. The API token stays in this browser session and is never sent anywhere except Apple CloudKit by CloudKit JS.</p>
+<label>Container ID (Chattest)</label><input id="container" value="iCloud.com.nightvibes.prism" readonly>
+<label>CloudKit Web API Token</label><input id="token" type="password" autocomplete="off" placeholder="paste token from CloudKit Dashboard">
+<label>Environment</label><select id="env" disabled><option value="development" selected>development</option></select>
+<button id="configure">Configure CloudKit</button>
+<div id="apple-sign-in-button"></div><div id="apple-sign-out-button"></div>
+<button id="status">Check auth state</button>
+<pre id="log"></pre>
+<script>
+"use strict";
+const SENTINEL="OAI_REAL_ACCOUNT_TEST_CKSESSION_20260928";
+const log=(...x)=>{const el=document.getElementById("log");el.textContent+=x.map(v=>typeof v==="string"?v:JSON.stringify(v,null,2)).join(" ")+"\n";};
+let container=null;
+let writes=[];
+let syntheticAccepted=false;
+let syntheticPropagated=false;
+const authTokenStore={
+ putToken(id,tok){const isSynthetic=tok===SENTINEL;syntheticAccepted=syntheticAccepted||isSynthetic;writes.push({id,length:tok?tok.length:0,isSynthetic});sessionStorage.setItem("ck:"+id,tok||"");log("authTokenStore.putToken",{id,length:tok?tok.length:0,isSynthetic});if(isSynthetic)log("✅ SYNTHETIC SESSION ACCEPTED");},
+ getToken(id){const tok=sessionStorage.getItem("ck:"+id);log("authTokenStore.getToken",{id,present:!!tok,length:tok?tok.length:0});return tok||null;}
+};
+document.getElementById("configure").onclick=async()=>{
+ const containerIdentifier=document.getElementById("container").value.trim();
+ const apiToken=document.getElementById("token").value.trim();
+ const environment=document.getElementById("env").value;
+ if(!containerIdentifier||!apiToken){log("Missing container or API token");return;}
+ const monitoredFetch=(url,opts)=>{const s=String(url);const containsSynthetic=s.includes(encodeURIComponent(SENTINEL))||s.includes(SENTINEL);if(containsSynthetic){syntheticPropagated=true;log("✅ SYNTHETIC SESSION PROPAGATED INTO CLOUDKIT REQUEST",{path:(()=>{try{return new URL(s).pathname}catch(_){return "unknown"}})()});}return window.fetch(url,opts);};
+ CloudKit.configure({containers:[{containerIdentifier,environment,apiTokenAuth:{apiToken,persist:false,signInButton:{id:"apple-sign-in-button",theme:"black"},signOutButton:{id:"apple-sign-out-button",theme:"black"}}}],services:{authTokenStore,fetch:monitoredFetch}});
+ container=CloudKit.getDefaultContainer();
+ log("Configured",{version:CloudKit.VERSION,containerIdentifier,environment});
+ try{const user=await container.setUpAuth();log("setUpAuth result",{authenticated:!!user,userRecordName:user&&user.userRecordName});}
+ catch(e){log("setUpAuth error",{name:e&&e.name,reason:e&&e.reason,serverErrorCode:e&&e.serverErrorCode});}
+};
+document.getElementById("status").onclick=async()=>{
+ if(!container){log("Configure first");return;}
+ try{const user=await container.setUpAuth();log("Auth state",{authenticated:!!user,userRecordName:user&&user.userRecordName,writes,syntheticAccepted,syntheticPropagated});}
+ catch(e){log("Auth-state error",{name:e&&e.name,reason:e&&e.reason});}
+};
+window.addEventListener("message",e=>log("page observed message",{origin:e.origin,hasObjectData:!!e.data&&typeof e.data==="object",keys:e.data&&typeof e.data==="object"?Object.keys(e.data):[]}));
+</script></body></html>
