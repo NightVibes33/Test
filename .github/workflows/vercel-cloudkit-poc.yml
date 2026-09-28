@@ -21,24 +21,33 @@ jobs:
       VERCEL_TEAM_ID: team_2IDA1MMBi6HRwl1QLav4nA5f
       VERCEL_SCOPE: bobbytatum12345-5121s-projects
       VERCEL_CLI_VERSION: "59.1.4"
-      VICTIM_PROJECT: cloudkit-poc-victim
-      ATTACKER_PROJECT: cloudkit-poc-attacker
+      VICTIM_PROJECT: nightvibes33-chattest-victim
+      ATTACKER_PROJECT: nightvibes33-chattest-attacker
+      VICTIM_STABLE_URL: https://nightvibes33-chattest-victim.vercel.app
+      ATTACKER_STABLE_URL: https://nightvibes33-chattest-attacker.vercel.app
+      VICTIM_IMPORT_URL: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNightVibes33%2FTest%2Ftree%2Fapple-bounty-services-recon-20260928%2Fvercel%2Fcloudkit-victim%26project-name%3Dnightvibes33-chattest-victim%26repository-name%3Dnightvibes33-chattest-victim
+      ATTACKER_IMPORT_URL: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNightVibes33%2FTest%2Ftree%2Fapple-bounty-services-recon-20260928%2Fvercel%2Fcloudkit-attacker%26project-name%3Dnightvibes33-chattest-attacker%26repository-name%3Dnightvibes33-chattest-attacker
+
     steps:
       - uses: actions/checkout@v4
         with:
           ref: apple-bounty-services-recon-20260928
 
-      - name: Require Vercel access token
+      - name: Detect Vercel access token
+        id: auth
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          set -euo pipefail
-          if [ -z "${VERCEL_TOKEN:-}" ]; then
-            echo "::error::Missing repository secret VERCEL_TOKEN"
-            exit 1
+          if [ -n "${VERCEL_TOKEN:-}" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+            echo "VERCEL_TOKEN is available; automatic deployment enabled."
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "VERCEL_TOKEN is not configured; publishing one-click import links instead."
           fi
 
       - name: Link or create Vercel projects
+        if: steps.auth.outputs.has_token == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
@@ -69,6 +78,7 @@ jobs:
           ensure_project "$ATTACKER_PROJECT" vercel/cloudkit-attacker
 
       - name: Deploy victim origin
+        if: steps.auth.outputs.has_token == 'true'
         id: victim
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -79,11 +89,13 @@ jobs:
           echo "Victim: $url"
 
       - name: Verify victim deployment
+        if: steps.auth.outputs.has_token == 'true'
         run: |
           set -euo pipefail
           curl -fsS "${{ steps.victim.outputs.url }}" | grep -q "CloudKit JS real-account validation"
 
       - name: Deploy attacker origin
+        if: steps.auth.outputs.has_token == 'true'
         id: attacker
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -94,24 +106,44 @@ jobs:
           echo "Attacker: $url"
 
       - name: Verify attacker deployment
+        if: steps.auth.outputs.has_token == 'true'
         run: |
           set -euo pipefail
           curl -fsS "${{ steps.attacker.outputs.url }}" | grep -q "Cross-origin sender"
 
-      - name: Publish launch URLs
+      - name: Publish automatic deployment URLs
+        if: steps.auth.outputs.has_token == 'true'
         env:
           VICTIM_URL: ${{ steps.victim.outputs.url }}
           ATTACKER_URL: ${{ steps.attacker.outputs.url }}
         run: |
           set -euo pipefail
-          LAUNCH_URL="$(python3 -c 'import os,urllib.parse; print(os.environ["ATTACKER_URL"]+"?victim="+urllib.parse.quote(os.environ["VICTIM_URL"],safe=""))')"
           {
             echo "## CloudKit Vercel PoC"
             echo
-            echo "- Victim origin: $VICTIM_URL"
-            echo "- Attacker origin: $ATTACKER_URL"
-            echo "- Launch URL: $LAUNCH_URL"
+            echo "- Victim deployment: $VICTIM_URL"
+            echo "- Attacker deployment: $ATTACKER_URL"
+            echo "- Stable victim origin: $VICTIM_STABLE_URL"
+            echo "- Stable attacker origin: $ATTACKER_STABLE_URL"
+            echo "- Container: iCloud.com.nightvibes.prism"
+            echo "- Environment: development"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish one-click Vercel imports
+        if: steps.auth.outputs.has_token != 'true'
+        run: |
+          {
+            echo "## CloudKit Vercel PoC — import required"
             echo
-            echo "Use only the researcher-owned Chattest development container: iCloud.com.nightvibes.prism."
-            echo "Enter the temporary CloudKit Web API token only in the victim page; no Apple password is stored in Vercel or GitHub."
+            echo "No VERCEL_TOKEN is stored in this GitHub repository."
+            echo
+            echo "Use the two Vercel imports below; they create separate browser origins:"
+            echo
+            echo "- Victim: $VICTIM_IMPORT_URL"
+            echo "- Attacker: $ATTACKER_IMPORT_URL"
+            echo
+            echo "Expected stable victim origin: $VICTIM_STABLE_URL"
+            echo "Expected stable attacker origin: $ATTACKER_STABLE_URL"
+            echo
+            echo "Use only Chattest / iCloud.com.nightvibes.prism in Development."
           } >> "$GITHUB_STEP_SUMMARY"
