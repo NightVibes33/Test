@@ -24,7 +24,7 @@ jobs:
 
       - name: Python syntax check
         run: |
-          python3 -m py_compile             apple-services-recon/cloudkit_real_account_harness.py             apple-services-recon/cloudkit_iphone_real_account.py
+          python3 -m py_compile apple-services-recon/cloudkit_real_account_harness.py apple-services-recon/cloudkit_iphone_real_account.py
 
       - name: Extract and syntax-check inline JavaScript
         run: |
@@ -56,11 +56,20 @@ jobs:
 
       - name: Ensure no literal Apple account or token is committed
         run: |
-          if grep -RInE '[A-Za-z0-9._%+-]+@icloud\.com'               apple-services-recon/cloudkit_real_account_harness.py               apple-services-recon/cloudkit_iphone_real_account.py; then
-            echo "Literal iCloud email found in harness"
-            exit 1
-          fi
-          if grep -RInE 'CLOUDKIT_API_TOKEN[[:space:]]*=[[:space:]]*["'\'''][A-Za-z0-9]'               apple-services-recon/cloudkit_real_account_harness.py               apple-services-recon/cloudkit_iphone_real_account.py; then
-            echo "Literal CloudKit API token found in harness"
-            exit 1
-          fi
+          python3 - <<'PY'
+          import pathlib, re, sys
+          files=[
+              pathlib.Path("apple-services-recon/cloudkit_real_account_harness.py"),
+              pathlib.Path("apple-services-recon/cloudkit_iphone_real_account.py"),
+          ]
+          text="\n".join(p.read_text() for p in files)
+          failures=[]
+          if re.search(r"[A-Za-z0-9._%+-]+@icloud\.com", text, re.I):
+              failures.append("literal iCloud email")
+          if re.search(r"CLOUDKIT_API_TOKEN\s*=\s*['\"][A-Za-z0-9]", text):
+              failures.append("literal CloudKit API token")
+          if failures:
+              print("Unsafe committed value(s): "+", ".join(failures))
+              sys.exit(1)
+          print("Credential-literal scan clean.")
+          PY
