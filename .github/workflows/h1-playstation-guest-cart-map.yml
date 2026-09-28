@@ -1,0 +1,72 @@
+name: PlayStation guest cart static map
+
+on:
+  push:
+    branches:
+      - h1-playstation-session-share
+
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Map guest cart operations
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 HackerOne-security-research'
+          for page in 'https://checkout.playstation.com/' 'https://store.playstation.com/en-us/'; do
+            echo "=== PAGE $page ==="
+            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" -D /tmp/h "$page" -o /tmp/page.html -w 'HTTP=%{http_code} FINAL=%{url_effective} TYPE=%{content_type} SIZE=%{size_download}\n'
+            sed -n '1,20p' /tmp/h
+            python3 - <<'PY'
+import re,json,html
+s=open('/tmp/page.html',encoding='utf-8',errors='replace').read()
+for m in re.finditer(r'<script[^>]*type=["\x27]application/json["\x27][^>]*>(.*?)</script>',s,re.S|re.I):
+    try:o=json.loads(html.unescape(m.group(1)).strip())
+    except:continue
+    if isinstance(o,dict) and ('service' in o or o.get('name')=='@sie-private/web-commerce-anywhere'):
+        print('RUNTIME',json.dumps({k:o.get(k) for k in ['name','version','gitSha','env','isoenv']},separators=(',',':')))
+        print('SERVICE',json.dumps(o.get('service'),separators=(',',':'))[:3000])
+        print('FEATURE',json.dumps(o.get('feature'),separators=(',',':'))[:3000])
+srcs=[]
+for m in re.finditer(r'<script[^>]+src=["\x27]([^"\x27]+)',s,re.I):
+    u=html.unescape(m.group(1))
+    if u not in srcs: srcs.append(u)
+open('/tmp/srcs','w').write('\n'.join(srcs))
+print('SCRIPTS',len(srcs))
+PY
+          done
+          mkdir -p /tmp/js
+          i=0
+          while IFS= read -r u; do
+            [ -z "$u" ] && continue
+            case "$u" in
+              http*) full="$u" ;;
+              //*) full="https:$u" ;;
+              *) full="https://store.playstation.com$u" ;;
+            esac
+            i=$((i+1))
+            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$full" -o "/tmp/js/$i.js" || true
+          done < /tmp/srcs
+          python3 - <<'PY'
+import glob,re,os
+terms=['guest','cartId','cart_id','checkoutId','checkout_id','addToCart','createCart','removeFromCart','cartItems','getCart','cartPage','guestCheckout','anonymous']
+for f in glob.glob('/tmp/js/*.js'):
+    t=open(f,encoding='utf-8',errors='replace').read()
+    hits=[]
+    for term in terms:
+        for m in re.finditer(re.escape(term),t,re.I): hits.append((m.start(),term))
+    if not hits: continue
+    print('\n===',os.path.basename(f),'SIZE',len(t),'===')
+    shown=set()
+    for pos,term in sorted(hits)[:120]:
+        lo=max(0,pos-1000); hi=min(len(t),pos+2600)
+        key=lo//700
+        if key in shown: continue
+        shown.add(key)
+        sn=t[lo:hi].replace('\n',' ')
+        sn=re.sub(r'eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{8,}','<JWT_REDACTED>',sn)
+        print('\nTERM',term,'OFFSET',pos)
+        print(sn[:3600])
+PY
