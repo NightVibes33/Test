@@ -1,4 +1,4 @@
-name: PlayStation Session Share preview message audit
+name: PlayStation Compete production surface map
 
 on:
   push:
@@ -10,71 +10,68 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect preview messaging and navigation
+      - name: Map current Compete frontend
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 HackerOne-security-research'
-          U='https://session-share.playstation.com/_next/static/chunks/pages/preview/%5BcpssId%5D-985ffaf7f70352c1.js'
-          curl -sS -L --max-time 20 -A "$UA" "$U" -o preview.js
+          PAGE='https://compete.playstation.com/'
+          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" -D headers.txt "$PAGE" -o page.html \
+            -w 'HTTP=%{http_code}\nTYPE=%{content_type}\nSIZE=%{size_download}\nFINAL=%{url_effective}\n'
+          sed -n '1,35p' headers.txt
 
           python3 - <<'PY'
-          import re
-          t=open('preview.js',encoding='utf-8',errors='replace').read()
-          print('SIZE',len(t))
-          needles=[
-            'postMessage','addEventListener("message','addEventListener(\'message',
-            'onmessage','event.origin','.origin','parent.','window.parent','window.top',
-            'opener','document.referrer','referrer','cpssId','sessionId',
-            'launchUrl','openLink','window.open','location.href','href=',
-            'dangerouslySetInnerHTML','srcdoc','iframe','targetOrigin'
-          ]
-          seen=[]
-          for needle in needles:
-              pos=0
-              while True:
-                  i=t.lower().find(needle.lower(),pos)
-                  if i<0: break
-                  lo=max(0,i-2600); hi=min(len(t),i+8000)
-                  key=(lo//1200,hi//1200)
-                  if key not in seen:
-                      seen.append(key)
-                      print('\n###',needle,'@',i)
-                      print(t[lo:hi].replace('\n',' ')[:11000])
-                  pos=i+len(needle)
-
-          print('\n=== ALL URL / ROUTE LITERALS ===')
-          for s in sorted(set(re.findall(r'["\x27]([^"\x27]{2,800})["\x27]',t))):
-              if re.search(r'(?i)(https?://|/api/|preview|session|launch|message|referrer|origin)',s):
-                  print(repr(s)[:1400])
+          import re,html,json
+          from urllib.parse import urljoin,urlparse
+          h=open('page.html',encoding='utf-8',errors='replace').read()
+          print('HTML_PREFIX',repr(h[:800]))
+          urls=[]
+          for pat in [r'<script[^>]+src=["\x27]([^"\x27]+)',r'<link[^>]+href=["\x27]([^"\x27]+)']:
+              for m in re.finditer(pat,h,re.I):
+                  u=urljoin('https://compete.playstation.com/',html.unescape(m.group(1)))
+                  if urlparse(u).path.endswith('.js') and u not in urls: urls.append(u)
+          print('JS_COUNT',len(urls))
+          for i,u in enumerate(urls,1): print(i,u)
+          open('urls.txt','w').write('\n'.join(urls))
+          for m in re.finditer(r'<script[^>]*type=["\x27]application/json["\x27][^>]*>(.*?)</script>',h,re.S|re.I):
+              try:
+                  d=json.loads(html.unescape(m.group(1)))
+                  print('JSON_KEYS',sorted(d.keys()) if isinstance(d,dict) else type(d).__name__)
+              except: pass
           PY
 
-          echo '=== LIVE PREVIEW ROUTE HEADERS FOR EXPIRED PUBLIC IDS ==='
-          for id in 5kBbS_pU_ Lq3djkxt; do
-            echo "--- $id ---"
-            curl -sS -L --max-time 20 -A "$UA" -D /tmp/h -o /tmp/b \
-              -w 'HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download} FINAL=%{url_effective}\n' \
-              "https://session-share.playstation.com/preview/$id"
-            sed -n '1,25p' /tmp/h
-            python3 - <<'PY'
-          import re,json
-          b=open('/tmp/b','rb').read()
-          print('BODY_PREFIX',repr(b[:300]))
-          try:
-              s=b.decode('utf-8','replace')
-              m=re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',s,re.S)
-              if m:
-                  d=json.loads(m.group(1))
-                  pp=((d.get('props') or {}).get('pageProps') or {})
-                  print('PAGEPROP_KEYS',sorted(pp.keys()))
-                  for k,v in pp.items():
-                      if k.lower() in ('statuscode','locale','referrerurl','opengraphtitle'):
-                          print(k,repr(v))
-                      elif isinstance(v,dict):
-                          print(k,'DICT_KEYS',sorted(v.keys()))
-              else:
-                  print('NO_NEXT_DATA')
-          except Exception as e:
-              print('PARSE_ERR',type(e).__name__)
+          mkdir -p js
+          i=0
+          while IFS= read -r u; do
+            [ -z "$u" ] && continue
+            i=$((i+1)); curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "js/$i.js" || true
+          done < urls.txt
+
+          python3 - <<'PY'
+          import glob,re,os
+          terms=['https://','/api/','graphql','tournament','match','team','register','registration','checkin','check-in','prize','accountId','userId','playerId','authorization','bearer','token','fetch(','axios']
+          for f in glob.glob('js/*.js'):
+              t=open(f,encoding='utf-8',errors='replace').read()
+              hits=[]
+              for term in terms:
+                  pos=0
+                  while True:
+                      i=t.lower().find(term.lower(),pos)
+                      if i<0: break
+                      hits.append((i,term)); pos=i+len(term)
+              if not hits: continue
+              print('\n===== FILE',os.path.basename(f),'SIZE',len(t),'=====')
+              seen=[]
+              for i,term in sorted(hits)[:180]:
+                  lo=max(0,i-1100); hi=min(len(t),i+3000)
+                  key=(lo//800,hi//800)
+                  if key in seen: continue
+                  seen.append(key)
+                  print('\n---',term,'@',i,'---')
+                  print(t[lo:hi].replace('\n',' ')[:5200])
+              print('\n-- API/URL literals --')
+              seen_s=set()
+              for s in re.findall(r'["\x27]([^"\x27]{2,900})["\x27]',t):
+                  if re.search(r'(?i)(https?://|/api/|graphql|tournament|match|team|register|check.?in|prize|accountId|userId|playerId|auth|token)',s) and s not in seen_s:
+                      seen_s.add(s); print(repr(s[:1600]))
           PY
-          done
