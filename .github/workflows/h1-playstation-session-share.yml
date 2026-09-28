@@ -1,4 +1,4 @@
-name: PlayStation Session Share request tracing
+name: PlayStation Session Share launcher audit
 
 on:
   push:
@@ -10,15 +10,70 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Trace CPSS/session client requests
+      - name: Inspect launcher and preview bundles
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 HackerOne-security-research'
-          BASE='https://session-share.playstation.com'
-          PAGE="$BASE/5kBbS_pU_"
-          curl -sS -L --max-time 20 -A "$UA" "$PAGE" -o page.html
+          BASE='https://session-share.playstation.com/_next/static/chunks/pages'
+          mkdir -p bundles
 
+          declare -A URLS
+          URLS[launcher]="$BASE/launcher/%5BsessionId%5D/%5BplatformId%5D-085f920ed8cb5d35.js"
+          URLS[selector]="$BASE/launcher/%5BsessionId%5D/device-selector-1c3b279c0e4e590c.js"
+          URLS[preview]="$BASE/preview/%5BcpssId%5D-985ffaf7f70352c1.js"
+          URLS[inuse]="$BASE/launcher/%5BsessionId%5D/error/%5BdeviceId%5D/in-use-76262e7667f33346.js"
+          URLS[nonresponding]="$BASE/launcher/%5BsessionId%5D/error/%5BdeviceId%5D/non-responding-3149c71e9aa05620.js"
+          URLS[passcode]="$BASE/launcher/%5BsessionId%5D/error/%5BdeviceId%5D/passcode-295a3fcf9dee13f2.js"
+
+          for k in "${!URLS[@]}"; do
+            u="${URLS[$k]}"
+            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "bundles/$k.js" \
+              -w "$k HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download}\n"
+          done
+
+          python3 - <<'PY'
+          import glob,re,os
+          terms=[
+              'sessionUrl','cpssUrl','fetch(','Authorization','Bearer','accessToken',
+              'sessionId','platformId','deviceId','launchUrl','window.location',
+              'location.href','location.assign','router.push','router.replace',
+              'command','wake','wakeup','suspend','device-selector','sessionInfo',
+              'clients','remote','launch','post','delete','put','patch'
+          ]
+          for f in sorted(glob.glob('bundles/*.js')):
+              t=open(f,encoding='utf-8',errors='replace').read()
+              print('\n===== FILE',os.path.basename(f),'SIZE',len(t),'=====')
+              seen=set()
+              for term in terms:
+                  pos=0
+                  count=0
+                  while True:
+                      i=t.lower().find(term.lower(),pos)
+                      if i<0 or count>=12: break
+                      lo=max(0,i-1800); hi=min(len(t),i+4500)
+                      key=(lo//700,hi//700)
+                      if key not in seen:
+                          seen.add(key)
+                          sn=t[lo:hi].replace('\n',' ')
+                          sn=re.sub(r'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}','<JWT_REDACTED>',sn)
+                          print('\n---',term,'OFFSET',i,'---')
+                          print(sn[:7000])
+                      pos=i+len(term); count+=1
+
+              print('\n-- STRING LITERALS --')
+              seen_s=set()
+              for s in re.findall(r'["\x27]([^"\x27]{2,900})["\x27]',t):
+                  if re.search(r'(?i)(sessionUrl|cpss|sessionInfo|authorization|bearer|accessToken|device|command|launch|client|session/v1|/api/)',s):
+                      if s not in seen_s:
+                          seen_s.add(s)
+                          s=re.sub(r'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}','<JWT_REDACTED>',s)
+                          print(repr(s[:1800]))
+          PY
+
+          echo '=== FIND MODULE 1396 / LAUNCH HELPER IN BASE CHUNKS ==='
+          PAGE='https://session-share.playstation.com/5kBbS_pU_'
+          curl -sS -L --max-time 20 -A "$UA" "$PAGE" -o page.html
           python3 - <<'PY'
           import re,html
           from urllib.parse import urljoin,urlparse
@@ -28,49 +83,24 @@ jobs:
               for m in re.finditer(pat,h,re.I):
                   u=urljoin('https://session-share.playstation.com/',html.unescape(m.group(1)))
                   if urlparse(u).path.endswith('.js') and u not in urls: urls.append(u)
-          open('urls.txt','w').write('\n'.join(urls))
-          print('CHUNKS')
-          for i,u in enumerate(urls,1): print(i,u)
+          open('baseurls.txt','w').write('\n'.join(urls))
           PY
-
-          mkdir -p js
+          mkdir -p basejs
           i=0
           while IFS= read -r u; do
             [ -z "$u" ] && continue
-            i=$((i+1))
-            curl -sS -L --max-time 20 -A "$UA" "$u" -o "js/$i.js"
-          done < urls.txt
-
+            i=$((i+1)); curl -sS -L --max-time 20 -A "$UA" "$u" -o "basejs/$i.js"
+          done < baseurls.txt
           python3 - <<'PY'
-          import glob,re
-          terms=['cpssRequest','cpssUrl','sessionUrl','sessionInfo','userAccessToken','Authorization','Bearer','accessToken','launchUrl','playstationsession','jws','api/session/v1','api/cpss/v1']
-          for f in sorted(glob.glob('js/*.js')):
+          import glob,re,os
+          for f in glob.glob('basejs/*.js'):
               t=open(f,encoding='utf-8',errors='replace').read()
-              hits=[]
-              for term in terms:
+              for needle in ['1396:function','sessionUrl','LAUNCHER_URL','function launch','launchSession']:
                   pos=0
                   while True:
-                      i=t.lower().find(term.lower(),pos)
+                      i=t.find(needle,pos)
                       if i<0: break
-                      hits.append((i,term))
-                      pos=i+len(term)
-              if not hits: continue
-              print('\n===== FILE',f,'SIZE',len(t),'=====')
-              seen=[]
-              for i,term in sorted(hits)[:100]:
-                  lo=max(0,i-1800); hi=min(len(t),i+4200)
-                  key=(lo//500,hi//500)
-                  if key in seen: continue
-                  seen.append(key)
-                  print('\n---',term,'OFFSET',i,'---')
-                  print(t[lo:hi].replace('\n',' ')[:6500])
-
-          print('\n===== LIKELY ENDPOINT STRING LITERALS =====')
-          seen=set()
-          for f in glob.glob('js/*.js'):
-              t=open(f,encoding='utf-8',errors='replace').read()
-              for s in re.findall(r'["\x27]([^"\x27]{2,800})["\x27]',t):
-                  if re.search(r'(?i)(cpss|sessionInfo|session/v1|accessToken|authorization|bearer|launchUrl|playstationsession|jws)',s):
-                      if s not in seen:
-                          seen.add(s); print(repr(s)[:1800])
+                      print('\nFILE',f,'NEEDLE',needle,'OFFSET',i)
+                      print(t[max(0,i-2200):min(len(t),i+7500)].replace('\n',' ')[:9700])
+                      pos=i+len(needle)
           PY
