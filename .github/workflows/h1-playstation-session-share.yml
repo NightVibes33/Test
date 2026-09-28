@@ -1,4 +1,4 @@
-name: PlayStation Session Share launcher audit
+name: PlayStation Session Share launcher function trace
 
 on:
   push:
@@ -10,97 +10,54 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect launcher and preview bundles
+      - name: Extract exact launcher functions
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 HackerOne-security-research'
           BASE='https://session-share.playstation.com/_next/static/chunks/pages'
-          mkdir -p bundles
-
-          declare -A URLS
-          URLS[launcher]="$BASE/launcher/%5BsessionId%5D/%5BplatformId%5D-085f920ed8cb5d35.js"
-          URLS[selector]="$BASE/launcher/%5BsessionId%5D/device-selector-1c3b279c0e4e590c.js"
-          URLS[preview]="$BASE/preview/%5BcpssId%5D-985ffaf7f70352c1.js"
-          URLS[inuse]="$BASE/launcher/%5BsessionId%5D/error/%5BdeviceId%5D/in-use-76262e7667f33346.js"
-          URLS[nonresponding]="$BASE/launcher/%5BsessionId%5D/error/%5BdeviceId%5D/non-responding-3149c71e9aa05620.js"
-          URLS[passcode]="$BASE/launcher/%5BsessionId%5D/error/%5BdeviceId%5D/passcode-295a3fcf9dee13f2.js"
-
-          for k in "${!URLS[@]}"; do
-            u="${URLS[$k]}"
-            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "bundles/$k.js" \
-              -w "$k HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download}\n"
-          done
+          curl -sS -L --max-time 20 -A "$UA" "$BASE/launcher/%5BsessionId%5D/device-selector-1c3b279c0e4e590c.js" -o selector.js
+          curl -sS -L --max-time 20 -A "$UA" "$BASE/launcher/%5BsessionId%5D/%5BplatformId%5D-085f920ed8cb5d35.js" -o launcher.js
+          curl -sS -L --max-time 20 -A "$UA" "$BASE/preview/%5BcpssId%5D-985ffaf7f70352c1.js" -o preview.js
 
           python3 - <<'PY'
-          import glob,re,os
-          terms=[
-              'sessionUrl','cpssUrl','fetch(','Authorization','Bearer','accessToken',
-              'sessionId','platformId','deviceId','launchUrl','window.location',
-              'location.href','location.assign','router.push','router.replace',
-              'command','wake','wakeup','suspend','device-selector','sessionInfo',
-              'clients','remote','launch','post','delete','put','patch'
+          import re
+          files=['selector.js','launcher.js','preview.js']
+          needles=[
+            'async function getLinkedDevices',
+            'function getLinkedDevices',
+            'async function launchGameTitle',
+            'function launchGameTitle',
+            '/postcommand',
+            'postcommand',
+            'getclients',
+            'clients?',
+            'sessionUrl',
+            'accessToken',
+            'Authorization',
+            'Bearer ',
+            'getServerSideProps',
+            '__N_SSP',
+            'cpssId',
+            'platformId',
+            'launchUrl',
+            'router.push',
+            'window.location',
           ]
-          for f in sorted(glob.glob('bundles/*.js')):
-              t=open(f,encoding='utf-8',errors='replace').read()
-              print('\n===== FILE',os.path.basename(f),'SIZE',len(t),'=====')
-              seen=set()
-              for term in terms:
-                  pos=0
-                  count=0
-                  while True:
-                      i=t.lower().find(term.lower(),pos)
-                      if i<0 or count>=12: break
-                      lo=max(0,i-1800); hi=min(len(t),i+4500)
-                      key=(lo//700,hi//700)
-                      if key not in seen:
-                          seen.add(key)
-                          sn=t[lo:hi].replace('\n',' ')
-                          sn=re.sub(r'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}','<JWT_REDACTED>',sn)
-                          print('\n---',term,'OFFSET',i,'---')
-                          print(sn[:7000])
-                      pos=i+len(term); count+=1
-
-              print('\n-- STRING LITERALS --')
-              seen_s=set()
-              for s in re.findall(r'["\x27]([^"\x27]{2,900})["\x27]',t):
-                  if re.search(r'(?i)(sessionUrl|cpss|sessionInfo|authorization|bearer|accessToken|device|command|launch|client|session/v1|/api/)',s):
-                      if s not in seen_s:
-                          seen_s.add(s)
-                          s=re.sub(r'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}','<JWT_REDACTED>',s)
-                          print(repr(s[:1800]))
-          PY
-
-          echo '=== FIND MODULE 1396 / LAUNCH HELPER IN BASE CHUNKS ==='
-          PAGE='https://session-share.playstation.com/5kBbS_pU_'
-          curl -sS -L --max-time 20 -A "$UA" "$PAGE" -o page.html
-          python3 - <<'PY'
-          import re,html
-          from urllib.parse import urljoin,urlparse
-          h=open('page.html',encoding='utf-8',errors='replace').read()
-          urls=[]
-          for pat in [r'<script[^>]+src=["\x27]([^"\x27]+)',r'<link[^>]+href=["\x27]([^"\x27]+)']:
-              for m in re.finditer(pat,h,re.I):
-                  u=urljoin('https://session-share.playstation.com/',html.unescape(m.group(1)))
-                  if urlparse(u).path.endswith('.js') and u not in urls: urls.append(u)
-          open('baseurls.txt','w').write('\n'.join(urls))
-          PY
-          mkdir -p basejs
-          i=0
-          while IFS= read -r u; do
-            [ -z "$u" ] && continue
-            i=$((i+1)); curl -sS -L --max-time 20 -A "$UA" "$u" -o "basejs/$i.js"
-          done < baseurls.txt
-          python3 - <<'PY'
-          import glob,re,os
-          for f in glob.glob('basejs/*.js'):
-              t=open(f,encoding='utf-8',errors='replace').read()
-              for needle in ['1396:function','sessionUrl','LAUNCHER_URL','function launch','launchSession']:
+          for fn in files:
+              t=open(fn,encoding='utf-8',errors='replace').read()
+              print('\n===== '+fn+' SIZE '+str(len(t))+' =====')
+              shown=[]
+              for needle in needles:
                   pos=0
                   while True:
-                      i=t.find(needle,pos)
+                      i=t.lower().find(needle.lower(),pos)
                       if i<0: break
-                      print('\nFILE',f,'NEEDLE',needle,'OFFSET',i)
-                      print(t[max(0,i-2200):min(len(t),i+7500)].replace('\n',' ')[:9700])
+                      lo=max(0,i-2600); hi=min(len(t),i+8500)
+                      key=(lo//1200,hi//1200)
+                      if key not in shown:
+                          shown.append(key)
+                          print('\n###',needle,'@',i)
+                          print(t[lo:hi].replace('\n',' ')[:11500])
                       pos=i+len(needle)
           PY
