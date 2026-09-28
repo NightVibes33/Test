@@ -1,4 +1,4 @@
-name: PlayStation Compete production surface map
+name: PlayStation Tournaments runtime config audit
 
 on:
   push:
@@ -10,68 +10,70 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Map current Compete frontend
+      - name: Extract tournament runtime config
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 HackerOne-security-research'
-          PAGE='https://compete.playstation.com/'
-          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" -D headers.txt "$PAGE" -o page.html \
-            -w 'HTTP=%{http_code}\nTYPE=%{content_type}\nSIZE=%{size_download}\nFINAL=%{url_effective}\n'
-          sed -n '1,35p' headers.txt
+          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" \
+            'https://compete.playstation.com/' -o page.html
 
           python3 - <<'PY'
-          import re,html,json
-          from urllib.parse import urljoin,urlparse
-          h=open('page.html',encoding='utf-8',errors='replace').read()
-          print('HTML_PREFIX',repr(h[:800]))
-          urls=[]
-          for pat in [r'<script[^>]+src=["\x27]([^"\x27]+)',r'<link[^>]+href=["\x27]([^"\x27]+)']:
-              for m in re.finditer(pat,h,re.I):
-                  u=urljoin('https://compete.playstation.com/',html.unescape(m.group(1)))
-                  if urlparse(u).path.endswith('.js') and u not in urls: urls.append(u)
-          print('JS_COUNT',len(urls))
-          for i,u in enumerate(urls,1): print(i,u)
-          open('urls.txt','w').write('\n'.join(urls))
-          for m in re.finditer(r'<script[^>]*type=["\x27]application/json["\x27][^>]*>(.*?)</script>',h,re.S|re.I):
+          import re, json, html
+          from urllib.parse import urljoin
+
+          s=open('page.html',encoding='utf-8',errors='replace').read()
+
+          print('=== APPLICATION/JSON BLOCKS ===')
+          idx=0
+          for m in re.finditer(r'<script([^>]*)type=["\x27]application/json["\x27]([^>]*)>(.*?)</script>',s,re.S|re.I):
+              idx += 1
+              raw=html.unescape(m.group(3)).strip()
               try:
-                  d=json.loads(html.unescape(m.group(1)))
-                  print('JSON_KEYS',sorted(d.keys()) if isinstance(d,dict) else type(d).__name__)
-              except: pass
-          PY
+                  obj=json.loads(raw)
+              except Exception:
+                  continue
+              def has_runtime(x):
+                  return isinstance(x,dict) and (
+                      'service' in x or
+                      ('gitSha' in x and 'version' in x) or
+                      ('psnAppVersion' in x and 'staticAsset' in x)
+                  )
+              print(f'BLOCK {idx} TYPE={type(obj).__name__}')
+              if isinstance(obj,dict):
+                  print('KEYS',sorted(obj.keys()))
+                  if has_runtime(obj):
+                      print('RUNTIME_JSON',json.dumps(obj,indent=2,sort_keys=True)[:30000])
+              elif isinstance(obj,list):
+                  print('LIST_LEN',len(obj))
+                  for j,item in enumerate(obj[:100]):
+                      if has_runtime(item):
+                          print('RUNTIME_ITEM',j,json.dumps(item,indent=2,sort_keys=True)[:30000])
 
-          mkdir -p js
-          i=0
-          while IFS= read -r u; do
-            [ -z "$u" ] && continue
-            i=$((i+1)); curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "js/$i.js" || true
-          done < urls.txt
+          print('\n=== INLINE JSON-LIKE RUNTIME OBJECTS ===')
+          # Also inspect JSON-looking script blocks without type=application/json.
+          for m in re.finditer(r'<script([^>]*)>(.*?)</script>',s,re.S|re.I):
+              raw=html.unescape(m.group(2)).strip()
+              if not raw or ('"service"' not in raw and '"gitSha"' not in raw and '"psnAppVersion"' not in raw):
+                  continue
+              print('SCRIPT_ATTRS',m.group(1)[:400])
+              print('SCRIPT_PREFIX',raw[:12000])
 
-          python3 - <<'PY'
-          import glob,re,os
-          terms=['https://','/api/','graphql','tournament','match','team','register','registration','checkin','check-in','prize','accountId','userId','playerId','authorization','bearer','token','fetch(','axios']
-          for f in glob.glob('js/*.js'):
-              t=open(f,encoding='utf-8',errors='replace').read()
-              hits=[]
-              for term in terms:
-                  pos=0
-                  while True:
-                      i=t.lower().find(term.lower(),pos)
-                      if i<0: break
-                      hits.append((i,term)); pos=i+len(term)
-              if not hits: continue
-              print('\n===== FILE',os.path.basename(f),'SIZE',len(t),'=====')
-              seen=[]
-              for i,term in sorted(hits)[:180]:
-                  lo=max(0,i-1100); hi=min(len(t),i+3000)
-                  key=(lo//800,hi//800)
-                  if key in seen: continue
-                  seen.append(key)
-                  print('\n---',term,'@',i,'---')
-                  print(t[lo:hi].replace('\n',' ')[:5200])
-              print('\n-- API/URL literals --')
-              seen_s=set()
-              for s in re.findall(r'["\x27]([^"\x27]{2,900})["\x27]',t):
-                  if re.search(r'(?i)(https?://|/api/|graphql|tournament|match|team|register|check.?in|prize|accountId|userId|playerId|auth|token)',s) and s not in seen_s:
-                      seen_s.add(s); print(repr(s[:1600]))
+          print('\n=== TOURNAMENT HTML SIGNALS ===')
+          patterns=[
+            r'<[^>]*(?:tournament|competition|bracket|match|register|check.?in|team)[^>]*>',
+            r'(?:data-[\w-]+|href|src)=["\x27][^"\x27]*(?:tournament|competition|bracket|match|register|check.?in|team)[^"\x27]*["\x27]'
+          ]
+          seen=set()
+          for pat in patterns:
+              for x in re.findall(pat,s,re.I):
+                  x=' '.join(x.split())
+                  if x not in seen:
+                      seen.add(x)
+                      print(x[:2000])
+
+          print('\n=== URL-LIKE STRINGS NEAR CONFIG ===')
+          for u in sorted(set(re.findall(r'https?://[^"\x27<>\\\s]+',s))):
+              if re.search(r'(?i)(playstation|sony|tournament|competition|match|api|graphql)',u):
+                  print(u[:1500])
           PY
