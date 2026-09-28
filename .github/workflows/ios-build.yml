@@ -44,3 +44,90 @@ jobs:
           name: LiveContainer-unsigned-ipa
           path: LiveContainer-unsigned.ipa
           if-no-files-found: error
+
+
+  dia_static_audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Install 7zip
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq 7zip
+
+      - name: Download current Dia 1.50.1 build 87750
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 20 \
+            -A "Mozilla/5.0 HackerOne/NightVibes33" \
+            -o /tmp/Dia.zip \
+            "https://releases.diabrowser.com/release/Dia-1.50.1-87750.zip"
+          echo "=== PACKAGE ==="
+          ls -lh /tmp/Dia.zip
+          sha256sum /tmp/Dia.zip
+
+      - name: Inventory security-sensitive bundle entries
+        run: |
+          set -euo pipefail
+          7zz l -ba /tmp/Dia.zip > /tmp/list.txt
+          echo "=== SECURITY-SENSITIVE PATHS ==="
+          grep -Eai 'Info\.plist|manifest\.json|extension|native.?messag|xpc|helper|framework|sparkle|update|protocol|scheme' /tmp/list.txt | head -1200 || true
+
+      - name: Extract metadata, manifests, main binary, and ArcCore
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dia
+          7zz e /tmp/Dia.zip -o/tmp/dia 'Dia.app/Contents/Info.plist' -y >/dev/null
+          7zz x /tmp/Dia.zip -o/tmp/dia '*manifest.json' '*.json' -y >/dev/null || true
+          7zz e /tmp/Dia.zip -o/tmp/dia 'Dia.app/Contents/MacOS/Dia' -y >/dev/null || true
+          7zz e /tmp/Dia.zip -o/tmp/dia 'Dia.app/Contents/Frameworks/ArcCore.framework/ArcCore' -y >/dev/null || true
+          find /tmp/dia -maxdepth 7 -type f -printf '%s %p\n' | sort -n | tail -300
+
+      - name: Decode Info.plist
+        run: |
+          python3 - <<'PY'
+          import plistlib, json, pathlib
+          p=pathlib.Path('/tmp/dia/Info.plist')
+          x=plistlib.loads(p.read_bytes())
+          keys=[
+            'CFBundleIdentifier','CFBundleShortVersionString','CFBundleVersion',
+            'CFBundleExecutable','CFBundleURLTypes','CFBundleDocumentTypes',
+            'LSApplicationQueriesSchemes','SUFeedURL','SUPublicEDKey',
+            'NSAppleEventsUsageDescription','NSDownloadsFolderUsageDescription',
+            'NSDesktopFolderUsageDescription','NSDocumentsFolderUsageDescription'
+          ]
+          for k in keys:
+              if k in x:
+                  print('PLIST',k,json.dumps(x[k],ensure_ascii=False,default=str))
+          PY
+
+      - name: Inspect extension manifests for web-to-privileged bridges
+        run: |
+          set -euo pipefail
+          echo "=== MANIFEST PATHS ==="
+          find /tmp/dia -type f -name manifest.json -print | sort
+          echo "=== HIGH-VALUE MANIFEST FIELDS ==="
+          python3 - <<'PY'
+          import json, pathlib
+          fields={'name','version','manifest_version','permissions','optional_permissions',
+                  'host_permissions','externally_connectable','web_accessible_resources',
+                  'background','content_scripts','content_security_policy'}
+          for p in pathlib.Path('/tmp/dia').rglob('manifest.json'):
+              try: x=json.loads(p.read_text(errors='replace'))
+              except Exception: continue
+              print('\nMANIFEST',p)
+              for k in fields:
+                  if k in x: print(k, json.dumps(x[k],ensure_ascii=False))
+          PY
+
+      - name: Search current Dia binaries/resources for privileged bridge primitives
+        run: |
+          set -euo pipefail
+          PAT='externally_connectable|onMessageExternal|onConnectExternal|web_accessible_resources|chrome-extension://|dia://|arc://|native.?messag|remote-debugging|ExternalMessage|openExternal|LaunchServices|x-callback-url|extensions-internals|webstore|profile.?sharing|share.?data'
+          echo "=== JSON TEXT HITS ==="
+          find /tmp/dia -type f \( -name '*.json' -o -name '*.plist' \) -size -8M -print0 |
+            xargs -0 grep -IEni "$PAT" 2>/dev/null | head -1500 || true
+          echo "=== MAIN/ARCCORE STRING HITS ==="
+          for b in /tmp/dia/Dia /tmp/dia/ArcCore; do
+            [ -f "$b" ] || continue
+            echo "--- $b ---"
+            strings -a "$b" | grep -Eai "$PAT" | sort -u | head -2000 || true
+          done
