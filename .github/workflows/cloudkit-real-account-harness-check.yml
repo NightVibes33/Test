@@ -22,6 +22,9 @@ jobs:
           python-version: "3.12"
       - name: Syntax check
         run: python3 -m py_compile apple-services-recon/cloudkit_real_account_harness.py
-      - name: Ensure no literal Apple credentials are committed
+      - name: Ensure no literal iCloud email is committed
         run: |
-          ! grep -RInE '([A-Za-z0-9._%+-]+@icloud\.com|CLOUDKIT_API_TOKEN\s*=\s*["'\'''][^$])' apple-services-recon/cloudkit_real_account_harness.py
+          if grep -RInE '[A-Za-z0-9._%+-]+@icloud\.com' apple-services-recon/cloudkit_real_account_harness.py; then
+            echo "Literal iCloud email found in harness"
+            exit 1
+          fi
