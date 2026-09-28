@@ -7,6 +7,9 @@ on:
     paths:
       - "apple-services-recon/cloudkit_real_account_harness.py"
       - "apple-services-recon/cloudkit_iphone_real_account.py"
+      - "real-account/*.html"
+      - "real-account/serve-ish.sh"
+      - "real-account/README.md"
       - ".github/workflows/cloudkit-real-account-harness-check.yml"
 
 permissions:
@@ -44,6 +47,31 @@ jobs:
           print(f"Extracted {n} inline scripts")
           PY
           for f in /tmp/ckjs/*.js; do node --check "$f"; done
+
+      - name: Validate static iSH browser harness
+        run: |
+          set -euo pipefail
+          sh -n real-account/serve-ish.sh
+          rm -rf /tmp/ckjs-static
+          mkdir -p /tmp/ckjs-static
+          python3 - <<'PY'
+          import pathlib, re
+          out=pathlib.Path("/tmp/ckjs-static")
+          for label in ("victim","attacker"):
+              html=pathlib.Path(f"real-account/{label}.html").read_text()
+              scripts=re.findall(r"<script(?![^>]*\\bsrc=)[^>]*>(.*?)</script>",html,re.I|re.S)
+              if not scripts:
+                  raise SystemExit(f"No inline JavaScript found in {label}.html")
+              for i,script in enumerate(scripts,1):
+                  (out/f"{label}-{i}.js").write_text(script)
+          victim=pathlib.Path("real-account/victim.html").read_text()
+          if 'value="iCloud.com.nightvibes.prism" readonly' not in victim:
+              raise SystemExit("Victim page is not pinned to Chattest container")
+          if 'const SENTINEL="OAI_REAL_ACCOUNT_TEST_CKSESSION_20260928"' not in victim:
+              raise SystemExit("Victim sentinel declaration missing")
+          print("Static iSH harness preflight OK")
+          PY
+          for f in /tmp/ckjs-static/*.js; do node --check "$f"; done
 
       - name: Local server smoke test
         run: |
