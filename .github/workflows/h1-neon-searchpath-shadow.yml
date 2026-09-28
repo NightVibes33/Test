@@ -1,0 +1,37 @@
+name: H1 Neon compute search_path shadow PoC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - h1-neon-compute-searchpath-shadow
+    paths:
+      - "h1/neon/searchpath_shadow/**"
+      - ".github/workflows/h1-neon-searchpath-shadow.yml"
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Reproduce privileged pg_database shadowing
+        run: bash h1/neon/searchpath_shadow/repro.sh
