@@ -1,0 +1,28 @@
+name: PlayStation CPSS isAuth comparison v2
+
+on:
+  push:
+    branches:
+      - h1-playstation-session-share
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare no-token responses
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 HackerOne-security-research'
+          BASE='https://web.np.playstation.com/api/cpss/v1/sessionInfo'
+          for sid in 5kBbS_pU_ Lq3djkxt; do
+            echo "=== SID:$sid ==="
+            for flag in false true; do
+              url="$BASE/$sid?country=US&language=en&isAuth=$flag"
+              out="resp_${sid}_${flag}.body"
+              curl -sS --max-time 20 --connect-timeout 10 -A "$UA" -H 'Accept: application/json' -o "$out" -w "FLAG=$flag HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download}\n" "$url" || true
+              sha256sum "$out" || true
+              head -c 500 "$out" | tr '\n' ' '; echo
+            done
+          done
