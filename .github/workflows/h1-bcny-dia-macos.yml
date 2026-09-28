@@ -1,0 +1,127 @@
+name: H1 BCNY Dia macOS targeted audit
+
+on:
+  push:
+    branches:
+      - h1-bcny-dia-macos
+  workflow_dispatch:
+
+jobs:
+  dia-audit:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Download current official Dia build
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 20 \
+            -A "Mozilla/5.0 HackerOne/NightVibes33" \
+            -o Dia.dmg \
+            "https://releases.diabrowser.com/release/Dia-latest.dmg"
+          echo "=== DMG ==="
+          ls -lh Dia.dmg
+          shasum -a 256 Dia.dmg
+
+      - name: Mount and copy app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p mnt
+          hdiutil attach Dia.dmg -nobrowse -mountpoint "$PWD/mnt"
+          APP="$(find "$PWD/mnt" -maxdepth 2 -type d -name 'Dia.app' | head -1)"
+          test -n "$APP"
+          ditto "$APP" "$PWD/Dia.app"
+          hdiutil detach "$PWD/mnt"
+          echo "APP_PATH=$PWD/Dia.app" >> "$GITHUB_ENV"
+
+      - name: Verify identity, version, signing, and entitlements
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== HOST ==="
+          uname -a
+          uname -m
+          sw_vers
+
+          echo "=== BUNDLE METADATA ==="
+          python3 - <<'PY'
+          import plistlib, json
+          p = "Dia.app/Contents/Info.plist"
+          with open(p, "rb") as f:
+              x = plistlib.load(f)
+          keys = [
+              "CFBundleIdentifier",
+              "CFBundleShortVersionString",
+              "CFBundleVersion",
+              "CFBundleExecutable",
+              "CFBundleURLTypes",
+              "CFBundleDocumentTypes",
+              "LSApplicationQueriesSchemes",
+              "LSMinimumSystemVersion",
+              "NSAppleEventsUsageDescription",
+              "NSDownloadsFolderUsageDescription",
+              "NSDesktopFolderUsageDescription",
+              "NSDocumentsFolderUsageDescription",
+          ]
+          for k in keys:
+              if k in x:
+                  print(k, json.dumps(x[k], indent=2, default=str))
+          PY
+
+          echo "=== CODESIGN ==="
+          codesign -dv --verbose=4 Dia.app 2>&1 || true
+          echo "=== ENTITLEMENTS ==="
+          codesign -d --entitlements :- Dia.app 2>&1 || true
+          echo "=== GATEKEEPER ==="
+          spctl -a -vvv -t exec Dia.app 2>&1 || true
+
+      - name: Enumerate privileged/browser integration surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== MAIN EXECUTABLE ==="
+          file Dia.app/Contents/MacOS/* || true
+
+          echo "=== HELPERS / XPC / EXTENSIONS ==="
+          find Dia.app/Contents -maxdepth 5 \
+            \( -name "*.app" -o -name "*.xpc" -o -name "*.appex" -o -name "*.framework" -o -name "*.dylib" \) \
+            -print | sort | head -400
+
+          echo "=== PLISTS ==="
+          find Dia.app/Contents -type f -name "*.plist" -print | sort | head -300
+
+          echo "=== JSON / MANIFEST NAMES ==="
+          find Dia.app/Contents -type f \
+            \( -name "*.json" -o -name "*manifest*" -o -name "*native*messag*" \) \
+            -print | sort | head -400
+
+      - name: Extract high-value scheme/update/bridge strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='dia://|arc://|chrome-extension://|chrome://|file://|localhost|127\.0\.0\.1|appinstaller|update|updater|sparkle|native.?messag|external.?protocol|x-callback-url|open.?external|launch.?service|deep.?link|custom.?scheme|browser.?bridge|privileged|webui'
+          echo "=== RESOURCE TEXT HITS ==="
+          find Dia.app/Contents/Resources Dia.app/Contents/Library -type f 2>/dev/null \
+            \( -name "*.json" -o -name "*.js" -o -name "*.html" -o -name "*.plist" -o -name "*.txt" -o -name "*.strings" \) \
+            -size -8M -print0 |
+            xargs -0 grep -IEni "$PATTERN" 2>/dev/null |
+            head -1200 || true
+
+          echo "=== MAIN BINARY STRING HITS ==="
+          MAIN="Dia.app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' Dia.app/Contents/Info.plist)"
+          strings -a "$MAIN" 2>/dev/null |
+            grep -Eai "$PATTERN" |
+            sort -u |
+            head -1000 || true
+
+      - name: Probe non-destructive command-line behavior
+        shell: bash
+        run: |
+          set +e
+          MAIN="Dia.app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' Dia.app/Contents/Info.plist)"
+          echo "=== VERSION ==="
+          "$MAIN" --version 2>&1 | head -100
+          echo "=== HELP ==="
+          "$MAIN" --help 2>&1 | head -200
+          exit 0
