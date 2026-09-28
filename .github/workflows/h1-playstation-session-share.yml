@@ -1,4 +1,4 @@
-name: PlayStation Tournaments focused config extraction
+name: PlayStation web.np GraphQL production query map
 
 on:
   push:
@@ -10,55 +10,98 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Extract only service and tournament-specific config
+      - name: Extract current WCA persisted GraphQL operations
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 HackerOne-security-research'
-          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" \
-            'https://compete.playstation.com/' -o page.html
+          curl -sS -L --max-time 20 -A "$UA" 'https://www.playstation.com/en-us/tournaments/' -o page.html
 
           python3 - <<'PY'
           import re,json,html
           s=open('page.html',encoding='utf-8',errors='replace').read()
           runtime=None
           for m in re.finditer(r'<script[^>]*type=["\x27]application/json["\x27][^>]*>(.*?)</script>',s,re.S|re.I):
-              try: obj=json.loads(html.unescape(m.group(1)).strip())
-              except: continue
-              if isinstance(obj,dict) and 'service' in obj and 'gitSha' in obj:
-                  runtime=obj; break
-          if runtime:
-              for k in ['name','env','isoenv','version','psnAppVersion','gitBranch','gitSha']:
-                  print(k,'=',repr(runtime.get(k)))
-              print('SERVICE=',json.dumps(runtime.get('service'),indent=2,sort_keys=True))
-              print('FEATURE=',json.dumps(runtime.get('feature'),indent=2,sort_keys=True))
-              sa=runtime.get('staticAsset')
-              print('STATIC_ASSET=',json.dumps(sa,indent=2,sort_keys=True)[:5000])
+              try:o=json.loads(html.unescape(m.group(1)).strip())
+              except:continue
+              if isinstance(o,dict) and o.get('name')=='@sie-private/web-commerce-anywhere':
+                  runtime=o;break
+          assert runtime
+          urls=[]
+          src=((runtime.get('client') or {}).get('manifest') or {}).get('src') or {}
+          for name,v in src.items():
+              if isinstance(v,dict):
+                  for u in v.get('js') or []:
+                      if u not in urls: urls.append(u)
+          print('WCA_VERSION',runtime.get('version'))
+          print('GIT_SHA',runtime.get('gitSha'))
+          print('GQL_ORIGIN',((runtime.get('service') or {}).get('gql') or {}).get('origin'))
+          print('JS_COUNT',len(urls))
+          open('urls.txt','w').write('\n'.join(urls))
+          PY
 
-          print('\n=== TOURNAMENT-RELATED TAGS / COMPONENT NAMES ===')
-          vals=set()
-          for m in re.finditer(r'<([\w:-]+)([^>]*)>',s,re.I):
-              tag=m.group(1); attrs=m.group(2)
-              blob=(tag+' '+attrs)
-              if re.search(r'(?i)(tournament|competition|bracket|match|register|check.?in|leaderboard)',blob):
-                  vals.add(' '.join(blob.split()))
-          for v in sorted(vals): print(v[:3000])
+          mkdir -p js
+          i=0
+          while IFS= read -r u; do
+            [ -z "$u" ] && continue
+            i=$((i+1))
+            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "js/$i.js" || true
+          done < urls.txt
 
-          print('\n=== TOURNAMENT-RELATED JSON KEYS/VALUES ===')
-          for m in re.finditer(r'<script[^>]*type=["\x27]application/json["\x27][^>]*>(.*?)</script>',s,re.S|re.I):
-              raw=html.unescape(m.group(1)).strip()
-              try: obj=json.loads(raw)
-              except: continue
-              def walk(x,path=''):
-                  if isinstance(x,dict):
-                      for k,v in x.items():
-                          p=f'{path}.{k}' if path else k
-                          if re.search(r'(?i)(tournament|competition|bracket|match|register|check.?in|leaderboard)',k):
-                              print(p,'=',repr(v)[:4000])
-                          walk(v,p)
-                  elif isinstance(x,list):
-                      for i,v in enumerate(x[:200]): walk(v,f'{path}[{i}]')
-                  elif isinstance(x,str) and re.search(r'(?i)(tournament|competition|bracket|match|register|check.?in|leaderboard)',x):
-                      print(path,'=',repr(x)[:4000])
-              walk(obj)
+          python3 - <<'PY'
+          import glob,re,os,json
+          files=[]
+          for f in glob.glob('js/*.js'):
+              try:t=open(f,encoding='utf-8',errors='replace').read()
+              except:continue
+              files.append((f,t))
+
+          # Extract operationName and persisted hashes with local context.
+          pairs=set()
+          names=set()
+          hashes=set()
+          for f,t in files:
+              for m in re.finditer(r'operationName\s*[:=]\s*["\x27]([A-Za-z0-9_]+)["\x27]',t):
+                  name=m.group(1); names.add(name)
+                  ctx=t[max(0,m.start()-1000):min(len(t),m.end()+1800)]
+                  hs=re.findall(r'[0-9a-fA-F]{64}',ctx)
+                  for h in hs: pairs.add((name,h.lower(),os.path.basename(f)))
+              for m in re.finditer(r'sha256Hash\s*[:=]\s*["\x27]([0-9a-fA-F]{64})["\x27]',t):
+                  hashes.add(m.group(1).lower())
+                  ctx=t[max(0,m.start()-1800):min(len(t),m.end()+1000)]
+                  ns=re.findall(r'operationName\s*[:=]\s*["\x27]([A-Za-z0-9_]+)["\x27]',ctx)
+                  for n in ns: pairs.add((n,m.group(1).lower(),os.path.basename(f)))
+
+          print('\n=== OPERATION/HASH PAIRS ===')
+          for x in sorted(pairs): print(*x)
+
+          # Extract likely GraphQL operation/query identifiers and variable field names
+          # without dumping full bundles.
+          interesting=re.compile(r'(?i)(cart|checkout|order|purchase|payment|wallet|wishlist|entitlement|subscription|account|profile|user|device|redeem|voucher|address|family|child|friend|mutation|delete|update|create|add|remove)')
+          literals=set()
+          for f,t in files:
+              for s in re.findall(r'["\x27]([A-Za-z][A-Za-z0-9_./:-]{2,180})["\x27]',t):
+                  if interesting.search(s):
+                      literals.add(s)
+          print('\n=== INTERESTING STRING LITERALS ===')
+          for s in sorted(literals):
+              if len(s)<=180: print(s)
+
+          print('\n=== PERSISTED QUERY CONTEXTS ===')
+          shown=set()
+          for f,t in files:
+              for m in re.finditer(r'persistedQuery',t):
+                  lo=max(0,m.start()-1200); hi=min(len(t),m.end()+1800)
+                  sn=t[lo:hi].replace('\n',' ')
+                  # Only contexts with business/security-relevant words.
+                  if not interesting.search(sn): continue
+                  key=re.sub(r'\d+','N',sn[:500])
+                  if key in shown: continue
+                  shown.add(key)
+                  # redact any accidental JWT-ish token
+                  sn=re.sub(r'eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{8,}','<JWT_REDACTED>',sn)
+                  print('FILE',os.path.basename(f),'OFFSET',m.start())
+                  print(sn[:3000])
+
+          print('\nCOUNTS names=%d hashes=%d pairs=%d'%(len(names),len(hashes),len(pairs)))
           PY
