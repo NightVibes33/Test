@@ -1,4 +1,4 @@
-name: PlayStation Session Share CPSS auth-flag check
+name: PlayStation Session Share BFF auth checks
 
 on:
   push:
@@ -13,64 +13,62 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Compare unauthenticated CPSS responses
+      - name: Check unauthenticated BFF enforcement
         shell: bash
         run: |
           set -euo pipefail
+          BASE='https://session-share.playstation.com'
           UA='Mozilla/5.0 HackerOne-security-research'
-          BASE='https://web.np.playstation.com/api/cpss/v1/sessionInfo'
 
-          python3 - <<'PY'
-          import subprocess,json,hashlib,re
-          ids=['Lq3djkxt','5kBbS_pU_']
-          variants=[('false','isAuth=false'),('true','isAuth=true'),('absent','')]
-          for sid in ids:
-              print('\n=== SESSION',sid,'===')
-              results={}
-              for label,q in variants:
-                  url=f'https://web.np.playstation.com/api/cpss/v1/sessionInfo/{sid}?country=US&language=en'
-                  if q: url += '&'+q
-                  p=subprocess.run([
-                      'curl','-sS','-L','--max-time','20','--connect-timeout','10',
-                      '-A','Mozilla/5.0 HackerOne-security-research',
-                      '-H','Accept: application/json',
-                      '-w','\n__META__%{http_code}|%{content_type}|%{size_download}',
-                      url
-                  ],capture_output=True,text=True)
-                  raw=p.stdout
-                  body,meta=(raw.rsplit('\n__META__',1)+[''])[:2] if '\n__META__' in raw else (raw,'')
-                  h=hashlib.sha256(body.encode()).hexdigest()
-                  print(label,'META',meta,'SHA256',h,'LEN',len(body))
-                  try:
-                      obj=json.loads(body)
-                      if isinstance(obj,dict):
-                          keys=sorted(obj.keys())
-                          print(label,'TOP_KEYS',keys)
-                          safe={}
-                          for k,v in obj.items():
-                              lk=k.lower()
-                              if lk in ('id','insession','isopen','mspollinginterval','maxplayers','timestarted','timeended','country','language'):
-                                  safe[k]=v
-                              elif lk=='game' and isinstance(v,dict):
-                                  safe['game_keys']=sorted(v.keys())
-                                  plats=v.get('platforms')
-                                  if isinstance(plats,list):
-                                      safe['platform_count']=len(plats)
-                                      safe['platform_ids']=[x.get('id') for x in plats if isinstance(x,dict)]
-                                      safe['has_launch_urls']=any(bool(x.get('launchUrl')) for x in plats if isinstance(x,dict))
-                              elif lk=='players' and isinstance(v,list):
-                                  safe['player_count']=len(v)
-                                  safe['player_item_keys']=sorted(set().union(*(set(x.keys()) for x in v if isinstance(x,dict)))) if v else []
-                              elif lk=='error':
-                                  safe['error']=v
-                              elif lk=='reason':
-                                  safe['reason']=v
-                          print(label,'SAFE_SUMMARY',json.dumps(safe,sort_keys=True)[:3000])
-                      else:
-                          print(label,'JSON_TYPE',type(obj).__name__)
-                  except Exception:
-                      print(label,'BODY_PREFIX',repr(body[:300]))
-                  results[label]=(meta,h,len(body))
-              print('COMPARE false_vs_true',results.get('false')==results.get('true'))
-              print('COMPARE false_vs_absent',results.get('false')==results.get('absent'))
+          probe() {
+            name="$1"; shift
+            echo "=== $name ==="
+            rm -f /tmp/h /tmp/b
+            curl -sS --max-time 20 --connect-timeout 10 -A "$UA" \
+              -D /tmp/h -o /tmp/b -w 'HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download} REDIR=%{redirect_url}\n' \
+              "$@" || true
+            sed -n '1,30p' /tmp/h
+            python3 - <<'PY'
+          import json
+          b=open('/tmp/b','rb').read() if __import__('os').path.exists('/tmp/b') else b''
+          print('BODY_PREFIX',repr(b[:800]))
+          try:
+              x=json.loads(b)
+              if isinstance(x,dict):
+                  print('JSON_KEYS',sorted(x.keys()))
+                  # avoid dumping possible device data
+                  safe={}
+                  for k,v in x.items():
+                      if k.lower() in ('error','reason','message','success','status','code'):
+                          safe[k]=v
+                      elif k=='clients' and isinstance(v,list):
+                          safe['clients_count']=len(v)
+                          safe['client_keys']=sorted(set().union(*(set(i.keys()) for i in v if isinstance(i,dict)))) if v else []
+                  print('SAFE_JSON',json.dumps(safe)[:2000])
+          except Exception:
+              pass
           PY
+          }
+
+          probe clientsList "$BASE/clientsList"
+          probe clientsList_options -X OPTIONS "$BASE/clientsList" \
+            -H 'Origin: https://example.com' \
+            -H 'Access-Control-Request-Method: GET'
+
+          # Intentionally invalid/empty body: cannot identify a device or issue a valid command.
+          probe postcommand_empty -X POST "$BASE/postcommand" \
+            -H 'Content-Type: application/json' --data '{}'
+          probe postcommand_text_plain -X POST "$BASE/postcommand" \
+            -H 'Content-Type: text/plain' --data '{}'
+          probe postcommand_options -X OPTIONS "$BASE/postcommand" \
+            -H 'Origin: https://example.com' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type'
+
+          # Bogus command id cannot match a real command.
+          probe observe_bogus -X POST "$BASE/observeTitle" \
+            -H 'Content-Type: application/json' --data '{"commandID":"00000000-0000-0000-0000-000000000000"}'
+          probe observe_options -X OPTIONS "$BASE/observeTitle" \
+            -H 'Origin: https://example.com' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type'
