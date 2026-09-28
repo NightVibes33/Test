@@ -1,4 +1,4 @@
-name: PlayStation web.np GraphQL production query map
+name: PlayStation WCA mutation extraction
 
 on:
   push:
@@ -10,98 +10,63 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Extract current WCA persisted GraphQL operations
+      - name: Extract current mutation documents
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 HackerOne-security-research'
-          curl -sS -L --max-time 20 -A "$UA" 'https://www.playstation.com/en-us/tournaments/' -o page.html
+          URL='https://static.playstation.com/wca/v2/js/common.1c5ea9cc607e3157534a.js'
+          curl -sS -L --max-time 30 --connect-timeout 10 -A "$UA" "$URL" -o common.js
+          echo "SIZE=$(wc -c < common.js)"
 
           python3 - <<'PY'
-          import re,json,html
-          s=open('page.html',encoding='utf-8',errors='replace').read()
-          runtime=None
-          for m in re.finditer(r'<script[^>]*type=["\x27]application/json["\x27][^>]*>(.*?)</script>',s,re.S|re.I):
-              try:o=json.loads(html.unescape(m.group(1)).strip())
-              except:continue
-              if isinstance(o,dict) and o.get('name')=='@sie-private/web-commerce-anywhere':
-                  runtime=o;break
-          assert runtime
-          urls=[]
-          src=((runtime.get('client') or {}).get('manifest') or {}).get('src') or {}
-          for name,v in src.items():
-              if isinstance(v,dict):
-                  for u in v.get('js') or []:
-                      if u not in urls: urls.append(u)
-          print('WCA_VERSION',runtime.get('version'))
-          print('GIT_SHA',runtime.get('gitSha'))
-          print('GQL_ORIGIN',((runtime.get('service') or {}).get('gql') or {}).get('origin'))
-          print('JS_COUNT',len(urls))
-          open('urls.txt','w').write('\n'.join(urls))
-          PY
+          import re
+          t=open('common.js',encoding='utf-8',errors='replace').read()
+          needles=[
+            'backgroundPurchase',
+            'wcaAddItemToStoreWishlist',
+            'wcaRemoveItemFromStoreWishlist',
+            'storeWishlistAddItem',
+            'storeWishlistRemoveItem',
+            'BackgroundPurchase',
+            'purchase'
+          ]
+          seen=[]
+          for needle in needles:
+              pos=0
+              while True:
+                  i=t.find(needle,pos)
+                  if i<0: break
+                  lo=max(0,i-5000); hi=min(len(t),i+9000)
+                  key=(lo//2500,hi//2500)
+                  if key not in seen:
+                      seen.append(key)
+                      print('\n===== '+needle+' @ '+str(i)+' =====')
+                      print(t[lo:hi].replace('\n',' ')[:14000])
+                  pos=i+len(needle)
 
-          mkdir -p js
-          i=0
-          while IFS= read -r u; do
-            [ -z "$u" ] && continue
-            i=$((i+1))
-            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "js/$i.js" || true
-          done < urls.txt
+          print('\n=== EMBEDDED GRAPHQL DOCS ===')
+          # Decode escaped/minified string windows around mutation names.
+          for name in ['backgroundPurchase','wcaAddItemToStoreWishlist','wcaRemoveItemFromStoreWishlist']:
+              i=t.find(name)
+              if i<0:
+                  print(name,'NOT_FOUND')
+                  continue
+              win=t[max(0,i-8000):min(len(t),i+16000)]
+              # print GraphQL-like mutation snippets in the window
+              for m in re.finditer(r'mutation\s+[A-Za-z0-9_]+[^}]{0,12000}\}',win,re.S):
+                  print(name,'DOC',m.group(0)[:12000].replace('\\n','\n'))
+              # Inputs / variable construction near call site
+              print(name,'IDENTIFIERS',sorted(set(re.findall(r'[A-Za-z_][A-Za-z0-9_]{2,80}',win)))[:500])
 
-          python3 - <<'PY'
-          import glob,re,os,json
-          files=[]
-          for f in glob.glob('js/*.js'):
-              try:t=open(f,encoding='utf-8',errors='replace').read()
-              except:continue
-              files.append((f,t))
-
-          # Extract operationName and persisted hashes with local context.
-          pairs=set()
-          names=set()
-          hashes=set()
-          for f,t in files:
-              for m in re.finditer(r'operationName\s*[:=]\s*["\x27]([A-Za-z0-9_]+)["\x27]',t):
-                  name=m.group(1); names.add(name)
-                  ctx=t[max(0,m.start()-1000):min(len(t),m.end()+1800)]
-                  hs=re.findall(r'[0-9a-fA-F]{64}',ctx)
-                  for h in hs: pairs.add((name,h.lower(),os.path.basename(f)))
-              for m in re.finditer(r'sha256Hash\s*[:=]\s*["\x27]([0-9a-fA-F]{64})["\x27]',t):
-                  hashes.add(m.group(1).lower())
-                  ctx=t[max(0,m.start()-1800):min(len(t),m.end()+1000)]
-                  ns=re.findall(r'operationName\s*[:=]\s*["\x27]([A-Za-z0-9_]+)["\x27]',ctx)
-                  for n in ns: pairs.add((n,m.group(1).lower(),os.path.basename(f)))
-
-          print('\n=== OPERATION/HASH PAIRS ===')
-          for x in sorted(pairs): print(*x)
-
-          # Extract likely GraphQL operation/query identifiers and variable field names
-          # without dumping full bundles.
-          interesting=re.compile(r'(?i)(cart|checkout|order|purchase|payment|wallet|wishlist|entitlement|subscription|account|profile|user|device|redeem|voucher|address|family|child|friend|mutation|delete|update|create|add|remove)')
-          literals=set()
-          for f,t in files:
-              for s in re.findall(r'["\x27]([A-Za-z][A-Za-z0-9_./:-]{2,180})["\x27]',t):
-                  if interesting.search(s):
-                      literals.add(s)
-          print('\n=== INTERESTING STRING LITERALS ===')
-          for s in sorted(literals):
-              if len(s)<=180: print(s)
-
-          print('\n=== PERSISTED QUERY CONTEXTS ===')
-          shown=set()
-          for f,t in files:
-              for m in re.finditer(r'persistedQuery',t):
-                  lo=max(0,m.start()-1200); hi=min(len(t),m.end()+1800)
-                  sn=t[lo:hi].replace('\n',' ')
-                  # Only contexts with business/security-relevant words.
-                  if not interesting.search(sn): continue
-                  key=re.sub(r'\d+','N',sn[:500])
-                  if key in shown: continue
-                  shown.add(key)
-                  # redact any accidental JWT-ish token
-                  sn=re.sub(r'eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{8,}','<JWT_REDACTED>',sn)
-                  print('FILE',os.path.basename(f),'OFFSET',m.start())
-                  print(sn[:3000])
-
-          print('\nCOUNTS names=%d hashes=%d pairs=%d'%(len(names),len(hashes),len(pairs)))
+          print('\n=== 64-CHAR HASHES NEAR MUTATIONS ===')
+          for name in ['backgroundPurchase','wcaAddItemToStoreWishlist','wcaRemoveItemFromStoreWishlist']:
+              pos=0
+              while True:
+                  i=t.find(name,pos)
+                  if i<0: break
+                  win=t[max(0,i-5000):min(len(t),i+8000)]
+                  hs=sorted(set(re.findall(r'\b[0-9a-fA-F]{64}\b',win)))
+                  if hs: print(name,hs)
+                  pos=i+len(name)
           PY
