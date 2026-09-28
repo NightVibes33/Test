@@ -1,0 +1,14 @@
+name: H1 runner probe
+
+on:
+  push:
+    branches:
+      - h1-bcny-dia-macos
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          uname -a
+          echo RUNNER_OK
