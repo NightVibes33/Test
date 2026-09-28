@@ -1,0 +1,114 @@
+name: Deploy CloudKit PoC to Vercel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_TEAM_ID: team_2IDA1MMBi6HRwl1QLav4nA5f
+      VERCEL_SCOPE: bobbytatum12345-5121s-projects
+      VERCEL_CLI_VERSION: "59.1.4"
+      VICTIM_PROJECT: cloudkit-poc-victim
+      ATTACKER_PROJECT: cloudkit-poc-attacker
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: apple-bounty-services-recon-20260928
+
+      - name: Require Vercel access token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::Missing repository secret VERCEL_TOKEN"
+            exit 1
+          fi
+
+      - name: Link or create Vercel projects
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ensure_project() {
+            name="$1"
+            dir="$2"
+
+            tmp="$(mktemp)"
+            status="$(curl -sS -o "$tmp" -w '%{http_code}'               -H "Authorization: Bearer $VERCEL_TOKEN"               "https://api.vercel.com/v9/projects/$name?teamId=$VERCEL_TEAM_ID")"
+
+            if [ "$status" = "404" ]; then
+              curl -fsS                 -X POST                 -H "Authorization: Bearer $VERCEL_TOKEN"                 -H "Content-Type: application/json"                 "https://api.vercel.com/v10/projects?teamId=$VERCEL_TEAM_ID"                 -d "{\"name\":\"$name\"}" > "$tmp"
+            elif [ "$status" != "200" ]; then
+              cat "$tmp" >&2
+              echo "::error::Unable to resolve Vercel project $name (HTTP $status)"
+              exit 1
+            fi
+
+            project_id="$(python3 - "$tmp" <<'PY'
+import json,sys
+with open(sys.argv[1]) as f:
+    print(json.load(f)["id"])
+PY
+)"
+            mkdir -p "$dir/.vercel"
+            printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_TEAM_ID" "$project_id" > "$dir/.vercel/project.json"
+            echo "$name -> $project_id"
+          }
+
+          ensure_project "$VICTIM_PROJECT" vercel/cloudkit-victim
+          ensure_project "$ATTACKER_PROJECT" vercel/cloudkit-attacker
+
+      - name: Deploy victim origin
+        id: victim
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          url="$(npx --yes vercel@$VERCEL_CLI_VERSION deploy             --prod --yes             --token "$VERCEL_TOKEN"             --scope "$VERCEL_SCOPE"             --cwd vercel/cloudkit-victim | tail -n 1)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Victim: $url"
+
+      - name: Verify victim deployment
+        run: |
+          set -euo pipefail
+          curl -fsS "${{ steps.victim.outputs.url }}" | grep -q "CloudKit JS real-account validation"
+
+      - name: Deploy attacker origin
+        id: attacker
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          url="$(npx --yes vercel@$VERCEL_CLI_VERSION deploy             --prod --yes             --token "$VERCEL_TOKEN"             --scope "$VERCEL_SCOPE"             --cwd vercel/cloudkit-attacker | tail -n 1)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Attacker: $url"
+
+      - name: Verify attacker deployment
+        run: |
+          set -euo pipefail
+          curl -fsS "${{ steps.attacker.outputs.url }}" | grep -q "Cross-origin sender"
+
+      - name: Publish launch URLs
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+import urllib.parse
+victim = """${{ steps.victim.outputs.url }}"""
+attacker = """${{ steps.attacker.outputs.url }}"""
+launch = attacker + "?victim=" + urllib.parse.quote(victim, safe="")
+print("## CloudKit Vercel PoC")
+print()
+print(f"- Victim origin: {victim}")
+print(f"- Attacker origin: {attacker}")
+print(f"- Launch URL: {launch}")
+print()
+print("Use only the researcher-owned Chattest development container: iCloud.com.nightvibes.prism.")
+print("Enter the temporary CloudKit Web API token only in the victim page; no Apple password is stored in Vercel or GitHub.")
+PY
