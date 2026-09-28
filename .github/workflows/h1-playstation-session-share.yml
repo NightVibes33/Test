@@ -1,4 +1,4 @@
-name: PlayStation Session Share launcher function trace
+name: PlayStation Session Share preview message audit
 
 on:
   push:
@@ -10,54 +10,71 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Extract exact launcher functions
+      - name: Inspect preview messaging and navigation
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 HackerOne-security-research'
-          BASE='https://session-share.playstation.com/_next/static/chunks/pages'
-          curl -sS -L --max-time 20 -A "$UA" "$BASE/launcher/%5BsessionId%5D/device-selector-1c3b279c0e4e590c.js" -o selector.js
-          curl -sS -L --max-time 20 -A "$UA" "$BASE/launcher/%5BsessionId%5D/%5BplatformId%5D-085f920ed8cb5d35.js" -o launcher.js
-          curl -sS -L --max-time 20 -A "$UA" "$BASE/preview/%5BcpssId%5D-985ffaf7f70352c1.js" -o preview.js
+          U='https://session-share.playstation.com/_next/static/chunks/pages/preview/%5BcpssId%5D-985ffaf7f70352c1.js'
+          curl -sS -L --max-time 20 -A "$UA" "$U" -o preview.js
 
           python3 - <<'PY'
           import re
-          files=['selector.js','launcher.js','preview.js']
+          t=open('preview.js',encoding='utf-8',errors='replace').read()
+          print('SIZE',len(t))
           needles=[
-            'async function getLinkedDevices',
-            'function getLinkedDevices',
-            'async function launchGameTitle',
-            'function launchGameTitle',
-            '/postcommand',
-            'postcommand',
-            'getclients',
-            'clients?',
-            'sessionUrl',
-            'accessToken',
-            'Authorization',
-            'Bearer ',
-            'getServerSideProps',
-            '__N_SSP',
-            'cpssId',
-            'platformId',
-            'launchUrl',
-            'router.push',
-            'window.location',
+            'postMessage','addEventListener("message','addEventListener(\'message',
+            'onmessage','event.origin','.origin','parent.','window.parent','window.top',
+            'opener','document.referrer','referrer','cpssId','sessionId',
+            'launchUrl','openLink','window.open','location.href','href=',
+            'dangerouslySetInnerHTML','srcdoc','iframe','targetOrigin'
           ]
-          for fn in files:
-              t=open(fn,encoding='utf-8',errors='replace').read()
-              print('\n===== '+fn+' SIZE '+str(len(t))+' =====')
-              shown=[]
-              for needle in needles:
-                  pos=0
-                  while True:
-                      i=t.lower().find(needle.lower(),pos)
-                      if i<0: break
-                      lo=max(0,i-2600); hi=min(len(t),i+8500)
-                      key=(lo//1200,hi//1200)
-                      if key not in shown:
-                          shown.append(key)
-                          print('\n###',needle,'@',i)
-                          print(t[lo:hi].replace('\n',' ')[:11500])
-                      pos=i+len(needle)
+          seen=[]
+          for needle in needles:
+              pos=0
+              while True:
+                  i=t.lower().find(needle.lower(),pos)
+                  if i<0: break
+                  lo=max(0,i-2600); hi=min(len(t),i+8000)
+                  key=(lo//1200,hi//1200)
+                  if key not in seen:
+                      seen.append(key)
+                      print('\n###',needle,'@',i)
+                      print(t[lo:hi].replace('\n',' ')[:11000])
+                  pos=i+len(needle)
+
+          print('\n=== ALL URL / ROUTE LITERALS ===')
+          for s in sorted(set(re.findall(r'["\x27]([^"\x27]{2,800})["\x27]',t))):
+              if re.search(r'(?i)(https?://|/api/|preview|session|launch|message|referrer|origin)',s):
+                  print(repr(s)[:1400])
           PY
+
+          echo '=== LIVE PREVIEW ROUTE HEADERS FOR EXPIRED PUBLIC IDS ==='
+          for id in 5kBbS_pU_ Lq3djkxt; do
+            echo "--- $id ---"
+            curl -sS -L --max-time 20 -A "$UA" -D /tmp/h -o /tmp/b \
+              -w 'HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download} FINAL=%{url_effective}\n' \
+              "https://session-share.playstation.com/preview/$id"
+            sed -n '1,25p' /tmp/h
+            python3 - <<'PY'
+          import re,json
+          b=open('/tmp/b','rb').read()
+          print('BODY_PREFIX',repr(b[:300]))
+          try:
+              s=b.decode('utf-8','replace')
+              m=re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',s,re.S)
+              if m:
+                  d=json.loads(m.group(1))
+                  pp=((d.get('props') or {}).get('pageProps') or {})
+                  print('PAGEPROP_KEYS',sorted(pp.keys()))
+                  for k,v in pp.items():
+                      if k.lower() in ('statuscode','locale','referrerurl','opengraphtitle'):
+                          print(k,repr(v))
+                      elif isinstance(v,dict):
+                          print(k,'DICT_KEYS',sorted(v.keys()))
+              else:
+                  print('NO_NEXT_DATA')
+          except Exception as e:
+              print('PARSE_ERR',type(e).__name__)
+          PY
+          done
