@@ -8,13 +8,13 @@ on:
 
 jobs:
   inspect-official-dia-page:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Inspect official Dia Windows page and first-party scripts
-        shell: pwsh
+        shell: bash
         run: |
-          @'
+          python - <<'PY'
           import re
           import urllib.request
           from urllib.parse import urljoin, urlparse
@@ -70,4 +70,4 @@ jobs:
                           print("CANDIDATE", v)
 
           print("CANDIDATE_COUNT", len(seen))
-          '@ | python -
+          PY
