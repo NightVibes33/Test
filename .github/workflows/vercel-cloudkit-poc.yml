@@ -2,6 +2,13 @@ name: Deploy CloudKit PoC to Vercel
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - apple-bounty-services-recon-20260928
+    paths:
+      - "vercel/cloudkit-victim/**"
+      - "vercel/cloudkit-attacker/**"
+      - ".github/workflows/vercel-cloudkit-poc.yml"
 
 permissions:
   contents: read
