@@ -25,8 +25,8 @@ jobs:
       ATTACKER_PROJECT: nightvibes33-chattest-attacker
       VICTIM_STABLE_URL: https://nightvibes33-chattest-victim.vercel.app
       ATTACKER_STABLE_URL: https://nightvibes33-chattest-attacker.vercel.app
-      VICTIM_IMPORT_URL: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNightVibes33%2FTest%2Ftree%2Fapple-bounty-services-recon-20260928%2Fvercel%2Fcloudkit-victim%26project-name%3Dnightvibes33-chattest-victim%26repository-name%3Dnightvibes33-chattest-victim
-      ATTACKER_IMPORT_URL: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNightVibes33%2FTest%2Ftree%2Fapple-bounty-services-recon-20260928%2Fvercel%2Fcloudkit-attacker%26project-name%3Dnightvibes33-chattest-attacker%26repository-name%3Dnightvibes33-chattest-attacker
+      VICTIM_IMPORT_URL: "https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNightVibes33%2FTest%2Ftree%2Fapple-bounty-services-recon-20260928%2Fvercel%2Fcloudkit-victim&project-name=nightvibes33-chattest-victim&repository-name=nightvibes33-chattest-victim"
+      ATTACKER_IMPORT_URL: "https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNightVibes33%2FTest%2Ftree%2Fapple-bounty-services-recon-20260928%2Fvercel%2Fcloudkit-attacker&project-name=nightvibes33-chattest-attacker&repository-name=nightvibes33-chattest-attacker"
 
     steps:
       - uses: actions/checkout@v4
