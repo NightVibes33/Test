@@ -4,7 +4,7 @@
 </head><body>
 <h1>Cross-origin sender</h1>
 <p>This page sends only a synthetic ckSession marker to a victim window you opened yourself.</p>
-<label>Victim URL</label><input id="victim" placeholder="https://cloudkit-poc-victim.vercel.app">
+<label>Victim URL</label><input id="victim" value="https://nightvibes33-chattest-victim.vercel.app" readonly>
 <button id="open">Open victim</button>
 <button id="send">Send synthetic ckSession</button>
 <pre id="log"></pre>
@@ -16,5 +16,5 @@ if(presetVictim)document.getElementById("victim").value=presetVictim;
 const SENTINEL="OAI_REAL_ACCOUNT_TEST_CKSESSION_20260928";
 const log=x=>document.getElementById("log").textContent+=x+"\n";
 document.getElementById("open").onclick=()=>{const url=document.getElementById("victim").value.trim();if(!/^https:\/\//i.test(url)){log("enter the HTTPS victim URL first");return;}victim=window.open(url,"ck-victim");log("victim opened: "+url);};
-document.getElementById("send").onclick=()=>{if(!victim){log("open victim first");return;}victim.postMessage({ckSession:SENTINEL},"*");log("synthetic message sent");};
+document.getElementById("send").onclick=()=>{if(!victim){log("open victim first");return;}const targetOrigin=new URL(document.getElementById("victim").value).origin;victim.postMessage({ckSession:SENTINEL},targetOrigin);log("synthetic message sent to "+targetOrigin);};
 </script></body></html>
