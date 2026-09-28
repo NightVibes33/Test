@@ -1,0 +1,67 @@
+name: H1 BCNY Dia Windows package discovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - h1-bcny-dia-windows
+    paths:
+      - ".github/workflows/h1-bcny-dia-windows.yml"
+
+jobs:
+  inspect-official-dia-page:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Inspect official Dia Windows page and first-party scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $base = "https://www.diabrowser.com/windows"
+          $html = (Invoke-WebRequest -UseBasicParsing -Uri $base).Content
+          Write-Host "=== PAGE BYTES ==="
+          Write-Host $html.Length
+
+          $allUrls = [regex]::Matches($html, 'https?://[^"''<> ]+') |
+            ForEach-Object { $_.Value -replace '&amp;','&' } |
+            Sort-Object -Unique
+
+          Write-Host "=== DIRECT CANDIDATES IN HTML ==="
+          $allUrls | Where-Object {
+            $_ -match '(?i)(windows|win32|win64|x64|msix|msi|exe|appinstaller|download|installer|update|release)'
+          }
+
+          $scriptUrls = [regex]::Matches($html, '<script[^>]+src=["'']([^"'']+)["'']') |
+            ForEach-Object {
+              $u = $_.Groups[1].Value
+              if ($u.StartsWith('/')) { "https://www.diabrowser.com$u" }
+              elseif ($u -match '^https://') { $u }
+            } |
+            Where-Object { $_ -and $_ -match 'diabrowser\.com' } |
+            Sort-Object -Unique
+
+          Write-Host "=== FIRST-PARTY SCRIPTS ==="
+          $scriptUrls
+
+          $patterns = @(
+            '(?i)https?://[^"''\s<>]+\.(?:exe|msix|msixbundle|msi|appinstaller)(?:\?[^"''\s<>]*)?',
+            '(?i)https?://[^"''\s<>]*(?:download|installer|update|release)[^"''\s<>]*',
+            '(?i)[^"''\s<>]{0,120}(?:windows|win32|win64|x64)[^"''\s<>]{0,180}'
+          )
+
+          $seen = [System.Collections.Generic.HashSet[string]]::new()
+          foreach ($s in $scriptUrls) {
+            try {
+              $body = (Invoke-WebRequest -UseBasicParsing -Uri $s -TimeoutSec 30).Content
+              foreach ($p in $patterns) {
+                foreach ($m in [regex]::Matches($body, $p)) {
+                  $v = $m.Value -replace '\\u0026','&' -replace '\\/','/'
+                  if ($seen.Add($v)) { Write-Host "CANDIDATE $v" }
+                }
+              }
+            } catch {
+              Write-Host "SCRIPT_FETCH_FAILED $s $($_.Exception.Message)"
+            }
+          }
+
+          Write-Host "=== DONE ==="
