@@ -1,0 +1,28 @@
+name: Twilio PKCV collision proof
+
+on:
+  push:
+    branches:
+      - h1-twilio-pkcv-query-collision-20260928
+  workflow_dispatch:
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Reproduce PKCV request-hash collision
+        run: node twilio-pkcv-rqh-proof.js
+      - name: Report live-test readiness without exposing secrets
+        env:
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        run: |
+          if [ -n "$TWILIO_ACCOUNT_SID" ] && [ -n "$TWILIO_AUTH_TOKEN" ]; then
+            echo "TWILIO_LIVE_CREDS=present"
+          else
+            echo "TWILIO_LIVE_CREDS=absent"
+          fi
