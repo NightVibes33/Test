@@ -59,12 +59,7 @@ jobs:
               exit 1
             fi
 
-            project_id="$(python3 - "$tmp" <<'PY'
-import json,sys
-with open(sys.argv[1]) as f:
-    print(json.load(f)["id"])
-PY
-)"
+            project_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$tmp")"
             mkdir -p "$dir/.vercel"
             printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_TEAM_ID" "$project_id" > "$dir/.vercel/project.json"
             echo "$name -> $project_id"
@@ -104,18 +99,19 @@ PY
           curl -fsS "${{ steps.attacker.outputs.url }}" | grep -q "Cross-origin sender"
 
       - name: Publish launch URLs
+        env:
+          VICTIM_URL: ${{ steps.victim.outputs.url }}
+          ATTACKER_URL: ${{ steps.attacker.outputs.url }}
         run: |
-          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-import urllib.parse
-victim = """${{ steps.victim.outputs.url }}"""
-attacker = """${{ steps.attacker.outputs.url }}"""
-launch = attacker + "?victim=" + urllib.parse.quote(victim, safe="")
-print("## CloudKit Vercel PoC")
-print()
-print(f"- Victim origin: {victim}")
-print(f"- Attacker origin: {attacker}")
-print(f"- Launch URL: {launch}")
-print()
-print("Use only the researcher-owned Chattest development container: iCloud.com.nightvibes.prism.")
-print("Enter the temporary CloudKit Web API token only in the victim page; no Apple password is stored in Vercel or GitHub.")
-PY
+          set -euo pipefail
+          LAUNCH_URL="$(python3 -c 'import os,urllib.parse; print(os.environ["ATTACKER_URL"]+"?victim="+urllib.parse.quote(os.environ["VICTIM_URL"],safe=""))')"
+          {
+            echo "## CloudKit Vercel PoC"
+            echo
+            echo "- Victim origin: $VICTIM_URL"
+            echo "- Attacker origin: $ATTACKER_URL"
+            echo "- Launch URL: $LAUNCH_URL"
+            echo
+            echo "Use only the researcher-owned Chattest development container: iCloud.com.nightvibes.prism."
+            echo "Enter the temporary CloudKit Web API token only in the victim page; no Apple password is stored in Vercel or GitHub."
+          } >> "$GITHUB_STEP_SUMMARY"
