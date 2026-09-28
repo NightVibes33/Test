@@ -1,0 +1,16 @@
+name: H1 BCNY Dia discovery v2
+
+on:
+  push:
+    branches:
+      - h1-bcny-dia-windows
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover official Dia Windows package/update endpoints
+        run: python h1/bcny/dia-windows/discover_dia.py
