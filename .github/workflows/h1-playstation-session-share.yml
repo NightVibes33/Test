@@ -1,0 +1,83 @@
+name: PlayStation Session Share targeted probe
+
+on:
+  push:
+    branches:
+      - h1-playstation-session-share
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Targeted public-page and image-proxy checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAGE='https://session-share.playstation.com/5kBbS_pU_'
+
+          echo '=== PUBLIC PAGE ==='
+          curl -sS -L --max-time 20 --connect-timeout 10 \
+            -A 'Mozilla/5.0 HackerOne-security-research' \
+            -D page.headers "$PAGE" -o page.html \
+            -w 'PAGE_HTTP=%{http_code}\nPAGE_URL=%{url_effective}\nPAGE_TYPE=%{content_type}\nPAGE_SIZE=%{size_download}\n'
+          sed -n '1,30p' page.headers
+          echo '--- script/src and link/href assets ---'
+          python3 - <<'PY'
+          import re, html
+          from urllib.parse import urljoin, urlparse
+          text=open('page.html','r',encoding='utf-8',errors='replace').read()
+          urls=[]
+          for pat in [r'<script[^>]+src=["\x27]([^"\x27]+)', r'<link[^>]+href=["\x27]([^"\x27]+)']:
+              for m in re.finditer(pat,text,re.I):
+                  u=urljoin('https://session-share.playstation.com/5kBbS_pU_',html.unescape(m.group(1)))
+                  if u not in urls:
+                      urls.append(u)
+          for u in urls:
+              print(u)
+          open('assets.txt','w').write('\n'.join(urls))
+          PY
+
+          echo '=== LINKED JAVASCRIPT ENDPOINT STRINGS ==='
+          mkdir -p js
+          python3 - <<'PY'
+          from urllib.parse import urlparse
+          urls=[x.strip() for x in open('assets.txt') if x.strip()]
+          js=[u for u in urls if urlparse(u).path.endswith('.js')][:25]
+          open('js_urls.txt','w').write('\n'.join(js))
+          print(f'JS_COUNT={len(js)}')
+          PY
+          i=0
+          while IFS= read -r u; do
+            [ -z "$u" ] && continue
+            i=$((i+1))
+            curl -sS -L --max-time 20 --connect-timeout 10 -A 'Mozilla/5.0 HackerOne-security-research' "$u" -o "js/$i.js" || true
+          done < js_urls.txt
+          grep -Eo 'https?://[^"'''[:space:]<>\\]+' js/*.js 2>/dev/null | \
+            grep -Ei 'playstation|sony|session|share|graphql|api' | head -200 || true
+          echo '--- interesting literals ---'
+          grep -Eio '.{0,100}(sessionShare|session-share|gameSession|sessionId|shareId|invite|launch|redirect|fetch\(|axios|/api/).{0,180}' js/*.js 2>/dev/null | head -300 || true
+
+          echo '=== NEXT IMAGE: ALLOWED PLAYSTATION IMAGE ==='
+          curl -sS -L --max-time 20 --connect-timeout 10 \
+            -o image_ps.body -D image_ps.headers \
+            -w 'PS_IMAGE_HTTP=%{http_code}\nPS_IMAGE_TYPE=%{content_type}\nPS_IMAGE_SIZE=%{size_download}\n' \
+            'https://session-share.playstation.com/_next/image?url=https%3A%2F%2Fstatic.playstation.com%2Fimages%2Fv0%2Fcrossplay%2Fbackground.jpg&w=64&q=75' || true
+          sed -n '1,25p' image_ps.headers || true
+
+          echo '=== NEXT IMAGE: BENIGN EXTERNAL IMAGE ==='
+          curl -sS -L --max-time 20 --connect-timeout 10 \
+            -o image_ext.body -D image_ext.headers \
+            -w 'EXT_IMAGE_HTTP=%{http_code}\nEXT_IMAGE_TYPE=%{content_type}\nEXT_IMAGE_SIZE=%{size_download}\n' \
+            'https://session-share.playstation.com/_next/image?url=https%3A%2F%2Fhttpbin.org%2Fimage%2Fpng&w=64&q=75' || true
+          sed -n '1,25p' image_ext.headers || true
+
+          echo '=== BODY PREFIXES ==='
+          python3 - <<'PY'
+          for f in ['image_ps.body','image_ext.body']:
+              try:
+                  b=open(f,'rb').read(256)
+              except FileNotFoundError:
+                  b=b''
+              print(f, repr(b))
+          PY
