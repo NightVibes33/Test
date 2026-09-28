@@ -1,0 +1,93 @@
+name: PlayStation Session Share CPSS trace
+
+on:
+  push:
+    branches:
+      - h1-playstation-session-share
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trace CPSS and JoinCTA logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 HackerOne-security-research'
+          PAGE='https://session-share.playstation.com/5kBbS_pU_'
+          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$PAGE" -o page.html
+
+          python3 - <<'PY'
+          import re,html
+          from urllib.parse import urljoin,urlparse
+          h=open('page.html','r',encoding='utf-8',errors='replace').read()
+          urls=[]
+          for pat in [r'<script[^>]+src=["\x27]([^"\x27]+)',r'<link[^>]+href=["\x27]([^"\x27]+)']:
+              for m in re.finditer(pat,h,re.I):
+                  u=urljoin('https://session-share.playstation.com/',html.unescape(m.group(1)))
+                  if urlparse(u).path.endswith('.js') and u not in urls: urls.append(u)
+          open('urls.txt','w').write('\n'.join(urls))
+          print('CHUNKS',len(urls))
+          PY
+
+          mkdir -p js
+          i=0
+          while IFS= read -r u; do
+            [ -z "$u" ] && continue
+            i=$((i+1))
+            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "js/$i.js"
+          done < urls.txt
+
+          python3 - <<'PY'
+          import glob,re,os,json
+          terms=[
+            'async function cpssRequest',
+            'function cpssRequest',
+            'cpssRequest(',
+            'cpssUrl',
+            'sessionUrl',
+            'JoinCTA',
+            'launchUrl',
+            'steampowered.com/join/playstationsession',
+            'third-party-launcher',
+            'device-selector',
+            'window.location.href',
+            'window.location.assign',
+            'window.location.replace',
+            'location.href=',
+            'window.open(',
+            '.open(',
+            'href:',
+            'router.push',
+            'router.replace',
+            '/launcher/',
+          ]
+          for f in sorted(glob.glob('js/*.js')):
+              text=open(f,'r',encoding='utf-8',errors='replace').read()
+              relevant=False
+              for term in terms:
+                  hits=[m.start() for m in re.finditer(re.escape(term),text,re.I)]
+                  if not hits: continue
+                  if not relevant:
+                      print('\n===== FILE',os.path.basename(f),'SIZE',len(text),'====='); relevant=True
+                  print('\nTERM',term,'COUNT',len(hits))
+                  for pos in hits[:12]:
+                      lo=max(0,pos-1400); hi=min(len(text),pos+3500)
+                      sn=text[lo:hi].replace('\n',' ')
+                      # redact compact JWT-like literals while preserving header/payload length signal
+                      sn=re.sub(r'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}', '<JWT_REDACTED>', sn)
+                      print('OFFSET',pos)
+                      print(sn[:4900])
+
+          print('\n=== EXACT ROUTE/API STRING LITERALS ===')
+          seen=set()
+          for f in glob.glob('js/*.js'):
+              text=open(f,'r',encoding='utf-8',errors='replace').read()
+              for m in re.finditer(r'["\x27]([^"\x27]{1,600})["\x27]',text):
+                  s=m.group(1)
+                  if re.search(r'(cpss|sessionInfo|session/v1|launcher|launchUrl|playstationsession|jws)',s,re.I) and s not in seen:
+                      seen.add(s)
+                      s=re.sub(r'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}', '<JWT_REDACTED>', s)
+                      print(repr(s[:1200]))
+          PY
