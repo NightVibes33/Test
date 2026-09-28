@@ -1,4 +1,4 @@
-name: PlayStation Tournaments runtime config audit
+name: PlayStation Tournaments focused config extraction
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Extract tournament runtime config
+      - name: Extract only service and tournament-specific config
         shell: bash
         run: |
           set -euo pipefail
@@ -19,61 +19,46 @@ jobs:
             'https://compete.playstation.com/' -o page.html
 
           python3 - <<'PY'
-          import re, json, html
-          from urllib.parse import urljoin
-
+          import re,json,html
           s=open('page.html',encoding='utf-8',errors='replace').read()
+          runtime=None
+          for m in re.finditer(r'<script[^>]*type=["\x27]application/json["\x27][^>]*>(.*?)</script>',s,re.S|re.I):
+              try: obj=json.loads(html.unescape(m.group(1)).strip())
+              except: continue
+              if isinstance(obj,dict) and 'service' in obj and 'gitSha' in obj:
+                  runtime=obj; break
+          if runtime:
+              for k in ['name','env','isoenv','version','psnAppVersion','gitBranch','gitSha']:
+                  print(k,'=',repr(runtime.get(k)))
+              print('SERVICE=',json.dumps(runtime.get('service'),indent=2,sort_keys=True))
+              print('FEATURE=',json.dumps(runtime.get('feature'),indent=2,sort_keys=True))
+              sa=runtime.get('staticAsset')
+              print('STATIC_ASSET=',json.dumps(sa,indent=2,sort_keys=True)[:5000])
 
-          print('=== APPLICATION/JSON BLOCKS ===')
-          idx=0
-          for m in re.finditer(r'<script([^>]*)type=["\x27]application/json["\x27]([^>]*)>(.*?)</script>',s,re.S|re.I):
-              idx += 1
-              raw=html.unescape(m.group(3)).strip()
-              try:
-                  obj=json.loads(raw)
-              except Exception:
-                  continue
-              def has_runtime(x):
-                  return isinstance(x,dict) and (
-                      'service' in x or
-                      ('gitSha' in x and 'version' in x) or
-                      ('psnAppVersion' in x and 'staticAsset' in x)
-                  )
-              print(f'BLOCK {idx} TYPE={type(obj).__name__}')
-              if isinstance(obj,dict):
-                  print('KEYS',sorted(obj.keys()))
-                  if has_runtime(obj):
-                      print('RUNTIME_JSON',json.dumps(obj,indent=2,sort_keys=True)[:30000])
-              elif isinstance(obj,list):
-                  print('LIST_LEN',len(obj))
-                  for j,item in enumerate(obj[:100]):
-                      if has_runtime(item):
-                          print('RUNTIME_ITEM',j,json.dumps(item,indent=2,sort_keys=True)[:30000])
+          print('\n=== TOURNAMENT-RELATED TAGS / COMPONENT NAMES ===')
+          vals=set()
+          for m in re.finditer(r'<([\w:-]+)([^>]*)>',s,re.I):
+              tag=m.group(1); attrs=m.group(2)
+              blob=(tag+' '+attrs)
+              if re.search(r'(?i)(tournament|competition|bracket|match|register|check.?in|leaderboard)',blob):
+                  vals.add(' '.join(blob.split()))
+          for v in sorted(vals): print(v[:3000])
 
-          print('\n=== INLINE JSON-LIKE RUNTIME OBJECTS ===')
-          # Also inspect JSON-looking script blocks without type=application/json.
-          for m in re.finditer(r'<script([^>]*)>(.*?)</script>',s,re.S|re.I):
-              raw=html.unescape(m.group(2)).strip()
-              if not raw or ('"service"' not in raw and '"gitSha"' not in raw and '"psnAppVersion"' not in raw):
-                  continue
-              print('SCRIPT_ATTRS',m.group(1)[:400])
-              print('SCRIPT_PREFIX',raw[:12000])
-
-          print('\n=== TOURNAMENT HTML SIGNALS ===')
-          patterns=[
-            r'<[^>]*(?:tournament|competition|bracket|match|register|check.?in|team)[^>]*>',
-            r'(?:data-[\w-]+|href|src)=["\x27][^"\x27]*(?:tournament|competition|bracket|match|register|check.?in|team)[^"\x27]*["\x27]'
-          ]
-          seen=set()
-          for pat in patterns:
-              for x in re.findall(pat,s,re.I):
-                  x=' '.join(x.split())
-                  if x not in seen:
-                      seen.add(x)
-                      print(x[:2000])
-
-          print('\n=== URL-LIKE STRINGS NEAR CONFIG ===')
-          for u in sorted(set(re.findall(r'https?://[^"\x27<>\\\s]+',s))):
-              if re.search(r'(?i)(playstation|sony|tournament|competition|match|api|graphql)',u):
-                  print(u[:1500])
+          print('\n=== TOURNAMENT-RELATED JSON KEYS/VALUES ===')
+          for m in re.finditer(r'<script[^>]*type=["\x27]application/json["\x27][^>]*>(.*?)</script>',s,re.S|re.I):
+              raw=html.unescape(m.group(1)).strip()
+              try: obj=json.loads(raw)
+              except: continue
+              def walk(x,path=''):
+                  if isinstance(x,dict):
+                      for k,v in x.items():
+                          p=f'{path}.{k}' if path else k
+                          if re.search(r'(?i)(tournament|competition|bracket|match|register|check.?in|leaderboard)',k):
+                              print(p,'=',repr(v)[:4000])
+                          walk(v,p)
+                  elif isinstance(x,list):
+                      for i,v in enumerate(x[:200]): walk(v,f'{path}[{i}]')
+                  elif isinstance(x,str) and re.search(r'(?i)(tournament|competition|bracket|match|register|check.?in|leaderboard)',x):
+                      print(path,'=',repr(x)[:4000])
+              walk(obj)
           PY
