@@ -1,0 +1,65 @@
+name: CloudKit Apple submission package
+
+on:
+  push:
+    branches:
+      - apple-bounty-services-recon-20260928
+    paths:
+      - "apple-services-recon/cloudkit-postmessage-report.md"
+      - "apple-services-recon/cloudkit-postmessage-submission.md"
+      - "apple-services-recon/cloudkit_postmessage_poc.py"
+      - "apple-services-recon/cloudkit_postmessage_regression.py"
+      - "apple-services-recon/cloudkit_current_static.py"
+      - "apple-services-recon/icloud_app_popup_reachability.py"
+      - ".github/workflows/cloudkit-submission-package.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install browser harness
+        run: pip install --disable-pip-version-check playwright
+      - name: Verify current regression state
+        shell: bash
+        run: |
+          set +e
+          python3 apple-services-recon/cloudkit_postmessage_regression.py
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then
+            echo "Current state confirmed: VULNERABLE"
+          elif [ "$rc" -eq 0 ]; then
+            echo "Current state appears FIXED; package remains historical evidence."
+          else
+            echo "Regression harness failed."
+            exit "$rc"
+          fi
+      - name: Build submission attachment
+        run: |
+          rm -rf submission
+          mkdir -p submission
+          cp apple-services-recon/cloudkit-postmessage-submission.md submission/
+          cp apple-services-recon/cloudkit-postmessage-report.md submission/
+          cp apple-services-recon/cloudkit_postmessage_poc.py submission/
+          cp apple-services-recon/cloudkit_postmessage_regression.py submission/
+          cp apple-services-recon/cloudkit_current_static.py submission/
+          cp apple-services-recon/icloud_app_popup_reachability.py submission/
+          (cd submission && sha256sum * > SHA256SUMS.txt)
+          zip -j -9 cloudkit-postmessage-apple-submission.zip submission/*
+      - name: Verify archive
+        run: |
+          unzip -l cloudkit-postmessage-apple-submission.zip
+          unzip -p cloudkit-postmessage-apple-submission.zip SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloudkit-postmessage-apple-submission
+          path: cloudkit-postmessage-apple-submission.zip
+          if-no-files-found: error

@@ -1,0 +1,34 @@
+name: CloudKit postMessage local PoC
+
+on:
+  push:
+    branches:
+      - apple-bounty-services-recon-20260928
+    paths:
+      - "apple-services-recon/cloudkit_postmessage_poc.py"
+      - ".github/workflows/cloudkit-postmessage-poc.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --disable-pip-version-check playwright
+      - run: python3 apple-services-recon/cloudkit_postmessage_poc.py
+      - run: cat apple-services-recon/cloudkit-postmessage-poc.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloudkit-postmessage-poc
+          path: |
+            apple-services-recon/cloudkit-postmessage-poc.json
+            apple-services-recon/cloudkit-postmessage-poc.md
+          if-no-files-found: error
+
+# rerun after repository made private
