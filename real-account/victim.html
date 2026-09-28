@@ -18,7 +18,7 @@ const log=(...x)=>{const el=document.getElementById("log");el.textContent+=x.map
 let container=null;
 let writes=[];
 const authTokenStore={
- putToken(id,tok){writes.push({id,length:tok?tok.length:0});sessionStorage.setItem("ck:"+id,tok||"");log("authTokenStore.putToken",{id,length:tok?tok.length:0});},
+ putToken(id,tok){const isSynthetic=tok===SENTINEL;syntheticAccepted=syntheticAccepted||isSynthetic;writes.push({id,length:tok?tok.length:0,isSynthetic});sessionStorage.setItem("ck:"+id,tok||"");log("authTokenStore.putToken",{id,length:tok?tok.length:0,isSynthetic});if(isSynthetic)log("✅ SYNTHETIC SESSION ACCEPTED");},
  getToken(id){const tok=sessionStorage.getItem("ck:"+id);log("authTokenStore.getToken",{id,present:!!tok,length:tok?tok.length:0});return tok||null;}
 };
 document.getElementById("configure").onclick=async()=>{
@@ -26,7 +26,7 @@ document.getElementById("configure").onclick=async()=>{
  const apiToken=document.getElementById("token").value.trim();
  const environment=document.getElementById("env").value;
  if(!containerIdentifier||!apiToken){log("Missing container or API token");return;}
- CloudKit.configure({containers:[{containerIdentifier,environment,apiTokenAuth:{apiToken,persist:false,signInButton:{id:"apple-sign-in-button",theme:"black"},signOutButton:{id:"apple-sign-out-button",theme:"black"}}}],services:{authTokenStore}});
+ const monitoredFetch=(url,opts)=>{const s=String(url);const containsSynthetic=s.includes(encodeURIComponent(SENTINEL))||s.includes(SENTINEL);if(containsSynthetic){syntheticPropagated=true;log("✅ SYNTHETIC SESSION PROPAGATED INTO CLOUDKIT REQUEST",{path:(()=>{try{return new URL(s).pathname}catch(_){return "unknown"}})()});}return window.fetch(url,opts);};\n CloudKit.configure({containers:[{containerIdentifier,environment,apiTokenAuth:{apiToken,persist:false,signInButton:{id:"apple-sign-in-button",theme:"black"},signOutButton:{id:"apple-sign-out-button",theme:"black"}}}],services:{authTokenStore,fetch:monitoredFetch}});
  container=CloudKit.getDefaultContainer();
  log("Configured",{version:CloudKit.VERSION,containerIdentifier,environment});
  try{const user=await container.setUpAuth();log("setUpAuth result",{authenticated:!!user,userRecordName:user&&user.userRecordName});}
@@ -34,7 +34,7 @@ document.getElementById("configure").onclick=async()=>{
 };
 document.getElementById("status").onclick=async()=>{
  if(!container){log("Configure first");return;}
- try{const user=await container.setUpAuth();log("Auth state",{authenticated:!!user,userRecordName:user&&user.userRecordName,writes});}
+ try{const user=await container.setUpAuth();log("Auth state",{authenticated:!!user,userRecordName:user&&user.userRecordName,writes,syntheticAccepted,syntheticPropagated});}
  catch(e){log("Auth-state error",{name:e&&e.name,reason:e&&e.reason});}
 };
 window.addEventListener("message",e=>log("page observed message",{origin:e.origin,hasObjectData:!!e.data&&typeof e.data==="object",keys:e.data&&typeof e.data==="object"?Object.keys(e.data):[]}));
