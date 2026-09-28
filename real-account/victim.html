@@ -7,7 +7,7 @@
 <p class="warn">Use only a CloudKit container you own. The API token stays in this browser session and is never sent anywhere except Apple CloudKit by CloudKit JS.</p>
 <label>Container ID (Chattest)</label><input id="container" value="iCloud.com.nightvibes.prism" readonly>
 <label>CloudKit Web API Token</label><input id="token" type="password" autocomplete="off" placeholder="paste token from CloudKit Dashboard">
-<label>Environment</label><select id="env"><option value="development">development</option><option value="production">production</option></select>
+<label>Environment</label><select id="env" disabled><option value="development" selected>development</option></select>
 <button id="configure">Configure CloudKit</button>
 <div id="apple-sign-in-button"></div><div id="apple-sign-out-button"></div>
 <button id="status">Check auth state</button>
@@ -18,6 +18,8 @@ const SENTINEL="OAI_REAL_ACCOUNT_TEST_CKSESSION_20260928";
 const log=(...x)=>{const el=document.getElementById("log");el.textContent+=x.map(v=>typeof v==="string"?v:JSON.stringify(v,null,2)).join(" ")+"\n";};
 let container=null;
 let writes=[];
+let syntheticAccepted=false;
+let syntheticPropagated=false;
 const authTokenStore={
  putToken(id,tok){const isSynthetic=tok===SENTINEL;syntheticAccepted=syntheticAccepted||isSynthetic;writes.push({id,length:tok?tok.length:0,isSynthetic});sessionStorage.setItem("ck:"+id,tok||"");log("authTokenStore.putToken",{id,length:tok?tok.length:0,isSynthetic});if(isSynthetic)log("✅ SYNTHETIC SESSION ACCEPTED");},
  getToken(id){const tok=sessionStorage.getItem("ck:"+id);log("authTokenStore.getToken",{id,present:!!tok,length:tok?tok.length:0});return tok||null;}
