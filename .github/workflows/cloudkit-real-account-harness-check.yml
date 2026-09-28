@@ -1,0 +1,27 @@
+name: CloudKit real-account harness check
+
+on:
+  push:
+    branches:
+      - apple-bounty-services-recon-20260928
+    paths:
+      - "apple-services-recon/cloudkit_real_account_harness.py"
+      - ".github/workflows/cloudkit-real-account-harness-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Syntax check
+        run: python3 -m py_compile apple-services-recon/cloudkit_real_account_harness.py
+      - name: Ensure no literal Apple credentials are committed
+        run: |
+          ! grep -RInE '([A-Za-z0-9._%+-]+@icloud\.com|CLOUDKIT_API_TOKEN\s*=\s*["'\'''][^$])' apple-services-recon/cloudkit_real_account_harness.py
