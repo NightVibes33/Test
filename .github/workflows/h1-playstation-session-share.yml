@@ -1,4 +1,4 @@
-name: PlayStation Session Share targeted probe
+name: PlayStation Session Share focused bundle probe
 
 on:
   push:
@@ -10,97 +10,82 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Targeted public-page and API checks
+      - name: Inspect current Session Share launcher bundle
         shell: bash
         run: |
           set -euo pipefail
-          PAGE='https://session-share.playstation.com/5kBbS_pU_'
           UA='Mozilla/5.0 HackerOne-security-research'
+          BASE='https://session-share.playstation.com'
+          SESSION_CHUNK="$BASE/_next/static/chunks/pages/%5BsessionId%5D-85e43b90b5e068ae.js"
 
-          echo '=== PUBLIC PAGE ==='
-          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" \
-            -D page.headers "$PAGE" -o page.html \
-            -w 'PAGE_HTTP=%{http_code}\nPAGE_URL=%{url_effective}\nPAGE_TYPE=%{content_type}\nPAGE_SIZE=%{size_download}\n'
-          sed -n '1,25p' page.headers
+          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$SESSION_CHUNK" -o session.js \
+            -w 'SESSION_CHUNK_HTTP=%{http_code}\nSESSION_CHUNK_TYPE=%{content_type}\nSESSION_CHUNK_SIZE=%{size_download}\n'
 
           python3 - <<'PY'
-          import re, html
-          from urllib.parse import urljoin, urlparse
-          base='https://session-share.playstation.com/5kBbS_pU_'
-          text=open('page.html','r',encoding='utf-8',errors='replace').read()
+          import re
+          text=open('session.js','r',encoding='utf-8',errors='replace').read()
+
+          print('=== INTERESTING URLS ===')
           urls=[]
-          for pat in [r'<script[^>]+src=["\x27]([^"\x27]+)', r'<link[^>]+href=["\x27]([^"\x27]+)']:
-              for m in re.finditer(pat,text,re.I):
-                  u=urljoin(base,html.unescape(m.group(1)))
-                  if u not in urls:
-                      urls.append(u)
-          print('=== PAGE ASSETS ===')
-          for u in urls: print(u)
-          js=[u for u in urls if urlparse(u).path.endswith('.js')][:25]
-          open('js_urls.txt','w').write('\n'.join(js))
-          print('JS_COUNT='+str(len(js)))
-          PY
+          for u in re.findall(r'https?://[^"\x27\\\s<>]+', text):
+              if re.search(r'playstation|sony|steam|session|api|graphql',u,re.I) and u not in urls:
+                  urls.append(u)
+          for u in urls:
+              print(u[:1200])
 
-          mkdir -p js
-          i=0
-          while IFS= read -r u; do
-            [ -z "$u" ] && continue
-            i=$((i+1))
-            curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" "$u" -o "js/$i.js" || true
-          done < js_urls.txt
-
-          echo '=== JAVASCRIPT INTERESTING STRINGS ==='
-          python3 - <<'PY'
-          import glob,re
-          needles=re.compile(r'(https?://|/api/|session.?share|game.?session|sessionId|shareId|invite|launch|redirect|oembed|image\.api\.playstation)',re.I)
-          url_re=re.compile(r'https?://[^"\x27\\\s<>]+')
+          print('=== FOCUSED CONTEXTS ===')
+          terms=[
+              'steampowered.com','playstationsession','jws','launchUrl','launcher',
+              'JoinCTA','/share/','sessionId','window.location','location.assign',
+              'location.href','window.open','jwt','decode','GraphQL','mutation ',
+              'query ','/api/','getServerSideProps','userAccessToken','platforms'
+          ]
           seen=set()
-          for f in sorted(glob.glob('js/*.js')):
-              text=open(f,'r',encoding='utf-8',errors='replace').read()
-              for u in url_re.findall(text):
-                  if re.search(r'playstation|sony|session|share|api|graphql',u,re.I) and u not in seen:
-                      seen.add(u); print('URL',u[:700])
-              for m in needles.finditer(text):
-                  lo=max(0,m.start()-140); hi=min(len(text),m.end()+260)
-                  snip=text[lo:hi].replace('\n',' ')
-                  key=snip[:500]
+          for term in terms:
+              start=0
+              count=0
+              while True:
+                  i=text.lower().find(term.lower(),start)
+                  if i<0 or count>=20:
+                      break
+                  lo=max(0,i-500); hi=min(len(text),i+1200)
+                  sn=text[lo:hi].replace('\n',' ')
+                  key=sn[:900]
                   if key not in seen:
-                      seen.add(key); print('CTX',snip[:700])
+                      seen.add(key)
+                      print('\n--- TERM:',term,'OFFSET',i,'---')
+                      print(sn)
+                  start=i+max(1,len(term)); count+=1
+
+          print('=== STRING LITERALS WITH ROUTES/APIS ===')
+          lits=re.findall(r'["\x27]([^"\x27]{3,500})["\x27]',text)
+          out=[]
+          for s in lits:
+              if re.search(r'(session|share|launch|jws|steam|/api/|graphql|playstation)',s,re.I):
+                  if s not in out:
+                      out.append(s)
+          for s in out[:400]:
+              print(repr(s))
           PY
 
-          echo '=== OEMBED ==='
+          echo '=== CURRENT PAGE SSR METADATA ==='
           curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" \
-            -D oembed.headers 'https://session-share.playstation.com/api/oembed/5kBbS_pU_' -o oembed.json \
-            -w 'OEMBED_HTTP=%{http_code}\nOEMBED_TYPE=%{content_type}\nOEMBED_SIZE=%{size_download}\n'
-          sed -n '1,25p' oembed.headers
+            'https://session-share.playstation.com/5kBbS_pU_' -o page.html
           python3 - <<'PY'
-          import json
-          b=open('oembed.json','rb').read()
-          print('OEMBED_PREFIX',repr(b[:1000]))
-          try:
-              o=json.loads(b)
-              print('OEMBED_KEYS',sorted(o.keys()) if isinstance(o,dict) else type(o).__name__)
-          except Exception as e:
-              print('OEMBED_JSON_ERROR',e)
-          PY
-
-          echo '=== NEXT IMAGE: PLAYSTATION IMAGE ==='
-          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" \
-            -o image_ps.body -D image_ps.headers \
-            -w 'PS_IMAGE_HTTP=%{http_code}\nPS_IMAGE_TYPE=%{content_type}\nPS_IMAGE_SIZE=%{size_download}\n' \
-            'https://session-share.playstation.com/_next/image?url=https%3A%2F%2Fstatic.playstation.com%2Fimages%2Fv0%2Fcrossplay%2Fbackground.jpg&w=64&q=75' || true
-          sed -n '1,20p' image_ps.headers || true
-
-          echo '=== NEXT IMAGE: BENIGN EXTERNAL IMAGE ==='
-          curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" \
-            -o image_ext.body -D image_ext.headers \
-            -w 'EXT_IMAGE_HTTP=%{http_code}\nEXT_IMAGE_TYPE=%{content_type}\nEXT_IMAGE_SIZE=%{size_download}\n' \
-            'https://session-share.playstation.com/_next/image?url=https%3A%2F%2Fhttpbin.org%2Fimage%2Fpng&w=64&q=75' || true
-          sed -n '1,20p' image_ext.headers || true
-
-          python3 - <<'PY'
-          for f in ['image_ps.body','image_ext.body']:
-              try: b=open(f,'rb').read(256)
-              except FileNotFoundError: b=b''
-              print(f, repr(b))
+          import re, html, json
+          t=open('page.html','r',encoding='utf-8',errors='replace').read()
+          for key in ['__NEXT_DATA__','launchUrl','jws','sessionId','platforms','playstationsession']:
+              print('COUNT',key,t.lower().count(key.lower()))
+          m=re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',t,re.S)
+          if m:
+              raw=html.unescape(m.group(1))
+              print('NEXT_DATA_PREFIX',raw[:5000])
+              try:
+                  o=json.loads(raw)
+                  print('NEXT_DATA_TOP_KEYS',list(o.keys()))
+                  print('NEXT_DATA_PAGE',o.get('page'))
+                  print('NEXT_DATA_BUILD',o.get('buildId'))
+                  print('NEXT_DATA_PROPS',json.dumps(o.get('props'),separators=(',',':'))[:15000])
+              except Exception as e:
+                  print('NEXT_DATA_JSON_ERROR',repr(e))
           PY
