@@ -5,8 +5,6 @@ on:
   push:
     branches:
       - h1-bcny-dia-windows
-    paths:
-      - ".github/workflows/h1-bcny-dia-windows.yml"
 
 jobs:
   inspect-official-dia-page:
@@ -21,29 +19,29 @@ jobs:
           import urllib.request
           from urllib.parse import urljoin, urlparse
 
-          base = "https://www.diabrowser.com/windows"
-          headers = {"User-Agent": "Mozilla/5.0 HackerOne/NightVibes33"}
+          BASE = "https://www.diabrowser.com/windows"
+          HEADERS = {"User-Agent": "Mozilla/5.0 HackerOne/NightVibes33"}
 
           def get(url):
-              req = urllib.request.Request(url, headers=headers)
+              req = urllib.request.Request(url, headers=HEADERS)
               with urllib.request.urlopen(req, timeout=30) as r:
                   return r.read().decode("utf-8", "replace")
 
-          html = get(base)
+          html = get(BASE)
           print("PAGE_BYTES", len(html))
 
-          url_re = re.compile(r'https?://[^"\\'<>\\s]+', re.I)
-          direct = sorted(set(url_re.findall(html)))
+          direct = sorted(set(re.findall(r"https?://[^\\\"'<>\\s]+", html, re.I)))
           print("=== DIRECT CANDIDATES ===")
           for u in direct:
-              if re.search(r'windows|win32|win64|x64|msix|msi|exe|appinstaller|download|installer|update|release', u, re.I):
+              if re.search(r"windows|win32|win64|x64|msix|msi|exe|appinstaller|download|installer|update|release", u, re.I):
                   print(u)
 
-          srcs = re.findall(r'<script[^>]+src=["\\']([^"\\']+)["\\']', html, re.I)
+          srcs = re.findall(r"<script[^>]+src=[\\\"']([^\\\"']+)[\\\"']", html, re.I)
           scripts = []
           for src in srcs:
-              u = urljoin(base, src)
-              if urlparse(u).hostname and urlparse(u).hostname.endswith("diabrowser.com"):
+              u = urljoin(BASE, src)
+              host = urlparse(u).hostname or ""
+              if host.endswith("diabrowser.com"):
                   scripts.append(u)
           scripts = sorted(set(scripts))
 
@@ -52,9 +50,9 @@ jobs:
               print(s)
 
           patterns = [
-              re.compile(r'https?://[^"\\'\\s<>]+\\.(?:exe|msix|msixbundle|msi|appinstaller)(?:\\?[^"\\'\\s<>]*)?', re.I),
-              re.compile(r'https?://[^"\\'\\s<>]*(?:download|installer|update|release)[^"\\'\\s<>]*', re.I),
-              re.compile(r'[^"\\'\\s<>]{0,120}(?:windows|win32|win64|x64)[^"\\'\\s<>]{0,180}', re.I),
+              re.compile(r"https?://[^\\\"'\\s<>]+\\.(?:exe|msix|msixbundle|msi|appinstaller)(?:\\?[^\\\"'\\s<>]*)?", re.I),
+              re.compile(r"https?://[^\\\"'\\s<>]*(?:download|installer|update|release)[^\\\"'\\s<>]*", re.I),
+              re.compile(r"[^\\\"'\\s<>]{0,120}(?:windows|win32|win64|x64)[^\\\"'\\s<>]{0,180}", re.I),
           ]
 
           seen = set()
