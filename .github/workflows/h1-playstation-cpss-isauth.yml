@@ -1,0 +1,49 @@
+name: PlayStation CPSS isAuth comparison
+
+on:
+  push:
+    branches:
+      - h1-playstation-session-share
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare unauthenticated isAuth false vs true
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 HackerOne-security-research'
+          BASE='https://web.np.playstation.com/api/cpss/v1/sessionInfo'
+          for sid in '5kBbS_pU_' 'Lq3djkxt'; do
+            echo "=== SID $sid ==="
+            for flag in false true; do
+              url="$BASE/$sid?country=US&language=en&isAuth=$flag"
+              out="resp_${sid}_${flag}.body"
+              hdr="resp_${sid}_${flag}.headers"
+              curl -sS -L --max-time 20 --connect-timeout 10 -A "$UA" \
+                -D "$hdr" -o "$out" \
+                -w "FLAG=$flag HTTP=%{http_code} TYPE=%{content_type} SIZE=%{size_download} TIME=%{time_total}\n" \
+                "$url" || true
+              python3 - "$out" <<'PY'
+import sys,json,hashlib
+p=sys.argv[1]
+b=open(p,'rb').read()
+print('SHA256',hashlib.sha256(b).hexdigest())
+try:
+    o=json.loads(b)
+    if isinstance(o,dict):
+        print('KEYS',sorted(o.keys()))
+        safe={}
+        for k,v in o.items():
+            if k.lower() in {'error','reason','message','status','code','didpassauth','isauth','isopen','timeended','maxplayers','mspollinginterval'}:
+                safe[k]=v
+        print('SAFE',json.dumps(safe,separators=(',',':')))
+    else:
+        print('JSON_TYPE',type(o).__name__)
+except Exception:
+    print('PREFIX',repr(b[:300]))
+PY
+            done
+          done
