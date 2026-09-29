@@ -5,9 +5,7 @@ on:
       - ".github/workflows/gotphoto-page-check.yml"
 jobs:
   check:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    runs-on: macos-latest
     steps:
       - name: Fetch customer page
         run: |
@@ -20,9 +18,9 @@ jobs:
           from html.parser import HTMLParser
           import re
           from urllib.parse import urljoin
-          html=open("page.html",encoding="utf-8",errors="replace").read()
-          print("bytes",len(html))
-          print("titles",re.findall(r"<title[^>]*>(.*?)</title>",html,re.I|re.S)[:3])
+          s=open("page.html",encoding="utf-8",errors="replace").read()
+          print("bytes",len(s))
+          print("titles",re.findall(r"<title[^>]*>(.*?)</title>",s,re.I|re.S)[:3])
           class P(HTMLParser):
               def __init__(self): super().__init__(); self.forms=[]; self.links=[]
               def handle_starttag(self,tag,attrs):
@@ -30,7 +28,7 @@ jobs:
                   if tag=="form": self.forms.append({"action":a.get("action"),"method":a.get("method")})
                   for k in ("href","src"):
                       if a.get(k): self.links.append(urljoin("https://newcountryphoto.gotphoto.com/",a[k]))
-          p=P(); p.feed(html)
+          p=P(); p.feed(s)
           print("forms",p.forms)
           for x in p.links[:250]: print(x)
           PY
