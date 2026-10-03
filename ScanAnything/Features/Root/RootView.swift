@@ -171,6 +171,14 @@ private struct ScanAnythingSettingsView: View {
             Section("About") {
                 LabeledContent("App", value: "ScanAnything")
                 LabeledContent("Minimum iOS", value: "18")
+                Link(
+                    "Privacy Policy",
+                    destination: URL(string: "https://nightvibes33.github.io/ScanAnything/privacy.html")!
+                )
+                Link(
+                    "Terms of Use",
+                    destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
+                )
                 NavigationLink("Open-source acknowledgements") {
                     List {
                         Section("ObjectScanner") {

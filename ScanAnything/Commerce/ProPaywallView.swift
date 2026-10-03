@@ -64,8 +64,15 @@ struct ProPaywallView: View {
 
                                         Spacer()
 
-                                        Text(product.displayPrice)
-                                            .font(.headline.monospacedDigit())
+                                        VStack(alignment: .trailing, spacing: 2) {
+                                            Text(product.displayPrice)
+                                                .font(.headline.monospacedDigit())
+                                            if let period = billingPeriod(for: product) {
+                                                Text(period)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
                                     }
                                     .padding(.vertical, 5)
                                 }
@@ -118,6 +125,23 @@ struct ProPaywallView: View {
                 }
             }
         }
+    }
+
+    private func billingPeriod(for product: Product) -> String? {
+        guard let period = product.subscription?.subscriptionPeriod else {
+            return nil
+        }
+
+        let unit: String
+        switch period.unit {
+        case .day: unit = period.value == 1 ? "day" : "days"
+        case .week: unit = period.value == 1 ? "week" : "weeks"
+        case .month: unit = period.value == 1 ? "month" : "months"
+        case .year: unit = period.value == 1 ? "year" : "years"
+        @unknown default: return nil
+        }
+
+        return "every \(period.value) \(unit)"
     }
 
     private func benefit(_ text: String, symbol: String) -> some View {
