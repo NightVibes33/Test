@@ -148,6 +148,7 @@ final class TrueDepthEngine: ScanEngine {
             id: workspace.id,
             name: Self.defaultName(for: Date()),
             engine: Self.kind,
+            assetKind: .object,
             modelFileName: "cloud.ply",
             isMetricallyScaled: true,
             pointCount: points.count,
