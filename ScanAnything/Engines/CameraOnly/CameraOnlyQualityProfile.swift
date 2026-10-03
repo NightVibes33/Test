@@ -38,6 +38,13 @@ struct CameraOnlyQualityProfile: Sendable, Equatable {
     let splitScreenSize: Float
     let datasetDownscaleFactor: Float
 
+    let learnedDepthPriorEnabled: Bool
+    let depthPriorKeyframeCount: Int
+    let depthPriorMinimumAnchors: Int
+    let depthPriorGridStride: Int
+    let depthPriorMaximumPoints: Int
+    let depthPriorVoxelSize: Float
+
     static let highDetail = CameraOnlyQualityProfile(
         targetFrameCount: 220,
         minimumFrameCount: 120,
@@ -66,6 +73,12 @@ struct CameraOnlyQualityProfile: Sendable, Equatable {
         stopScreenSizeAt: 12_000,
         stopDensifyAt: 15_000,
         splitScreenSize: 0.045,
-        datasetDownscaleFactor: 1.0
+        datasetDownscaleFactor: 1.0,
+        learnedDepthPriorEnabled: true,
+        depthPriorKeyframeCount: 24,
+        depthPriorMinimumAnchors: 32,
+        depthPriorGridStride: 8,
+        depthPriorMaximumPoints: 120_000,
+        depthPriorVoxelSize: 0.003
     )
 }
