@@ -271,7 +271,6 @@ final class RoomCaptureEngine: ScanEngine {
                 name: "\(roomName) · fotoğraflı",
                 engine: Self.kind,
                 assetKind: .room,
-            assetKind: .room,
                 // Stills alone carry no scale. The parametric model next to it does,
                 // which is how this one can be scaled later.
                 isMetricallyScaled: false,
