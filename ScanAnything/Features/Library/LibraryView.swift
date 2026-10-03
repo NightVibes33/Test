@@ -162,7 +162,7 @@ private struct ScanRow: View {
                     .frame(width: 54, height: 54)
                     .overlay {
                         Image(systemName: record.isGaussianSplat ? "sparkles.rectangle.stack" : "aqi.medium")
-                            .foregroundStyle(record.isGaussianSplat ? .tint : .secondary)
+                            .foregroundStyle(.secondary)
                     }
             }
 

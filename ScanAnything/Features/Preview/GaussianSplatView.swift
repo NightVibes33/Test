@@ -35,7 +35,7 @@ struct GaussianSplatView: UIViewRepresentable {
     }
 }
 
-fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
+@MainActor\nfileprivate final class ScanAnythingSplatRenderer: NSObject, @preconcurrency MTKViewDelegate {
     private let view: MTKView
     private let device: MTLDevice
     private let queue: MTLCommandQueue
@@ -122,7 +122,7 @@ fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
             znear: 0,
             zfar: 1
         )
-        let descriptor = ViewportDescriptor(
+        let descriptor = SplatRenderer.ViewportDescriptor(
             viewport: viewport,
             projectionMatrix: projection,
             viewMatrix: viewMatrix,
