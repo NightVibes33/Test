@@ -136,6 +136,9 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
             return
         }
 
+        let fallbackFeaturePoints = frame.rawFeaturePoints?.points ?? []
+        let fallbackFeatureIdentifiers = frame.rawFeaturePoints?.identifiers ?? []
+
         highResolutionCaptureInFlight = true
         session.captureHighResolutionFrame { [weak self] capturedFrame, error in
             guard let self else { return }
@@ -162,12 +165,20 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
                     return
                 }
 
-                self.persist(capturedFrame)
+                self.persist(
+                    capturedFrame,
+                    fallbackFeaturePoints: fallbackFeaturePoints,
+                    fallbackFeatureIdentifiers: fallbackFeatureIdentifiers
+                )
             }
         }
     }
 
-    private func persist(_ frame: ARFrame) {
+    private func persist(
+        _ frame: ARFrame,
+        fallbackFeaturePoints: [SIMD3<Float>],
+        fallbackFeatureIdentifiers: [UInt64]
+    ) {
         guard frames.count < quality.maximumFrameCount else { return }
 
         guard case .normal = frame.camera.trackingState else {
@@ -226,13 +237,22 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
         // feature. msplat otherwise falls back to flat 50% gray for XYZ-only
         // PLY input, which makes the optimizer spend early iterations learning
         // base color that ARKit already observed.
-        if let cloud = frame.rawFeaturePoints,
-           featurePoints.count < quality.maximumFeaturePoints {
-            appendFeaturePoints(
-                cloud,
-                camera: camera,
-                pixelBuffer: frame.capturedImage
-            )
+        if featurePoints.count < quality.maximumFeaturePoints {
+            if let cloud = frame.rawFeaturePoints {
+                appendFeaturePoints(
+                    points: cloud.points,
+                    identifiers: cloud.identifiers,
+                    camera: camera,
+                    pixelBuffer: frame.capturedImage
+                )
+            } else if !fallbackFeaturePoints.isEmpty {
+                appendFeaturePoints(
+                    points: fallbackFeaturePoints,
+                    identifiers: fallbackFeatureIdentifiers,
+                    camera: camera,
+                    pixelBuffer: frame.capturedImage
+                )
+            }
         }
 
         lastCapturedTransform = camera.transform
@@ -246,7 +266,8 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
     }
 
     private func appendFeaturePoints(
-        _ cloud: ARPointCloud,
+        points: [SIMD3<Float>],
+        identifiers: [UInt64],
         camera: ARCamera,
         pixelBuffer: CVPixelBuffer
     ) {
@@ -258,9 +279,9 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
 
-        for (identifier, point) in zip(cloud.identifiers, cloud.points) {
+        for (identifier, point) in zip(identifiers, points) {
             guard featurePoints.count < quality.maximumFeaturePoints else { break }
-            guard featurePointIdentifiers.insert(identifier).inserted else { continue }
+            guard !featurePointIdentifiers.contains(identifier) else { continue }
 
             let cameraPoint = worldToCamera * SIMD4<Float>(
                 point.x,
@@ -285,6 +306,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
                 y: y
             ) ?? SIMD3<UInt8>(repeating: 128)
 
+            featurePointIdentifiers.insert(identifier)
             featurePoints.append(
                 CameraOnlyFeaturePoint(
                     position: point,
