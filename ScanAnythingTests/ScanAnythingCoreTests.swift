@@ -59,8 +59,8 @@ struct ScanAnythingCoreTests {
         let quality = CameraOnlyQualityProfile.highDetail
 
         #expect(quality.datasetDownscaleFactor == 1.0)
-        #expect(quality.targetFrameCount <= 24)
-        #expect(quality.minimumFrameCount <= 12)
+        #expect(quality.targetFrameCount == 16)
+        #expect(quality.minimumFrameCount == 8)
         #expect(quality.maximumFrameCount >= quality.targetFrameCount)
         #expect(quality.minimumFeaturePoints >= 500)
         #expect(quality.maximumFeaturePoints >= 100_000)
@@ -110,13 +110,14 @@ struct ScanAnythingCoreTests {
 
     @Test("Universal capture keeps objects short while room scans collect broader coverage")
     func universalCapturePurposeThresholds() {
-        #expect(CameraOnlyCapturePurpose.object.minimumFrameCount <= 12)
-        #expect(CameraOnlyCapturePurpose.product.minimumFrameCount <= 18)
+        #expect(CameraOnlyCapturePurpose.object.minimumFrameCount == 8)
+        #expect(CameraOnlyCapturePurpose.product.minimumFrameCount == 16)
         #expect(
             CameraOnlyCapturePurpose.freeform.minimumFrameCount >
             CameraOnlyCapturePurpose.object.minimumFrameCount
         )
         #expect(CameraOnlyCapturePurpose.room.minimumFrameCount >= 48)
+        #expect(CameraOnlyCapturePurpose.object.minimumViewCoverage == 0.25)
         #expect(CameraOnlyCapturePurpose.object.isolatesForeground)
         #expect(CameraOnlyCapturePurpose.product.isolatesForeground)
         #expect(CameraOnlyCapturePurpose.room.isolatesForeground == false)
