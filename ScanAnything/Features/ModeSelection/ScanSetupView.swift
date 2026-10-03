@@ -87,7 +87,7 @@ struct ScanSetupView: View {
 
                                 Image(systemName: selectedIntent == intent ? "checkmark.circle.fill" : "circle")
                                     .font(.title3)
-                                    .foregroundStyle(selectedIntent == intent ? .tint : .tertiary)
+                                    .foregroundStyle(selectedIntent == intent ? Color.accentColor : Color.secondary)
                             }
                             .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
