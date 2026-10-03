@@ -1,3 +1,4 @@
+import CoreGraphics
 import CoreImage
 import CoreML
 import CoreVideo
@@ -235,9 +236,8 @@ enum LearnedDepthSeedService {
             let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
             var output = [Float](repeating: 0, count: width * height)
 
-            switch format {
-            case kCVPixelFormatType_OneComponent32Float,
-                 kCVPixelFormatType_DepthFloat32:
+            if format == kCVPixelFormatType_OneComponent32Float ||
+                format == kCVPixelFormatType_DepthFloat32 {
                 for y in 0..<height {
                     let row = base.advanced(by: y * bytesPerRow)
                     for x in 0..<width {
@@ -248,9 +248,8 @@ enum LearnedDepthSeedService {
                         output[y * width + x] = value
                     }
                 }
-
-            case kCVPixelFormatType_OneComponent16Half,
-                 kCVPixelFormatType_DepthFloat16:
+            } else if format == kCVPixelFormatType_OneComponent16Half ||
+                        format == kCVPixelFormatType_DepthFloat16 {
                 for y in 0..<height {
                     let row = base.advanced(by: y * bytesPerRow)
                     for x in 0..<width {
@@ -261,8 +260,7 @@ enum LearnedDepthSeedService {
                         output[y * width + x] = Float(Float16(bitPattern: bits))
                     }
                 }
-
-            default:
+            } else {
                 return nil
             }
 
