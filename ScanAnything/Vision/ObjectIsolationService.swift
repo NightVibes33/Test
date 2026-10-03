@@ -34,9 +34,9 @@ enum ObjectIsolationService {
 
         let handler = ImageRequestHandler(cgImage)
         let request = GenerateForegroundInstanceMaskRequest()
-        let observation = try await handler.perform(request)
-
-        guard !observation.allInstances.isEmpty else {
+        guard let observation = try await handler.perform(request),
+              !observation.allInstances.isEmpty
+        else {
             throw ObjectIsolationError.noForeground
         }
 
