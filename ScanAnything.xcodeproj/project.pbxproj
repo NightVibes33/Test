@@ -99,7 +99,7 @@
 				};
 			};
 			buildConfigurationList = PRJCONFIGLIST /* Build configuration list for PBXProject "ScanAnything" */;
-			developmentRegion = tr;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
