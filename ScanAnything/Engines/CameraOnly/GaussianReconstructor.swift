@@ -19,31 +19,35 @@ enum GaussianReconstructor {
     static func reconstruct(
         datasetRoot: URL,
         outputURL: URL,
-        iterations: Int32 = 8_000,
+        quality: CameraOnlyQualityProfile = .highDetail,
         progress: @escaping @MainActor @Sendable (_ fraction: Double, _ splats: Int) -> Void
     ) async throws -> Int {
         let datasetPath = datasetRoot.path(percentEncoded: false)
         let outputPath = outputURL.path(percentEncoded: false)
 
         return try await Task.detached(priority: .userInitiated) {
-            // Preserve the full captured resolution. Training itself starts
-            // progressively downscaled and reaches native resolution later.
-            let dataset = GaussianDataset(path: datasetPath, downscaleFactor: quality.datasetDownscaleFactor)
+            // Keep the captured 4K source intact. msplat's progressive
+            // resolution schedule controls training resolution without
+            // destructively shrinking the dataset at load time.
+            let dataset = GaussianDataset(
+                path: datasetPath,
+                downscaleFactor: quality.datasetDownscaleFactor
+            )
             guard dataset.numTrain >= quality.minimumFrameCount else {
                 throw GaussianReconstructionError.insufficientFrames(dataset.numTrain)
             }
 
             var configuration = TrainingConfig()
-            configuration.iterations = iterations
-            configuration.shDegree = 3
-            configuration.shDegreeInterval = 1_000
-            configuration.numDownscales = 2
-            configuration.resolutionSchedule = 2_500
-            configuration.warmupLength = 500
-            configuration.refineEvery = 100
-            configuration.stopScreenSizeAt = 6_000
-            configuration.stopDensifyAt = min(5_500, max(3_000, iterations - 2_000))
-            configuration.downscaleFactor = 1.0
+            configuration.iterations = quality.trainingIterations
+            configuration.shDegree = quality.shDegree
+            configuration.shDegreeInterval = quality.shDegreeInterval
+            configuration.numDownscales = quality.numDownscales
+            configuration.resolutionSchedule = quality.resolutionSchedule
+            configuration.warmupLength = quality.warmupLength
+            configuration.refineEvery = quality.refineEvery
+            configuration.stopScreenSizeAt = quality.stopScreenSizeAt
+            configuration.stopDensifyAt = quality.stopDensifyAt
+            configuration.downscaleFactor = quality.datasetDownscaleFactor
 
             let trainer = GaussianTrainer(dataset: dataset, config: configuration)
             let total = max(1, Int(quality.trainingIterations))
@@ -52,17 +56,18 @@ enum GaussianReconstructor {
                 if index % 25 == 0 {
                     try Task.checkCancellation()
                 }
+
                 let stats = trainer.step()
                 if index % 25 == 0 || index == total - 1 {
-                    let fraction = Double(index + 1) / Double(total)
-                    let splats = stats.splatCount
-                    await progress(fraction, splats)
+                    await progress(
+                        Double(index + 1) / Double(total),
+                        stats.splatCount
+                    )
                 }
             }
 
             try Task.checkCancellation()
             trainer.exportSpz(to: outputPath)
-
             msplatSync()
 
             guard FileManager.default.fileExists(atPath: outputPath) else {
