@@ -29,3 +29,6 @@ xcuserdata/
 
 # Rebuilt from pinned source by scripts/bootstrap-msplat.sh
 Vendor/msplat/
+
+# Downloaded from Apple's pinned Hugging Face model revision by bootstrap script
+ScanAnything/Models/DepthAnythingV2SmallF16.mlpackage/
