@@ -3,11 +3,17 @@ import RealityKit
 import SwiftUI
 
 struct CameraOnlyCaptureView: View {
+    let purpose: CameraOnlyCapturePurpose
+
     @Environment(ScanStorage.self) private var storage
     @Environment(\.dismiss) private var dismiss
 
     @State private var engine: CameraOnlyCaptureEngine?
     @State private var startupError: String?
+
+    init(purpose: CameraOnlyCapturePurpose = .object) {
+        self.purpose = purpose
+    }
 
     var body: some View {
         ZStack {
@@ -178,7 +184,7 @@ struct CameraOnlyCaptureView: View {
 
     private func startIfNeeded() {
         guard engine == nil else { return }
-        let candidate = CameraOnlyCaptureEngine(storage: storage)
+        let candidate = CameraOnlyCaptureEngine(storage: storage, purpose: purpose)
         do {
             try candidate.start()
             engine = candidate

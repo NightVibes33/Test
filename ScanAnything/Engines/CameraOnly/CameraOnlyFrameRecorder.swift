@@ -45,6 +45,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
 
     private let imagesURL: URL
     private let quality: CameraOnlyQualityProfile
+    private let purpose: CameraOnlyCapturePurpose
     private let eventHandler: @Sendable (CameraOnlyCaptureEvent) -> Void
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private let jpegOptions: [CIImageRepresentationOption: Any] = [
@@ -65,10 +66,12 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
     init(
         imagesURL: URL,
         quality: CameraOnlyQualityProfile,
+        purpose: CameraOnlyCapturePurpose,
         eventHandler: @escaping @Sendable (CameraOnlyCaptureEvent) -> Void
     ) {
         self.imagesURL = imagesURL
         self.quality = quality
+        self.purpose = purpose
         self.eventHandler = eventHandler
         self.sharpnessGate = CameraOnlyFrameQualityGate(quality: quality)
         super.init()
@@ -431,22 +434,37 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
     }
 
     private var guidanceMessage: String {
-        if frames.count >= quality.minimumFrameCount,
+        let requiredFrames = max(quality.minimumFrameCount, purpose.minimumFrameCount)
+        let requiredCoverage = max(quality.minimumViewCoverage, purpose.minimumViewCoverage)
+
+        if frames.count >= requiredFrames,
            featurePoints.count >= quality.minimumFeaturePoints,
-           viewCoverage >= quality.minimumViewCoverage {
+           viewCoverage >= requiredCoverage {
             return "Great coverage — you can finish now"
         }
 
-        if frames.count >= quality.minimumFrameCount,
-           viewCoverage < quality.minimumViewCoverage {
-            return "Change height and fill the missing angles"
+        switch purpose {
+        case .object:
+            if frames.count >= requiredFrames {
+                return "Fill the missing sides and add a slightly higher or lower view"
+            }
+            return "Move around the object and keep it centered"
+        case .room:
+            if viewCoverage >= requiredCoverage * 0.75 {
+                return "Cover the remaining walls, corners and floor"
+            }
+            return "Walk slowly through the room and point at each side"
+        case .product:
+            if frames.count >= requiredFrames {
+                return "Capture the top, bottom and any missing side"
+            }
+            return "Keep the item centered and capture every side"
+        case .freeform:
+            if viewCoverage >= requiredCoverage * 0.75 {
+                return "Fill the remaining angles"
+            }
+            return "Move through the scene and overlap each new view"
         }
-
-        if viewCoverage >= 0.42 {
-            return "Make a second pass from a different height"
-        }
-
-        return "Orbit slowly around the object"
     }
 
     private func shouldCapture(_ frame: ARFrame) -> Bool {

@@ -3,6 +3,71 @@ import Foundation
 import Observation
 import UIKit
 
+enum CameraOnlyCapturePurpose: String, Sendable {
+    case object
+    case room
+    case product
+    case freeform
+
+    var minimumFrameCount: Int {
+        switch self {
+        case .object: 18
+        case .product: 24
+        case .freeform: 40
+        case .room: 60
+        }
+    }
+
+    var minimumViewCoverage: Double {
+        switch self {
+        case .object: 0.30
+        case .product: 0.34
+        case .freeform: 0.42
+        case .room: 0.45
+        }
+    }
+
+    var initialGuidance: String {
+        switch self {
+        case .object: "Move around the object and keep it centered"
+        case .room: "Walk through the space and cover walls, corners and furniture"
+        case .product: "Capture every side of the item"
+        case .freeform: "Move through the scene and cover it from different angles"
+        }
+    }
+
+    var processingTitle: String {
+        switch self {
+        case .object: "Building clean 3D object"
+        case .room: "Building 3D space"
+        case .product: "Building product model"
+        case .freeform: "Building 3D scan"
+        }
+    }
+
+    var recordName: String {
+        switch self {
+        case .object: "3D Object"
+        case .room: "3D Room"
+        case .product: "3D Product"
+        case .freeform: "3D Scan"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .object: "Object"
+        case .room: "Camera Room"
+        case .product: "Product"
+        case .freeform: "Freeform"
+        }
+    }
+
+    var isolatesForeground: Bool {
+        self == .object || self == .product
+    }
+}
+
 @MainActor
 @Observable
 final class CameraOnlyCaptureEngine {
@@ -18,6 +83,7 @@ final class CameraOnlyCaptureEngine {
     let session = ARSession()
 
     private let storage: ScanStorage
+    private let purpose: CameraOnlyCapturePurpose
     private let quality = CameraOnlyQualityProfile.highDetail
     private var workspace: ScanWorkspace?
     private var recorder: CameraOnlyFrameRecorder?
@@ -27,25 +93,34 @@ final class CameraOnlyCaptureEngine {
     private(set) var capturedCount = 0
     private(set) var featurePointCount = 0
     private(set) var viewCoverage = 0.0
-    private(set) var trackingMessage = "Orbit slowly around the object"
+    private(set) var trackingMessage: String
     private(set) var processingProgress = 0.0
     private(set) var processingMessage = "Preparing high-resolution dataset"
     private(set) var gaussianCount = 0
     private(set) var captureFormatDescription = "High quality"
 
+    private var requiredViewCoverage: Double {
+        max(quality.minimumViewCoverage, purpose.minimumViewCoverage)
+    }
+
     var coverage: Double {
-        guard quality.minimumViewCoverage > 0 else { return 0 }
-        return min(1, viewCoverage / quality.minimumViewCoverage)
+        guard requiredViewCoverage > 0 else { return 0 }
+        return min(1, viewCoverage / requiredViewCoverage)
     }
 
     var canFinish: Bool {
-        capturedCount >= quality.minimumFrameCount &&
+        capturedCount >= max(quality.minimumFrameCount, purpose.minimumFrameCount) &&
         featurePointCount >= quality.minimumFeaturePoints &&
-        viewCoverage >= quality.minimumViewCoverage
+        viewCoverage >= requiredViewCoverage
     }
 
-    init(storage: ScanStorage) {
+    init(
+        storage: ScanStorage,
+        purpose: CameraOnlyCapturePurpose = .object
+    ) {
         self.storage = storage
+        self.purpose = purpose
+        self.trackingMessage = purpose.initialGuidance
     }
 
     func start() throws {
@@ -64,11 +139,12 @@ final class CameraOnlyCaptureEngine {
         processingProgress = 0
         processingMessage = "Preparing high-resolution dataset"
         gaussianCount = 0
-        trackingMessage = "Orbit slowly around the object"
+        trackingMessage = purpose.initialGuidance
 
         let recorder = CameraOnlyFrameRecorder(
             imagesURL: workspace.imagesURL,
-            quality: quality
+            quality: quality,
+            purpose: purpose
         ) { [weak self] event in
             Task { @MainActor in
                 self?.handle(event)
@@ -120,7 +196,7 @@ final class CameraOnlyCaptureEngine {
         else { return }
 
         guard canFinish else {
-            trackingMessage = "Keep scanning — fill missing angles and change height"
+            trackingMessage = purpose.initialGuidance
             return
         }
 
@@ -167,7 +243,7 @@ final class CameraOnlyCaptureEngine {
 
                 try Task.checkCancellation()
                 self.processingProgress = 0.05
-                self.processingMessage = "Optimizing high-detail 3D"
+                self.processingMessage = purpose.processingTitle
 
                 let splats = try await GaussianReconstructor.reconstruct(
                     datasetRoot: workspace.root,
@@ -183,7 +259,7 @@ final class CameraOnlyCaptureEngine {
                     } else if progress >= 0.90 {
                         self.processingMessage = "Finishing full-resolution training"
                     } else {
-                        self.processingMessage = "Optimizing high-detail 3D"
+                        self.processingMessage = purpose.processingTitle
                     }
                 }
 
@@ -208,14 +284,14 @@ final class CameraOnlyCaptureEngine {
 
                 let record = ScanRecord(
                     id: workspace.id,
-                    name: "3D Scan",
+                    name: purpose.recordName,
                     engine: .cameraOnly,
                     modelFileName: "model.ply",
                     isMetricallyScaled: false,
                     imageCount: count,
                     pointCount: splats,
                     detail: nil,
-                    summary: "Camera 3D"
+                    summary: purpose.summary
                 )
                 storage.commit(record, workspace: workspace)
                 self.workspace = nil
