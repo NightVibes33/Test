@@ -95,7 +95,7 @@ final class CameraOnlyCaptureEngine {
     private(set) var viewCoverage = 0.0
     private(set) var trackingMessage: String
     private(set) var processingProgress = 0.0
-    private(set) var processingMessage = "Preparing high-resolution dataset"
+    private(set) var processingMessage = "Preparing 3D reconstruction"
     private(set) var gaussianCount = 0
     private(set) var captureFormatDescription = "High quality"
 
@@ -137,7 +137,7 @@ final class CameraOnlyCaptureEngine {
         featurePointCount = 0
         viewCoverage = 0
         processingProgress = 0
-        processingMessage = "Preparing high-resolution dataset"
+        processingMessage = "Preparing 3D reconstruction"
         gaussianCount = 0
         trackingMessage = purpose.initialGuidance
 
@@ -205,7 +205,7 @@ final class CameraOnlyCaptureEngine {
         UIApplication.shared.isIdleTimerDisabled = true
         phase = .reconstructing
         processingProgress = 0.01
-        processingMessage = "Preparing high-resolution dataset"
+        processingMessage = "Preparing 3D reconstruction"
 
         let snapshot = recorder.snapshot()
         let count = snapshot.frames.count
@@ -215,6 +215,7 @@ final class CameraOnlyCaptureEngine {
         )
 
         let reconstructionQuality = quality
+        let reconstructionPurpose = purpose
 
         reconstructionTask?.cancel()
         reconstructionTask = Task { [weak self] in
@@ -224,7 +225,7 @@ final class CameraOnlyCaptureEngine {
                 try await Task.detached(priority: .userInitiated) {
                     try Task.checkCancellation()
 
-                    if purpose.isolatesForeground {
+                    if reconstructionPurpose.isolatesForeground {
                         for frame in snapshot.frames {
                             try Task.checkCancellation()
                             let imageURL = workspace.root.appending(path: frame.filePath)
@@ -253,13 +254,13 @@ final class CameraOnlyCaptureEngine {
 
                 try Task.checkCancellation()
                 self.processingProgress = 0.05
-                self.processingMessage = purpose.processingTitle
+                self.processingMessage = reconstructionPurpose.processingTitle
 
                 let splats = try await GaussianReconstructor.reconstruct(
                     datasetRoot: workspace.root,
                     outputURL: outputURL,
                     quality: quality,
-                    backgroundIsolated: purpose.isolatesForeground
+                    backgroundIsolated: reconstructionPurpose.isolatesForeground
                 ) { [weak self] progress, splatCount in
                     guard let self else { return }
                     self.processingProgress = min(0.95, 0.05 + (progress * 0.90))
@@ -270,7 +271,7 @@ final class CameraOnlyCaptureEngine {
                     } else if progress >= 0.90 {
                         self.processingMessage = "Finishing full-resolution training"
                     } else {
-                        self.processingMessage = purpose.processingTitle
+                        self.processingMessage = reconstructionPurpose.processingTitle
                     }
                 }
 
@@ -296,14 +297,14 @@ final class CameraOnlyCaptureEngine {
 
                 let record = ScanRecord(
                     id: workspace.id,
-                    name: purpose.recordName,
+                    name: reconstructionPurpose.recordName,
                     engine: .cameraOnly,
                     modelFileName: "model.ply",
                     isMetricallyScaled: false,
                     imageCount: count,
                     pointCount: splats,
                     detail: nil,
-                    summary: purpose.summary
+                    summary: reconstructionPurpose.summary
                 )
                 storage.commit(record, workspace: workspace)
                 self.workspace = nil

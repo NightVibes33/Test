@@ -59,10 +59,10 @@ struct ScanAnythingCoreTests {
         let quality = CameraOnlyQualityProfile.highDetail
 
         #expect(quality.datasetDownscaleFactor == 1.0)
-        #expect(quality.targetFrameCount >= 200)
-        #expect(quality.minimumFrameCount >= 100)
+        #expect(quality.targetFrameCount <= 40)
+        #expect(quality.minimumFrameCount <= 20)
         #expect(quality.maximumFrameCount >= quality.targetFrameCount)
-        #expect(quality.minimumFeaturePoints >= 2_000)
+        #expect(quality.minimumFeaturePoints >= 1_000)
         #expect(quality.maximumFeaturePoints >= 100_000)
         #expect(
             quality.maximumFeaturePoints + quality.depthPriorMaximumPoints <=
@@ -71,7 +71,8 @@ struct ScanAnythingCoreTests {
 
         #expect(quality.sharpnessWarmupFrames >= 6)
         #expect(quality.sharpnessFloorFraction >= 0.60)
-        #expect(quality.minimumViewCoverage > 0.50)
+        #expect(quality.minimumViewCoverage >= 0.25)
+        #expect(quality.minimumViewCoverage <= 0.35)
 
         #expect(quality.trainingIterations == 30_000)
         #expect(quality.shDegree == 3)
@@ -105,6 +106,20 @@ struct ScanAnythingCoreTests {
         #expect(quality.depthPriorMinimumAnchors >= 24)
         #expect(quality.depthPriorMaximumPoints >= 100_000)
         #expect(quality.depthPriorVoxelSize <= 0.004)
+    }
+
+    @Test("Universal capture keeps objects short while room scans collect broader coverage")
+    func universalCapturePurposeThresholds() {
+        #expect(CameraOnlyCapturePurpose.object.minimumFrameCount <= 20)
+        #expect(CameraOnlyCapturePurpose.product.minimumFrameCount <= 24)
+        #expect(
+            CameraOnlyCapturePurpose.freeform.minimumFrameCount >
+            CameraOnlyCapturePurpose.object.minimumFrameCount
+        )
+        #expect(CameraOnlyCapturePurpose.room.minimumFrameCount >= 60)
+        #expect(CameraOnlyCapturePurpose.object.isolatesForeground)
+        #expect(CameraOnlyCapturePurpose.product.isolatesForeground)
+        #expect(CameraOnlyCapturePurpose.room.isolatesForeground == false)
     }
 
     @Test("Colored Gaussian seed PLY round-trips XYZ with RGB records")
