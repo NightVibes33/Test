@@ -137,21 +137,21 @@ struct ScanSetupView: View {
         .fullScreenCover(isPresented: $isPresentingCapture) {
             switch selectedIntent {
             case .object:
-                CameraOnlyCaptureView()
+                CameraOnlyCaptureView(purpose: .object)
             case .room:
                 if RoomCaptureEngine.availability.isUsable {
                     RoomFlowView()
                 } else {
-                    CameraOnlyCaptureView()
+                    CameraOnlyCaptureView(purpose: .room)
                 }
             case .product:
                 if TurntableCaptureEngine.availability.isUsable {
                     TurntableFlowView()
                 } else {
-                    CameraOnlyCaptureView()
+                    CameraOnlyCaptureView(purpose: .product)
                 }
             case .freeform:
-                CameraOnlyCaptureView()
+                CameraOnlyCaptureView(purpose: .freeform)
             }
         }
         .alert("Camera access is off", isPresented: $permissionDenied) {
