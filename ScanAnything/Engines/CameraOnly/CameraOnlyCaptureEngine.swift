@@ -142,8 +142,20 @@ final class CameraOnlyCaptureEngine {
             do {
                 try await Task.detached(priority: .userInitiated) {
                     try Task.checkCancellation()
-                    try CameraOnlyDatasetWriter.write(
+
+                    let enrichedPoints = LearnedDepthSeedService.enrich(
                         snapshot: snapshot,
+                        root: workspace.root,
+                        quality: quality
+                    )
+                    let trainingSnapshot = CameraOnlyCaptureSnapshot(
+                        frames: snapshot.frames,
+                        featurePoints: enrichedPoints
+                    )
+
+                    try Task.checkCancellation()
+                    try CameraOnlyDatasetWriter.write(
+                        snapshot: trainingSnapshot,
                         to: workspace.root
                     )
                 }.value
