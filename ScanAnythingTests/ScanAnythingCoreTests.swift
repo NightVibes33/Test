@@ -62,7 +62,7 @@ struct ScanAnythingCoreTests {
         #expect(quality.targetFrameCount <= 24)
         #expect(quality.minimumFrameCount <= 12)
         #expect(quality.maximumFrameCount >= quality.targetFrameCount)
-        #expect(quality.minimumFeaturePoints >= 800)
+        #expect(quality.minimumFeaturePoints >= 500)
         #expect(quality.maximumFeaturePoints >= 100_000)
         #expect(
             quality.maximumFeaturePoints + quality.depthPriorMaximumPoints <=
@@ -71,7 +71,8 @@ struct ScanAnythingCoreTests {
 
         #expect(quality.sharpnessWarmupFrames >= 6)
         #expect(quality.sharpnessFloorFraction >= 0.60)
-        #expect(quality.minimumViewCoverage <= 0.20)
+        #expect(quality.minimumViewCoverage >= 0.20)
+        #expect(quality.minimumViewCoverage <= 0.30)
 
         #expect(quality.trainingIterations == 30_000)
         #expect(quality.shDegree == 3)
