@@ -15,7 +15,9 @@ struct ScanRecord: Identifiable, Codable, Hashable, Sendable {
 
     var isGaussianSplat: Bool {
         let name = modelFileName.lowercased()
-        return name.hasSuffix(".spz") || name.hasSuffix(".splat")
+        return name.hasSuffix(".ply") ||
+            name.hasSuffix(".spz") ||
+            name.hasSuffix(".splat")
     }
 
     var isPreviewable: Bool {
