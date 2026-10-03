@@ -96,7 +96,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
     }
 
     private func consider(_ frame: ARFrame, session: ARSession) {
-        guard frames.count < quality.maximumFrameCount else { return }
+        guard frames.count < min(quality.maximumFrameCount, purpose.maximumFrameCount) else { return }
 
         let trackingMessage: String
         switch frame.camera.trackingState {
@@ -186,7 +186,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
         fallbackFeatureIdentifiers: [UInt64],
         hardwareDepthPoints: [CameraOnlyFeaturePoint]
     ) {
-        guard frames.count < quality.maximumFrameCount else { return }
+        guard frames.count < min(quality.maximumFrameCount, purpose.maximumFrameCount) else { return }
 
         guard case .normal = frame.camera.trackingState else {
             emitProgress(

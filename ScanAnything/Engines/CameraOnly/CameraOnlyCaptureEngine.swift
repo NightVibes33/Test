@@ -18,6 +18,15 @@ enum CameraOnlyCapturePurpose: String, Sendable {
         }
     }
 
+    var maximumFrameCount: Int {
+        switch self {
+        case .object: 20
+        case .product: 32
+        case .freeform: 72
+        case .room: 120
+        }
+    }
+
     var minimumViewCoverage: Double {
         switch self {
         case .object: 0.25
