@@ -1,5 +1,6 @@
 @preconcurrency import ARKit
 import CoreImage
+import CoreVideo
 import Foundation
 import ImageIO
 import simd
@@ -15,9 +16,14 @@ struct CameraOnlyFrameMetadata: Sendable {
     let transformMatrix: [[Double]]
 }
 
+struct CameraOnlyFeaturePoint: Sendable {
+    let position: SIMD3<Float>
+    let color: SIMD3<UInt8>
+}
+
 struct CameraOnlyCaptureSnapshot: Sendable {
     let frames: [CameraOnlyFrameMetadata]
-    let featurePoints: [SIMD3<Float>]
+    let featurePoints: [CameraOnlyFeaturePoint]
 }
 
 enum CameraOnlyCaptureEvent: Sendable {
@@ -46,7 +52,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
     ]
 
     private var frames: [CameraOnlyFrameMetadata] = []
-    private var featurePoints: [SIMD3<Float>] = []
+    private var featurePoints: [CameraOnlyFeaturePoint] = []
     private var featurePointIdentifiers = Set<UInt64>()
     private var coveredViewBins = Set<Int>()
     private var sharpnessGate: CameraOnlyFrameQualityGate
@@ -216,17 +222,17 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
 
         coveredViewBins.insert(viewBin(for: camera.transform))
 
-        // High-resolution ARFrames retain the tracked frame metadata, including
-        // raw feature points when ARKit provides them. Stable identifiers are
-        // stored only once so the Gaussian seed is not inflated by duplicates.
+        // Seed every Gaussian with the real camera color at the tracked 3D
+        // feature. msplat otherwise falls back to flat 50% gray for XYZ-only
+        // PLY input, which makes the optimizer spend early iterations learning
+        // base color that ARKit already observed.
         if let cloud = frame.rawFeaturePoints,
            featurePoints.count < quality.maximumFeaturePoints {
-            for (identifier, point) in zip(cloud.identifiers, cloud.points) {
-                guard featurePoints.count < quality.maximumFeaturePoints else { break }
-                if featurePointIdentifiers.insert(identifier).inserted {
-                    featurePoints.append(point)
-                }
-            }
+            appendFeaturePoints(
+                cloud,
+                camera: camera,
+                pixelBuffer: frame.capturedImage
+            )
         }
 
         lastCapturedTransform = camera.transform
@@ -237,6 +243,114 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
             timestamp: frame.timestamp,
             force: true
         )
+    }
+
+    private func appendFeaturePoints(
+        _ cloud: ARPointCloud,
+        camera: ARCamera,
+        pixelBuffer: CVPixelBuffer
+    ) {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        let worldToCamera = camera.transform.inverse
+        let intrinsics = camera.intrinsics
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+
+        for (identifier, point) in zip(cloud.identifiers, cloud.points) {
+            guard featurePoints.count < quality.maximumFeaturePoints else { break }
+            guard featurePointIdentifiers.insert(identifier).inserted else { continue }
+
+            let cameraPoint = worldToCamera * SIMD4<Float>(
+                point.x,
+                point.y,
+                point.z,
+                1
+            )
+            let depth = -cameraPoint.z
+            guard depth > 0.02 else { continue }
+
+            let u = intrinsics[0][0] * cameraPoint.x / depth + intrinsics[2][0]
+            let v = intrinsics[2][1] - intrinsics[1][1] * cameraPoint.y / depth
+            guard u.isFinite, v.isFinite else { continue }
+
+            let x = Int(u.rounded())
+            let y = Int(v.rounded())
+            guard x >= 0, x < width, y >= 0, y < height else { continue }
+
+            let color = sampleColor(
+                pixelBuffer,
+                x: x,
+                y: y
+            ) ?? SIMD3<UInt8>(repeating: 128)
+
+            featurePoints.append(
+                CameraOnlyFeaturePoint(
+                    position: point,
+                    color: color
+                )
+            )
+        }
+    }
+
+    private func sampleColor(
+        _ pixelBuffer: CVPixelBuffer,
+        x: Int,
+        y: Int
+    ) -> SIMD3<UInt8>? {
+        let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
+
+        switch format {
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+            guard CVPixelBufferGetPlaneCount(pixelBuffer) >= 2,
+                  let yBase = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0),
+                  let cbcrBase = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1)
+            else { return nil }
+
+            let lumaRow = yBase
+                .advanced(by: y * CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0))
+                .assumingMemoryBound(to: UInt8.self)
+
+            let chromaX = x / 2
+            let chromaY = y / 2
+            let chromaRow = cbcrBase
+                .advanced(by: chromaY * CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1))
+                .assumingMemoryBound(to: UInt8.self)
+
+            let yPrime = Float(lumaRow[x]) / 255
+            let cb = Float(chromaRow[chromaX * 2]) / 255
+            let cr = Float(chromaRow[chromaX * 2 + 1]) / 255
+
+            // ARKit capturedImage is full-range Y'CbCr. These coefficients are
+            // Apple's documented T.871 conversion used by its Metal AR sample.
+            let red = yPrime + 1.4020 * cr - 0.7010
+            let green = yPrime - 0.3441 * cb - 0.7141 * cr + 0.5291
+            let blue = yPrime + 1.7720 * cb - 0.8860
+
+            return SIMD3(
+                colorByte(red),
+                colorByte(green),
+                colorByte(blue)
+            )
+
+        case kCVPixelFormatType_32BGRA:
+            guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+            let row = base
+                .advanced(by: y * CVPixelBufferGetBytesPerRow(pixelBuffer))
+                .assumingMemoryBound(to: UInt8.self)
+            let offset = x * 4
+            return SIMD3(row[offset + 2], row[offset + 1], row[offset])
+
+        default:
+            return nil
+        }
+    }
+
+    private func colorByte(_ value: Float) -> UInt8 {
+        let clamped = min(max(value, 0), 1)
+        return UInt8(clamping: Int((clamped * 255).rounded()))
     }
 
     private func emitProgress(
