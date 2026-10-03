@@ -30,7 +30,8 @@ enum CameraOnlyCaptureEvent: Sendable {
     case failure(String)
 }
 
-final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
+/// All mutable capture state is serialized on `delegateQueue`.
+final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sendable {
     let delegateQueue = DispatchQueue(
         label: "com.nightvibes33.scananything.camera-capture",
         qos: .userInitiated
@@ -41,7 +42,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     private let eventHandler: @Sendable (CameraOnlyCaptureEvent) -> Void
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private let jpegOptions: [CIImageRepresentationOption: Any] = [
-        kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.98
+        kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 1.0
     ]
 
     private var frames: [CameraOnlyFrameMetadata] = []
@@ -49,6 +50,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     private var featurePointIdentifiers = Set<UInt64>()
     private var coveredViewBins = Set<Int>()
     private var sharpnessGate: CameraOnlyFrameQualityGate
+    private var highResolutionCaptureInFlight = false
     private var lastCapturedTransform: simd_float4x4?
     private var lastCapturedTimestamp: TimeInterval = -1
     private var lastProgressEventTimestamp: TimeInterval = -1
@@ -76,14 +78,14 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        consume(frame)
+        consider(frame, session: session)
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {
         eventHandler(.failure(error.localizedDescription))
     }
 
-    private func consume(_ frame: ARFrame) {
+    private func consider(_ frame: ARFrame, session: ARSession) {
         guard frames.count < quality.maximumFrameCount else { return }
 
         let trackingMessage: String
@@ -104,6 +106,11 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
             return
         }
 
+        guard !highResolutionCaptureInFlight else {
+            emitProgress(message: trackingMessage, timestamp: frame.timestamp)
+            return
+        }
+
         guard shouldCapture(frame) else {
             emitProgress(
                 message: trackingMessage,
@@ -112,11 +119,56 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
             return
         }
 
+        // Reject motion blur cheaply from the live feed before asking the camera
+        // for an expensive full-resolution still.
         let sharpness = SharpnessMeter.scoreFast(frame.capturedImage)
         guard sharpnessGate.accepts(sharpness: sharpness) else {
             emitProgress(
                 message: "Hold steadier — blurry view skipped",
                 timestamp: frame.timestamp
+            )
+            return
+        }
+
+        highResolutionCaptureInFlight = true
+        session.captureHighResolutionFrame { [weak self] capturedFrame, error in
+            guard let self else { return }
+            self.delegateQueue.async { [weak self] in
+                guard let self else { return }
+                self.highResolutionCaptureInFlight = false
+
+                if let error {
+                    self.emitProgress(
+                        message: "High-resolution capture missed — keep moving slowly",
+                        timestamp: frame.timestamp,
+                        force: true
+                    )
+                    _ = error
+                    return
+                }
+
+                guard let capturedFrame else {
+                    self.emitProgress(
+                        message: "High-resolution capture missed — keep moving slowly",
+                        timestamp: frame.timestamp,
+                        force: true
+                    )
+                    return
+                }
+
+                self.persist(capturedFrame)
+            }
+        }
+    }
+
+    private func persist(_ frame: ARFrame) {
+        guard frames.count < quality.maximumFrameCount else { return }
+
+        guard case .normal = frame.camera.trackingState else {
+            emitProgress(
+                message: "Tracking changed during capture — view skipped",
+                timestamp: frame.timestamp,
+                force: true
             )
             return
         }
@@ -132,7 +184,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
             colorSpace: colorSpace,
             options: jpegOptions
         ) else {
-            eventHandler(.failure("Could not encode this camera frame."))
+            eventHandler(.failure("Could not encode this high-resolution camera frame."))
             return
         }
 
@@ -164,9 +216,9 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
 
         coveredViewBins.insert(viewBin(for: camera.transform))
 
-        // Consecutive ARFrames often report the same tracked world feature.
-        // Preserve stable identifiers only once so the Gaussian seed represents
-        // actual scene geometry rather than duplicated observations.
+        // High-resolution ARFrames retain the tracked frame metadata, including
+        // raw feature points when ARKit provides them. Stable identifiers are
+        // stored only once so the Gaussian seed is not inflated by duplicates.
         if let cloud = frame.rawFeaturePoints,
            featurePoints.count < quality.maximumFeaturePoints {
             for (identifier, point) in zip(cloud.identifiers, cloud.points) {
@@ -294,10 +346,6 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         if quality.elevationBandCount <= 1 {
             band = 0
         } else {
-            // For an object-centric orbit, a camera above the object points
-            // downward and a lower pass points upward. Splitting on the forward
-            // vector's vertical sign therefore detects the second-height pass
-            // without requiring LiDAR or a known object centroid.
             band = forward.y >= 0 ? 1 : 0
         }
 
