@@ -154,6 +154,7 @@ final class ObjectCaptureEngine: ScanEngine {
             id: workspace.id,
             name: Self.defaultName(for: Date()),
             engine: Self.kind,
+            assetKind: .object,
             isMetricallyScaled: true,
             imageCount: capturedShots,
             detail: detail,
