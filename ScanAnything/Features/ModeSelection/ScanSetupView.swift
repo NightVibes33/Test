@@ -26,7 +26,7 @@ private enum ScanIntent: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .object:
-            "Take a small set of photos and build a clean standalone 3D object."
+            "Take 8–20 clear views and build a clean standalone 3D object."
         case .room:
             "Walk through a room or space. LiDAR improves it automatically when available."
         case .product:
