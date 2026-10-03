@@ -335,13 +335,27 @@ struct ScanDetailView: View {
                 Label("Share SPZ", systemImage: "cube.transparent")
             }
 
-            if FileManager.default.fileExists(atPath: plyURL.path(percentEncoded: false)) {
-                Button {
+            Button {
+                if FileManager.default.fileExists(atPath: plyURL.path(percentEncoded: false)) {
                     shareableURL = plyURL
-                } label: {
-                    Label("Share Gaussian PLY", systemImage: "point.3.connected.trianglepath.dotted")
+                } else {
+                    exportGaussianPLY(source: modelURL, destination: plyURL)
+                }
+            } label: {
+                HStack {
+                    Label(
+                        FileManager.default.fileExists(atPath: plyURL.path(percentEncoded: false))
+                            ? "Share Gaussian PLY"
+                            : "Export Gaussian PLY",
+                        systemImage: "point.3.connected.trianglepath.dotted"
+                    )
+                    if isExporting {
+                        Spacer()
+                        ProgressView()
+                    }
                 }
             }
+            .disabled(isExporting)
 
             if FileManager.default.fileExists(atPath: heroURL.path(percentEncoded: false)) {
                 Button {
@@ -454,6 +468,23 @@ struct ScanDetailView: View {
 
     private func sharePointCloud(_ record: ScanRecord) {
         shareableURL = storage.modelURL(for: record)
+    }
+
+    private func exportGaussianPLY(source: URL, destination: URL) {
+        isExporting = true
+        shareableURL = nil
+
+        Task {
+            do {
+                shareableURL = try await GaussianExportService.exportPLY(
+                    from: source,
+                    to: destination
+                )
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isExporting = false
+        }
     }
 
     private func bundleImages(_ record: ScanRecord) {
