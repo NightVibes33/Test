@@ -50,7 +50,7 @@ struct CameraOnlyQualityProfile: Sendable, Equatable {
         minimumFrameCount: 120,
         maximumFrameCount: 300,
         minimumFeaturePoints: 2_500,
-        maximumFeaturePoints: 400_000,
+        maximumFeaturePoints: 120_000,
         minimumCaptureInterval: 0.12,
         minimumTranslation: 0.020,
         minimumRotation: 0.050,
