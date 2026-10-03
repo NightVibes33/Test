@@ -169,6 +169,13 @@ final class CameraOnlyCaptureEngine {
         configuration.environmentTexturing = .none
         configuration.videoHDRAllowed = false
 
+        // LiDAR is an optional accelerator, never a mode requirement. On devices
+        // that expose metric scene depth, feed it into the exact same universal
+        // camera pipeline used by every other iPhone/iPad.
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+            configuration.frameSemantics.insert(.sceneDepth)
+        }
+
         let highResolutionFormat =
             ARWorldTrackingConfiguration.recommendedVideoFormatForHighResolutionFrameCapturing
         let selectedFormat =

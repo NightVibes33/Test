@@ -55,6 +55,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
     private var frames: [CameraOnlyFrameMetadata] = []
     private var featurePoints: [CameraOnlyFeaturePoint] = []
     private var featurePointIdentifiers = Set<UInt64>()
+    private var depthVoxels = Set<DepthVoxelKey>()
     private var coveredViewBins = Set<Int>()
     private var sharpnessGate: CameraOnlyFrameQualityGate
     private var highResolutionCaptureInFlight = false
@@ -141,6 +142,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
 
         let fallbackFeaturePoints = frame.rawFeaturePoints?.points ?? []
         let fallbackFeatureIdentifiers = frame.rawFeaturePoints?.identifiers ?? []
+        let hardwareDepthPoints = sceneDepthPoints(from: frame)
 
         highResolutionCaptureInFlight = true
         session.captureHighResolutionFrame { [weak self] capturedFrame, error in
@@ -171,7 +173,8 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
                 self.persist(
                     capturedFrame,
                     fallbackFeaturePoints: fallbackFeaturePoints,
-                    fallbackFeatureIdentifiers: fallbackFeatureIdentifiers
+                    fallbackFeatureIdentifiers: fallbackFeatureIdentifiers,
+                    hardwareDepthPoints: hardwareDepthPoints
                 )
             }
         }
@@ -180,7 +183,8 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
     private func persist(
         _ frame: ARFrame,
         fallbackFeaturePoints: [SIMD3<Float>],
-        fallbackFeatureIdentifiers: [UInt64]
+        fallbackFeatureIdentifiers: [UInt64],
+        hardwareDepthPoints: [CameraOnlyFeaturePoint]
     ) {
         guard frames.count < quality.maximumFrameCount else { return }
 
@@ -240,6 +244,11 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
 
         coveredViewBins.insert(viewBin(for: camera.transform))
 
+        // Metric LiDAR samples take priority when available. They use the same
+        // world coordinate system as ARKit poses and therefore improve geometry
+        // without changing the user-facing scan mode.
+        appendHardwareDepthPoints(hardwareDepthPoints)
+
         // Seed every Gaussian with the real camera color at the tracked 3D
         // feature. msplat otherwise falls back to flat 50% gray for XYZ-only
         // PLY input, which makes the optimizer spend early iterations learning
@@ -270,6 +279,185 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
             timestamp: frame.timestamp,
             force: true
         )
+    }
+
+    private struct DepthVoxelKey: Hashable {
+        let x: Int
+        let y: Int
+        let z: Int
+
+        init(_ point: SIMD3<Float>, size: Float = 0.004) {
+            let voxel = max(size, 0.001)
+            x = Int(floor(point.x / voxel))
+            y = Int(floor(point.y / voxel))
+            z = Int(floor(point.z / voxel))
+        }
+    }
+
+    /// Converts ARKit LiDAR scene depth into colored world-space Gaussian seeds.
+    ///
+    /// This path is simply absent on devices without scene depth, so it improves
+    /// Pro hardware without making Pro hardware a prerequisite.
+    private func sceneDepthPoints(
+        from frame: ARFrame
+    ) -> [CameraOnlyFeaturePoint] {
+        guard let sceneDepth = frame.sceneDepth else { return [] }
+
+        let depthMap = sceneDepth.depthMap
+        let format = CVPixelBufferGetPixelFormatType(depthMap)
+        guard format == kCVPixelFormatType_DepthFloat32 ||
+              format == kCVPixelFormatType_OneComponent32Float
+        else {
+            return []
+        }
+
+        let depthWidth = CVPixelBufferGetWidth(depthMap)
+        let depthHeight = CVPixelBufferGetHeight(depthMap)
+        guard depthWidth > 0, depthHeight > 0 else { return [] }
+
+        let camera = frame.camera
+        let resolution = camera.imageResolution
+        let sourceWidth = max(Float(resolution.width), 1)
+        let sourceHeight = max(Float(resolution.height), 1)
+        let scaleX = Float(depthWidth) / sourceWidth
+        let scaleY = Float(depthHeight) / sourceHeight
+        let intrinsics = camera.intrinsics
+        let fx = intrinsics[0][0] * scaleX
+        let fy = intrinsics[1][1] * scaleY
+        let cx = intrinsics[2][0] * scaleX
+        let cy = intrinsics[2][1] * scaleY
+        guard fx > 0, fy > 0 else { return [] }
+
+        let image = frame.capturedImage
+        let imageWidth = CVPixelBufferGetWidth(image)
+        let imageHeight = CVPixelBufferGetHeight(image)
+        let confidence = sceneDepth.confidenceMap
+
+        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+        CVPixelBufferLockBaseAddress(image, .readOnly)
+        if let confidence {
+            CVPixelBufferLockBaseAddress(confidence, .readOnly)
+        }
+        defer {
+            if let confidence {
+                CVPixelBufferUnlockBaseAddress(confidence, .readOnly)
+            }
+            CVPixelBufferUnlockBaseAddress(image, .readOnly)
+            CVPixelBufferUnlockBaseAddress(depthMap, .readOnly)
+        }
+
+        guard let depthBase = CVPixelBufferGetBaseAddress(depthMap) else {
+            return []
+        }
+        let depthBytesPerRow = CVPixelBufferGetBytesPerRow(depthMap)
+
+        let confidenceBase = confidence.flatMap {
+            CVPixelBufferGetBaseAddress($0)
+        }
+        let confidenceBytesPerRow = confidence.map {
+            CVPixelBufferGetBytesPerRow($0)
+        } ?? 0
+
+        let maxDepth: Float
+        switch purpose {
+        case .object, .product:
+            maxDepth = 3.0
+        case .room, .freeform:
+            maxDepth = 10.0
+        }
+
+        let maxPerFrame = min(
+            5_000,
+            max(
+                1_500,
+                quality.maximumFeaturePoints /
+                max(quality.targetFrameCount * 2, 1)
+            )
+        )
+        let stride = 3
+        var output: [CameraOnlyFeaturePoint] = []
+        output.reserveCapacity(maxPerFrame)
+
+        for y in Swift.stride(from: 0, to: depthHeight, by: stride) {
+            if output.count >= maxPerFrame { break }
+
+            let depthRow = depthBase
+                .advanced(by: y * depthBytesPerRow)
+
+            for x in Swift.stride(from: 0, to: depthWidth, by: stride) {
+                if output.count >= maxPerFrame { break }
+
+                if let confidenceBase {
+                    let confidenceRow = confidenceBase
+                        .advanced(by: y * confidenceBytesPerRow)
+                        .assumingMemoryBound(to: UInt8.self)
+                    // 0 = low, 1 = medium, 2 = high. Reject only low-confidence
+                    // LiDAR samples; medium/high carry useful metric geometry.
+                    guard confidenceRow[x] >= 1 else { continue }
+                }
+
+                let depth = depthRow.loadUnaligned(
+                    fromByteOffset: x * MemoryLayout<Float>.size,
+                    as: Float.self
+                )
+                guard depth.isFinite,
+                      depth >= 0.08,
+                      depth <= maxDepth
+                else {
+                    continue
+                }
+
+                let u = Float(x) + 0.5
+                let v = Float(y) + 0.5
+                let cameraX = (u - cx) / fx * depth
+                let cameraY = -(v - cy) / fy * depth
+                let cameraPoint = SIMD4<Float>(
+                    cameraX,
+                    cameraY,
+                    -depth,
+                    1
+                )
+                let world4 = camera.transform * cameraPoint
+                let world = SIMD3<Float>(world4.x, world4.y, world4.z)
+
+                let imageX = min(
+                    imageWidth - 1,
+                    max(0, Int(u / Float(depthWidth) * Float(imageWidth)))
+                )
+                let imageY = min(
+                    imageHeight - 1,
+                    max(0, Int(v / Float(depthHeight) * Float(imageHeight)))
+                )
+                let color = sampleColor(
+                    image,
+                    x: imageX,
+                    y: imageY
+                ) ?? SIMD3<UInt8>(repeating: 128)
+
+                output.append(
+                    CameraOnlyFeaturePoint(
+                        position: world,
+                        color: color
+                    )
+                )
+            }
+        }
+
+        return output
+    }
+
+    private func appendHardwareDepthPoints(
+        _ points: [CameraOnlyFeaturePoint]
+    ) {
+        for point in points {
+            guard featurePoints.count < quality.maximumFeaturePoints else {
+                return
+            }
+
+            let voxel = DepthVoxelKey(point.position)
+            guard depthVoxels.insert(voxel).inserted else { continue }
+            featurePoints.append(point)
+        }
     }
 
     private func appendFeaturePoints(
