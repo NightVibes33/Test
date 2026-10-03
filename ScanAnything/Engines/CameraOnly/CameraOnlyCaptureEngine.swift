@@ -1,6 +1,7 @@
 @preconcurrency import ARKit
 import Foundation
 import Observation
+import UIKit
 
 @MainActor
 @Observable
@@ -110,6 +111,7 @@ final class CameraOnlyCaptureEngine {
 
         session.pause()
         session.delegate = nil
+        UIApplication.shared.isIdleTimerDisabled = true
         phase = .reconstructing
         processingProgress = 0
 
@@ -174,19 +176,23 @@ final class CameraOnlyCaptureEngine {
                 storage.commit(record, workspace: workspace)
                 self.workspace = nil
                 self.recorder = nil
+                UIApplication.shared.isIdleTimerDisabled = false
                 phase = .done(record)
             } catch is CancellationError {
                 storage.discard(workspace)
                 self.workspace = nil
                 self.recorder = nil
+                UIApplication.shared.isIdleTimerDisabled = false
                 phase = .cancelled
             } catch {
+                UIApplication.shared.isIdleTimerDisabled = false
                 phase = .failed(error.localizedDescription)
             }
         }
     }
 
     func cancel() {
+        UIApplication.shared.isIdleTimerDisabled = false
         reconstructionTask?.cancel()
         reconstructionTask = nil
 
