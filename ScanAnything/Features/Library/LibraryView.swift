@@ -171,7 +171,10 @@ private struct ScanRow: View {
                     .font(.body)
                     .lineLimit(1)
                 HStack(spacing: 5) {
-                    Label(record.engine.displayName, systemImage: record.engine.symbolName)
+                    Label(
+                        record.assetKind?.displayName ?? record.engine.displayName,
+                        systemImage: record.assetKind?.symbolName ?? record.engine.symbolName
+                    )
                     if let summary = record.summary {
                         Text("·")
                         Text(summary)
@@ -254,7 +257,10 @@ struct ScanDetailView: View {
             Section("Info") {
                 TextField("Name", text: $draftName)
                     .onSubmit { storage.rename(record, to: draftName) }
-                LabeledContent("Mode", value: record.engine.displayName)
+                LabeledContent(
+                    "Type",
+                    value: record.assetKind?.displayName ?? record.engine.displayName
+                )
                 if let summary = record.summary {
                     LabeledContent("Contents", value: summary)
                 }
