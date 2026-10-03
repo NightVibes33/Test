@@ -32,6 +32,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     )
 
     private let imagesURL: URL
+    private let quality: CameraOnlyQualityProfile
     private let eventHandler: @Sendable (CameraOnlyCaptureEvent) -> Void
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private let jpegOptions: [CIImageRepresentationOption: Any] = [
@@ -46,15 +47,15 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     private var lastProgressEventTimestamp: TimeInterval = -1
     private var lastProgressMessage = ""
 
-    private let targetFrameCount = 160
-    private let maximumFrameCount = 240
     private let maximumFeaturePoints = 250_000
 
     init(
         imagesURL: URL,
+        quality: CameraOnlyQualityProfile,
         eventHandler: @escaping @Sendable (CameraOnlyCaptureEvent) -> Void
     ) {
         self.imagesURL = imagesURL
+        self.quality = quality
         self.eventHandler = eventHandler
         super.init()
     }
@@ -110,10 +111,12 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         let fileName = String(format: "frame_%04d.jpg", frames.count)
         let imageURL = imagesURL.appending(path: fileName, directoryHint: .notDirectory)
         let image = CIImage(cvPixelBuffer: frame.capturedImage)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+            ?? CGColorSpaceCreateDeviceRGB()
 
         guard let data = imageContext.jpegRepresentation(
             of: image,
-            colorSpace: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            colorSpace: colorSpace,
             options: jpegOptions
         ) else {
             eventHandler(.failure("Could not encode this camera frame."))
@@ -123,7 +126,9 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         do {
             try data.write(to: imageURL, options: .atomic)
         } catch {
-            eventHandler(.failure("Could not save this camera frame: \(error.localizedDescription)"))
+            eventHandler(.failure(
+                "Could not save this camera frame: \(error.localizedDescription)"
+            ))
             return
         }
 
@@ -144,9 +149,9 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
             )
         )
 
-        // ARKit reports many of the same tracked feature points in consecutive
-        // frames. Keep each stable identifier only once so the Gaussian seed is
-        // real scene geometry instead of tens of thousands of duplicates.
+        // Consecutive ARFrames often report the same tracked world feature.
+        // Preserve stable identifiers only once so the Gaussian seed represents
+        // actual scene geometry rather than duplicated observations.
         if let cloud = frame.rawFeaturePoints,
            featurePoints.count < maximumFeaturePoints {
             for (identifier, point) in zip(cloud.identifiers, cloud.points) {
@@ -193,7 +198,9 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     }
 
     private func shouldCapture(_ frame: ARFrame) -> Bool {
-        guard frame.timestamp - lastCapturedTimestamp >= quality.minimumCaptureInterval else { return false }
+        guard frame.timestamp - lastCapturedTimestamp >= quality.minimumCaptureInterval
+        else { return false }
+
         guard let previous = lastCapturedTransform else { return true }
 
         let current = frame.camera.transform
@@ -223,9 +230,8 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         let clamped = max(-1 as Float, min(1 as Float, dotValue))
         let rotation = acos(clamped)
 
-        // Tighter pose spacing gives the trainer substantially more overlap,
-        // which matters much more at 4K than simply collecting a few wide views.
-        return translation >= quality.minimumTranslation || rotation >= quality.minimumRotation
+        return translation >= quality.minimumTranslation ||
+            rotation >= quality.minimumRotation
     }
 
     private func matrixRows(_ matrix: simd_float4x4) -> [[Double]] {
@@ -236,7 +242,9 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         }
     }
 
-    private func limitedTrackingMessage(_ reason: ARCamera.TrackingState.Reason) -> String {
+    private func limitedTrackingMessage(
+        _ reason: ARCamera.TrackingState.Reason
+    ) -> String {
         switch reason {
         case .initializing:
             "Initializing tracking…"
