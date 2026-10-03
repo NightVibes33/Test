@@ -48,6 +48,11 @@ struct CameraOnlyCaptureView: View {
             ZStack {
                 ARCameraPreview(session: engine.session)
                     .ignoresSafeArea()
+
+                if purpose.isolatesForeground {
+                    subjectGuide
+                }
+
                 captureOverlay(engine)
             }
 
@@ -100,6 +105,42 @@ struct CameraOnlyCaptureView: View {
         case .cancelled:
             Color.clear.task { dismiss() }
         }
+    }
+
+    private var subjectGuide: some View {
+        VStack(spacing: 10) {
+            Spacer()
+
+            RoundedRectangle(cornerRadius: 34)
+                .stroke(
+                    .white.opacity(0.82),
+                    style: StrokeStyle(
+                        lineWidth: 2,
+                        dash: [10, 8]
+                    )
+                )
+                .frame(
+                    maxWidth: 320,
+                    maxHeight: 360
+                )
+                .overlay(alignment: .center) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+
+            Text("Keep the subject centered inside the frame")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(.black.opacity(0.55), in: Capsule())
+
+            Spacer()
+        }
+        .padding(.horizontal, 28)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func captureOverlay(_ engine: CameraOnlyCaptureEngine) -> some View {
