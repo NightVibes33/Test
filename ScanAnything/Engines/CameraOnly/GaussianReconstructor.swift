@@ -58,6 +58,13 @@ enum GaussianReconstructor {
 
             try Task.checkCancellation()
             trainer.exportSpz(to: outputPath)
+
+            let plyPath = outputURL
+                .deletingPathExtension()
+                .appendingPathExtension("ply")
+                .path(percentEncoded: false)
+            trainer.exportPly(to: plyPath)
+
             msplatSync()
 
             guard FileManager.default.fileExists(atPath: outputPath) else {
