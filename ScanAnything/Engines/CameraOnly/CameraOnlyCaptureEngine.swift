@@ -32,11 +32,11 @@ final class CameraOnlyCaptureEngine {
     private(set) var captureFormatDescription = "High quality"
 
     var coverage: Double {
-        min(1, Double(capturedCount) / Double(targetFrameCount))
+        min(1, Double(capturedCount) / Double(quality.targetFrameCount))
     }
 
     var canFinish: Bool {
-        capturedCount >= minimumFrameCount && featurePointCount >= 1_000
+        capturedCount >= quality.minimumFrameCount && featurePointCount >= quality.minimumFeaturePoints
     }
 
     init(storage: ScanStorage) {
