@@ -36,7 +36,7 @@ final class RoomCaptureEngine: ScanEngine {
 
     private(set) var phase: ScanPhase = .idle
     /// Filled in once processing completes, so the result screen can say what was
-    /// actually found rather than just "hazır".
+    /// actually found rather than just "ready".
     private(set) var summary: RoomSummary?
 
     /// Chosen before finishing: the export is the only place it matters.
@@ -165,7 +165,7 @@ final class RoomCaptureEngine: ScanEngine {
         } catch {
             // The room scan is the main event; losing the extra model is a note, not
             // a failure.
-            Self.logger.error("Kare toplayıcı başlatılamadı: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Keyframe collector failed to start: \(error.localizedDescription, privacy: .public)")
             photographicNote = "Couldn't prepare the photographic model workspace: \(error.localizedDescription)"
         }
     }
@@ -201,7 +201,7 @@ final class RoomCaptureEngine: ScanEngine {
                 try room.export(to: modelURL, exportOptions: style.options)
             }.value
         } catch {
-            Self.logger.error("Room dışa aktarılamadı: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Room export failed: \(error.localizedDescription, privacy: .public)")
             phase = .failed(message: error.localizedDescription)
             throw ScanEngineError.reconstructionFailed(error.localizedDescription)
         }
@@ -285,7 +285,7 @@ final class RoomCaptureEngine: ScanEngine {
                 photographicNote = advice.joined(separator: " ")
             }
         } catch {
-            Self.logger.error("Fotoğraflı model başarısız: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Photographic model failed: \(error.localizedDescription, privacy: .public)")
             storage.discard(photoWorkspace)
             photographicNote = "The photographic model couldn't be created: \(error.localizedDescription)"
         }

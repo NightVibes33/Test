@@ -493,7 +493,7 @@ private struct TurntableResultView: View {
                     .font(.headline)
                     .foregroundStyle(.green)
                 if let count = record.imageCount {
-                    Text("\(count) photos işlendi")
+                    Text("\(count) photos processed")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
