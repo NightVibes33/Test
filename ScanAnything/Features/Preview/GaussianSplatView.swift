@@ -79,6 +79,7 @@ fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
         self.view = view
         self.device = device
         self.queue = queue
+        self.drawableSize = view.drawableSize
         super.init()
 
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
@@ -141,7 +142,10 @@ fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
               drawableSize.height > 0
         else { return }
 
-        _ = inFlight.wait(timeout: .distantFuture)
+        // Keep the UI render loop responsive. If two GPU frames are already
+        // outstanding, skip this display tick instead of blocking the main
+        // thread waiting for Metal to finish.
+        guard inFlight.wait(timeout: .now()) == .success else { return }
         guard let commandBuffer = queue.makeCommandBuffer() else {
             inFlight.signal()
             return
