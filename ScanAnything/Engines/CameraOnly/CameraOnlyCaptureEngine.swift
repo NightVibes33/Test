@@ -107,7 +107,7 @@ final class CameraOnlyCaptureEngine: NSObject {
                 let record = ScanRecord(
                     id: workspace.id,
                     name: "3D Scan",
-                    engine: .objectCapture,
+                    engine: .cameraOnly,
                     modelFileName: "model.spz",
                     isMetricallyScaled: false,
                     imageCount: count,
