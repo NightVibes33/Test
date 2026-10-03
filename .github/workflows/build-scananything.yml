@@ -28,18 +28,18 @@ jobs:
           cmake --version || brew install cmake
           xcodebuild -downloadComponent MetalToolchain
 
-      - name: Fetch msplat
-        run: |
-          set -euxo pipefail
-          rm -rf Vendor/msplat
-          git clone --depth 1 https://github.com/frs0n/msplat-ios.git Vendor/msplat
-          git -C Vendor/msplat checkout e8611098583059b82e0b7d35259fb4e9c42df248
+      - name: Cache msplat iOS build
+        id: cache-msplat
+        uses: actions/cache@v4
+        with:
+          path: Vendor/msplat
+          key: msplat-ios-e8611098583059b82e0b7d35259fb4e9c42df248-xcode27-v1
 
-      - name: Build msplat for Apple platforms
+      - name: Bootstrap msplat for iOS
+        if: steps.cache-msplat.outputs.cache-hit != 'true'
         run: |
           set -euxo pipefail
-          chmod +x Vendor/msplat/scripts/build-xcframework.sh
-          BUILD_JOBS=3 Vendor/msplat/scripts/build-xcframework.sh
+          BUILD_JOBS=3 bash scripts/bootstrap-msplat.sh
 
       - name: Resolve packages
         run: |
