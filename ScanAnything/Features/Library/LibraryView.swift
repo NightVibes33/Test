@@ -7,8 +7,8 @@ struct LibraryView: View {
     ///
     /// Two reasons, both found the hard way. A `selection` binding on `List` takes
     /// over row taps, so `NavigationLink` rows stop navigating and just highlight.
-    /// And `EditButton` writes to the ambient `editModee` environment value, which a
-    /// local `.environment(\.editModee, …)` override on the list silently
+    /// And `EditButton` writes to the ambient `editMode` environment value, which a
+    /// local `.environment(\.editMode, …)` override on the list silently
     /// disconnects — the button toggles one value while the list reads another.
     ///
     /// Owning the mode means a tap does exactly one thing, chosen here.
@@ -46,7 +46,7 @@ struct LibraryView: View {
                     // bar owns the bottom edge, and the item simply never drew there.
                     ToolbarItem(placement: .topBarTrailing) { deleteSelectedButton }
                 }
-                ToolbarItem(placement: .topBarTrailing) { selectModeeButton }
+                ToolbarItem(placement: .topBarTrailing) { selectModeButton }
             }
         }
         .confirmationDialog(
@@ -57,7 +57,7 @@ struct LibraryView: View {
             Button("Delete", role: .destructive) { deleteSelected() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Modeels and source images will be permanently deleted. This cannot be undone.")
+            Text("Models and source images will be permanently deleted. This cannot be undone.")
         }
     }
 
@@ -99,7 +99,7 @@ struct LibraryView: View {
         return selection.isEmpty ? String(localized: "Select") : "\(selection.count) selected"
     }
 
-    private var selectModeeButton: some View {
+    private var selectModeButton: some View {
         Button(isSelecting ? "Done" : "Select") {
             isSelecting.toggle()
             // Ticks left behind would silently apply to the next round of selecting.
@@ -155,7 +155,7 @@ private struct ScanRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if record.isPreviewable {
-                ModeelThumbnailView(url: modelURL, side: 54)
+                ModelThumbnailView(url: modelURL, side: 54)
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(.quaternary)
@@ -237,7 +237,7 @@ struct ScanDetailView: View {
                 }
             } else if record.isPreviewable {
                 Section {
-                    ModeelPreviewView(url: storage.modelURL(for: record))
+                    ModelPreviewView(url: storage.modelURL(for: record))
                         .frame(height: 320)
                         .listRowInsets(EdgeInsets())
                 }
@@ -284,7 +284,7 @@ struct ScanDetailView: View {
             }
         }
         .navigationTitle(record.name)
-        .navigationBarTitleDisplayModee(.inline)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if let shareableURL {
