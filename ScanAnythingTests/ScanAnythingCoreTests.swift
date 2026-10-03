@@ -50,4 +50,19 @@ struct ScanAnythingCoreTests {
         #expect(record.isPreviewable)
         #expect(record.engine.producesMesh)
     }
+    @Test("High-detail Camera 3D keeps native source resolution")
+    func highDetailCameraQualityProfile() {
+        let quality = CameraOnlyQualityProfile.highDetail
+
+        #expect(quality.datasetDownscaleFactor == 1.0)
+        #expect(quality.targetFrameCount >= 160)
+        #expect(quality.minimumFrameCount >= 72)
+        #expect(quality.maximumFrameCount >= quality.targetFrameCount)
+        #expect(quality.minimumFeaturePoints >= 1_000)
+        #expect(quality.trainingIterations >= 8_000)
+        #expect(quality.shDegree == 3)
+        #expect(quality.stopDensifyAt >= 5_500)
+        #expect(quality.resolutionSchedule * quality.numDownscales < quality.trainingIterations)
+    }
+
 }
