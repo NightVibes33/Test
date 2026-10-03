@@ -204,11 +204,19 @@ enum ObjectIsolationService {
             croppedToInstancesExtent: false
         )
         let isolated = CIImage(cvPixelBuffer: maskedBuffer)
+        let black = CIImage(
+            color: CIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        ).cropped(to: isolated.extent)
+        let trainingImage = isolated.composited(over: black)
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
             ?? CGColorSpaceCreateDeviceRGB()
 
+        // msplat's CoreGraphics loader intentionally decodes RGB only and drops
+        // alpha. Flatten the training copy to the renderer's black background so
+        // transparent pixels can never retain stale source RGB and teach the
+        // optimizer a table/wall halo. The separate hero PNG stays transparent.
         guard let png = context.pngRepresentation(
-            of: isolated,
+            of: trainingImage,
             format: .RGBA8,
             colorSpace: colorSpace,
             options: [:]
