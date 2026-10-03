@@ -244,9 +244,15 @@ final class CameraOnlyCaptureEngine {
                         quality: reconstructionQuality
                     )
 
+                    let enrichedSnapshot = CameraOnlyCaptureSnapshot(
+                        frames: snapshot.frames,
+                        featurePoints: enrichedPoints
+                    )
+
+                    let trainingSnapshot: CameraOnlyCaptureSnapshot
                     if reconstructionPurpose.isolatesForeground {
-                        // Create the transparent hero from an untouched camera
-                        // frame before the training copies are flattened to black.
+                        // Hero and training masks are generated from untouched
+                        // source photos. The user's originals remain exportable.
                         if let heroFrame = snapshot.frames[safe: snapshot.frames.count / 2] {
                             let inputURL = workspace.root.appending(path: heroFrame.filePath)
                             let heroURL = workspace.root.appending(path: "hero.png")
@@ -256,19 +262,15 @@ final class CameraOnlyCaptureEngine {
                             )
                         }
 
-                        for frame in snapshot.frames {
-                            try Task.checkCancellation()
-                            let imageURL = workspace.root.appending(path: frame.filePath)
-                            try? await ObjectIsolationService.replaceBackgroundWithBlackJPEG(
-                                imageAt: imageURL
+                        trainingSnapshot = try await ObjectIsolationService
+                            .prepareTrainingSnapshot(
+                                snapshot: enrichedSnapshot,
+                                root: workspace.root,
+                                minimumFrames: reconstructionQuality.minimumFrameCount
                             )
-                        }
+                    } else {
+                        trainingSnapshot = enrichedSnapshot
                     }
-
-                    let trainingSnapshot = CameraOnlyCaptureSnapshot(
-                        frames: snapshot.frames,
-                        featurePoints: enrichedPoints
-                    )
 
                     try Task.checkCancellation()
                     try CameraOnlyDatasetWriter.write(

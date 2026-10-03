@@ -142,7 +142,12 @@ struct LibraryView: View {
     private func delete(_ records: [ScanRecord]) {
         for record in records {
             // The thumbnail is cached by URL, and a new scan can reuse a path.
-            ThumbnailStore.shared.invalidate(storage.modelURL(for: record))
+            let modelURL = storage.modelURL(for: record)
+            ThumbnailStore.shared.invalidate(modelURL)
+            ThumbnailStore.shared.invalidate(
+                modelURL.deletingLastPathComponent()
+                    .appending(path: "hero.png", directoryHint: .notDirectory)
+            )
             storage.delete(record)
         }
     }
@@ -154,7 +159,15 @@ private struct ScanRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if record.isPreviewable {
+            let heroURL = modelURL
+                .deletingLastPathComponent()
+                .appending(path: "hero.png", directoryHint: .notDirectory)
+
+            if FileManager.default.fileExists(
+                atPath: heroURL.path(percentEncoded: false)
+            ) {
+                ModelThumbnailView(url: heroURL, side: 54)
+            } else if record.isPreviewable {
                 ModelThumbnailView(url: modelURL, side: 54)
             } else {
                 RoundedRectangle(cornerRadius: 10)
