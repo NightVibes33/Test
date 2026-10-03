@@ -29,7 +29,7 @@ enum CameraOnlyCapturePurpose: String, Sendable {
 
     var initialGuidance: String {
         switch self {
-        case .object: "Move around the object and keep it centered"
+        case .object: "Move around the object — aim for 8–20 clear views"
         case .room: "Walk through the space and cover walls, corners and furniture"
         case .product: "Capture every side of the item"
         case .freeform: "Move through the scene and cover it from different angles"
@@ -65,6 +65,15 @@ enum CameraOnlyCapturePurpose: String, Sendable {
 
     var isolatesForeground: Bool {
         self == .object || self == .product
+    }
+
+    var assetKind: ScanAssetKind {
+        switch self {
+        case .object: .object
+        case .room: .room
+        case .product: .product
+        case .freeform: .freeform
+        }
     }
 }
 
@@ -236,6 +245,17 @@ final class CameraOnlyCaptureEngine {
                     )
 
                     if reconstructionPurpose.isolatesForeground {
+                        // Create the transparent hero from an untouched camera
+                        // frame before the training copies are flattened to black.
+                        if let heroFrame = snapshot.frames[safe: snapshot.frames.count / 2] {
+                            let inputURL = workspace.root.appending(path: heroFrame.filePath)
+                            let heroURL = workspace.root.appending(path: "hero.png")
+                            try? await ObjectIsolationService.createTransparentPNG(
+                                imageAt: inputURL,
+                                outputURL: heroURL
+                            )
+                        }
+
                         for frame in snapshot.frames {
                             try Task.checkCancellation()
                             let imageURL = workspace.root.appending(path: frame.filePath)
@@ -284,18 +304,6 @@ final class CameraOnlyCaptureEngine {
                 self.processingProgress = 0.96
                 self.processingMessage = "Creating scan preview"
 
-                if purpose.isolatesForeground,
-                   let heroFrame = snapshot.frames[safe: snapshot.frames.count / 2] {
-                    let inputURL = workspace.root.appending(path: heroFrame.filePath)
-                    let heroURL = workspace.root.appending(path: "hero.png")
-                    _ = try? await Task.detached(priority: .utility) {
-                        try await ObjectIsolationService.createTransparentPNG(
-                            imageAt: inputURL,
-                            outputURL: heroURL
-                        )
-                    }.value
-                }
-
                 try Task.checkCancellation()
                 self.processingProgress = 0.99
                 self.processingMessage = "Saving scan"
@@ -304,6 +312,7 @@ final class CameraOnlyCaptureEngine {
                     id: workspace.id,
                     name: reconstructionPurpose.recordName,
                     engine: .cameraOnly,
+                    assetKind: reconstructionPurpose.assetKind,
                     modelFileName: "model.ply",
                     isMetricallyScaled: false,
                     imageCount: count,
