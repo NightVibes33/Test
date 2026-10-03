@@ -1,6 +1,7 @@
 @preconcurrency import ARKit
 import CoreImage
 import Foundation
+import ImageIO
 import simd
 
 struct CameraOnlyFrameMetadata: Sendable {
@@ -33,17 +34,21 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     private let imagesURL: URL
     private let eventHandler: @Sendable (CameraOnlyCaptureEvent) -> Void
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
+    private let jpegOptions: [CIImageRepresentationOption: Any] = [
+        kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.98
+    ]
 
     private var frames: [CameraOnlyFrameMetadata] = []
     private var featurePoints: [SIMD3<Float>] = []
+    private var featurePointIdentifiers = Set<UInt64>()
     private var lastCapturedTransform: simd_float4x4?
     private var lastCapturedTimestamp: TimeInterval = -1
     private var lastProgressEventTimestamp: TimeInterval = -1
     private var lastProgressMessage = ""
 
-    private let targetFrameCount = 80
-    private let maximumFrameCount = 140
-    private let maximumFeaturePoints = 100_000
+    private let targetFrameCount = 160
+    private let maximumFrameCount = 240
+    private let maximumFeaturePoints = 250_000
 
     init(
         imagesURL: URL,
@@ -109,7 +114,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         guard let data = imageContext.jpegRepresentation(
             of: image,
             colorSpace: CGColorSpaceCreateDeviceRGB(),
-            options: [:]
+            options: jpegOptions
         ) else {
             eventHandler(.failure("Could not encode this camera frame."))
             return
@@ -139,10 +144,16 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
             )
         )
 
-        if let cloud = frame.rawFeaturePoints {
-            let room = max(0, maximumFeaturePoints - featurePoints.count)
-            if room > 0 {
-                featurePoints.append(contentsOf: cloud.points.prefix(room))
+        // ARKit reports many of the same tracked feature points in consecutive
+        // frames. Keep each stable identifier only once so the Gaussian seed is
+        // real scene geometry instead of tens of thousands of duplicates.
+        if let cloud = frame.rawFeaturePoints,
+           featurePoints.count < maximumFeaturePoints {
+            for (identifier, point) in zip(cloud.identifiers, cloud.points) {
+                guard featurePoints.count < maximumFeaturePoints else { break }
+                if featurePointIdentifiers.insert(identifier).inserted {
+                    featurePoints.append(point)
+                }
             }
         }
 
@@ -182,7 +193,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     }
 
     private func shouldCapture(_ frame: ARFrame) -> Bool {
-        guard frame.timestamp - lastCapturedTimestamp >= 0.20 else { return false }
+        guard frame.timestamp - lastCapturedTimestamp >= 0.15 else { return false }
         guard let previous = lastCapturedTransform else { return true }
 
         let current = frame.camera.transform
@@ -212,7 +223,9 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         let clamped = max(-1 as Float, min(1 as Float, dotValue))
         let rotation = acos(clamped)
 
-        return translation >= 0.025 || rotation >= 0.07
+        // Tighter pose spacing gives the trainer substantially more overlap,
+        // which matters much more at 4K than simply collecting a few wide views.
+        return translation >= 0.018 || rotation >= 0.045
     }
 
     private func matrixRows(_ matrix: simd_float4x4) -> [[Double]] {
