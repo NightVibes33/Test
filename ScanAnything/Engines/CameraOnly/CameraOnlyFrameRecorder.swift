@@ -448,7 +448,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
             if frames.count >= requiredFrames {
                 return "Fill the missing sides and add a slightly higher or lower view"
             }
-            return "Move around the object and keep it centered"
+            return "Move around the object — aim for 8–20 clear views"
         case .room:
             if viewCoverage >= requiredCoverage * 0.75 {
                 return "Cover the remaining walls, corners and floor"
