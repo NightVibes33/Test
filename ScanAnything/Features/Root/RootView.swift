@@ -19,6 +19,9 @@ struct RootView: View {
 }
 
 private struct ScanHomeView: View {
+    @State private var isPresentingObjectCapture = false
+    @State private var permissionDenied = false
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -38,16 +41,30 @@ private struct ScanHomeView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                NavigationLink {
-                    ScanSetupView()
+                Button {
+                    Task {
+                        guard await DeviceCapabilities.requestCameraAccess() else {
+                            permissionDenied = true
+                            return
+                        }
+                        isPresentingObjectCapture = true
+                    }
                 } label: {
-                    Label("Scan Anything", systemImage: "camera.viewfinder")
+                    Label("Scan Object", systemImage: "camera.viewfinder")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .frame(height: 58)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+
+                NavigationLink {
+                    ScanSetupView()
+                } label: {
+                    Label("More scan modes", systemImage: "square.grid.2x2")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
 
                 Text("Object  •  Room  •  Product  •  Freeform")
                     .font(.caption.weight(.medium))
@@ -81,6 +98,14 @@ private struct ScanHomeView: View {
             .padding()
         }
         .navigationTitle("Scan")
+        .fullScreenCover(isPresented: $isPresentingObjectCapture) {
+            CameraOnlyCaptureView(purpose: .object)
+        }
+        .alert("Camera access is off", isPresented: $permissionDenied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Enable Camera access for ScanAnything in Settings to create 3D scans.")
+        }
     }
 
     private func feature(_ title: String, _ detail: String, _ symbol: String) -> some View {
