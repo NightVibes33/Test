@@ -65,11 +65,7 @@ struct LibraryView: View {
 
     @ViewBuilder
     private func row(for record: ScanRecord) -> some View {
-        let content = ScanRow(
-            record: record,
-            modelURL: storage.modelURL(for: record),
-            heroURL: storage.directoryURL(for: record).appending(path: "hero.png")
-        )
+        let content = ScanRow(record: record, modelURL: storage.modelURL(for: record))
 
         if isSelecting {
             Button {
@@ -155,20 +151,17 @@ struct LibraryView: View {
 private struct ScanRow: View {
     let record: ScanRecord
     let modelURL: URL
-    let heroURL: URL
 
     var body: some View {
         HStack(spacing: 12) {
             if record.isPreviewable {
                 ModelThumbnailView(url: modelURL, side: 54)
-            } else if record.isGaussianSplat {
-                HeroThumbnailView(url: heroURL, side: 54)
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(.quaternary)
                     .frame(width: 54, height: 54)
                     .overlay {
-                        Image(systemName: "aqi.medium")
+                        Image(systemName: record.isGaussianSplat ? "sparkles.rectangle.stack" : "aqi.medium")
                             .foregroundStyle(.secondary)
                     }
             }
@@ -315,15 +308,7 @@ struct ScanDetailView: View {
     @ViewBuilder
     private func exportSection(for record: ScanRecord) -> some View {
         if record.isGaussianSplat {
-            Section {
-                Button("Prepare 3D file for sharing") {
-                    shareableURL = storage.modelURL(for: record)
-                }
-            } header: {
-                Text("Export")
-            } footer: {
-                Text("Exports the compact SPZ Gaussian Splat file.")
-            }
+            gaussianExportSection(for: record)
         } else if record.isPreviewable {
             meshExportSection(for: record)
         } else {
@@ -334,6 +319,41 @@ struct ScanDetailView: View {
             } footer: {
                 Text("The point cloud is saved as PLY.")
             }
+        }
+    }
+
+    private func gaussianExportSection(for record: ScanRecord) -> some View {
+        let modelURL = storage.modelURL(for: record)
+        let folder = modelURL.deletingLastPathComponent()
+        let plyURL = folder.appending(path: "model.ply", directoryHint: .notDirectory)
+        let heroURL = folder.appending(path: "hero.png", directoryHint: .notDirectory)
+
+        return Section {
+            Button {
+                shareableURL = modelURL
+            } label: {
+                Label("Share SPZ", systemImage: "cube.transparent")
+            }
+
+            if FileManager.default.fileExists(atPath: plyURL.path(percentEncoded: false)) {
+                Button {
+                    shareableURL = plyURL
+                } label: {
+                    Label("Share Gaussian PLY", systemImage: "point.3.connected.trianglepath.dotted")
+                }
+            }
+
+            if FileManager.default.fileExists(atPath: heroURL.path(percentEncoded: false)) {
+                Button {
+                    shareableURL = heroURL
+                } label: {
+                    Label("Share Isolated PNG", systemImage: "photo")
+                }
+            }
+        } header: {
+            Text("Export")
+        } footer: {
+            Text("SPZ is the compact 3D Gaussian model. PLY is a broader Gaussian-splat interchange format. The PNG is an on-device foreground-isolated still when Vision could identify the object.")
         }
     }
 
