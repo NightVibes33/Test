@@ -26,6 +26,11 @@ enum DeviceCapabilities {
         PhotogrammetrySession.isSupported
     }
 
+    /// Camera-only 3D scanning via ARKit world tracking. Works without LiDAR.
+    static var supportsCameraOnly3D: Bool {
+        ARWorldTrackingConfiguration.isSupported
+    }
+
     /// Front structured-light depth sensor. The Faz 2 engine's hard requirement.
     static var hasTrueDepthCamera: Bool {
         AVCaptureDevice.default(.builtInTrueDepthCamera, for: .video, position: .front) != nil
@@ -121,6 +126,7 @@ enum DeviceCapabilities {
     /// Human-readable summary for the diagnostics row in mode selection.
     static var summary: [(label: String, value: Bool)] {
         [
+            ("Camera 3D (no LiDAR)", supportsCameraOnly3D),
             ("Object Capture", supportsObjectCapture),
             (String(localized: "Fotogrametri (cihaz üstü)"), supportsPhotogrammetry),
             (String(localized: "Oda taraması (RoomPlan)"), supportsRoomCapture),
