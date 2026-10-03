@@ -24,17 +24,19 @@ struct ScanAnythingCoreTests {
         #expect(recommendation.kind == .cameraOnly)
     }
 
-    @Test("SPZ scan records are identified as Gaussian splats")
+    @Test("Gaussian scan formats are identified as splats")
     func gaussianRecordDetection() {
-        let record = ScanRecord(
-            name: "Camera scan",
-            engine: .cameraOnly,
-            modelFileName: "model.spz",
-            isMetricallyScaled: false
-        )
+        for fileName in ["model.ply", "model.spz", "model.splat"] {
+            let record = ScanRecord(
+                name: "Camera scan",
+                engine: .cameraOnly,
+                modelFileName: fileName,
+                isMetricallyScaled: false
+            )
 
-        #expect(record.isGaussianSplat)
-        #expect(record.isPreviewable == false)
+            #expect(record.isGaussianSplat)
+            #expect(record.isPreviewable == false)
+        }
     }
 
     @Test("USDZ scan records remain RealityKit-previewable meshes")
