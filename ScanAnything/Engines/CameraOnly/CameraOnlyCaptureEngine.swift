@@ -21,20 +21,22 @@ final class CameraOnlyCaptureEngine {
     private var recorder: CameraOnlyFrameRecorder?
     private var reconstructionTask: Task<Void, Never>?
 
-    private let targetFrameCount = 80
+    private let targetFrameCount = 160
+    private let minimumFrameCount = 72
     private(set) var phase: Phase = .idle
     private(set) var capturedCount = 0
     private(set) var featurePointCount = 0
     private(set) var trackingMessage = "Move slowly around the object"
     private(set) var processingProgress = 0.0
     private(set) var gaussianCount = 0
+    private(set) var captureFormatDescription = "High quality"
 
     var coverage: Double {
         min(1, Double(capturedCount) / Double(targetFrameCount))
     }
 
     var canFinish: Bool {
-        capturedCount >= 24 && featurePointCount >= 100
+        capturedCount >= minimumFrameCount && featurePointCount >= 1_000
     }
 
     init(storage: ScanStorage) {
@@ -72,6 +74,21 @@ final class CameraOnlyCaptureEngine {
         configuration.worldAlignment = .gravity
         configuration.isAutoFocusEnabled = true
         configuration.environmentTexturing = .none
+        configuration.videoHDRAllowed = false
+
+        // ARKit does not automatically guarantee a 4K camera feed. Explicitly
+        // request its tracked 4K format when the device exposes one, then fall
+        // back to ARKit's highest-quality supported format.
+        if let format = ARWorldTrackingConfiguration.recommendedVideoFormatFor4KResolution
+            ?? ARWorldTrackingConfiguration.supportedVideoFormats.first {
+            configuration.videoFormat = format
+
+            let width = Int(format.imageResolution.width)
+            let height = Int(format.imageResolution.height)
+            let longEdge = max(width, height)
+            let prefix = longEdge >= 3_800 ? "4K" : "High quality"
+            captureFormatDescription = "\(prefix) • \(width)×\(height) • \(format.framesPerSecond) fps"
+        }
 
         session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
         phase = .capturing
@@ -85,7 +102,7 @@ final class CameraOnlyCaptureEngine {
 
         guard canFinish else {
             phase = .failed(
-                "Keep scanning. Capture at least 24 well-tracked views around the object."
+                "Keep scanning. Capture at least \(minimumFrameCount) well-tracked views around the object."
             )
             return
         }
