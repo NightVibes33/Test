@@ -22,10 +22,10 @@ final class TurntableCaptureEngine: ScanEngine {
 
     static var availability: EngineAvailability {
         guard AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) != nil else {
-            return .unsupportedDevice(reason: String(localized: "Arka kamera bulunamadı."))
+            return .unsupportedDevice(reason: String(localized: "Rear camera not found."))
         }
         guard DeviceCapabilities.supportsPhotogrammetry else {
-            return .unsupportedDevice(reason: String(localized: "Bu cihaz cihaz-üstü fotogrametriyi desteklemiyor."))
+            return .unsupportedDevice(reason: String(localized: "On-device photogrammetry isn't available on this device."))
         }
         return .available
     }
@@ -162,7 +162,7 @@ final class TurntableCaptureEngine: ScanEngine {
         coordinator.stop()
 
         guard shotCount > 0 else {
-            phase = .failed(message: String(localized: "Hiç fotoğraf çekilmedi."))
+            phase = .failed(message: String(localized: "No photos were captured."))
             throw ScanEngineError.noImagesCaptured
         }
 
@@ -285,8 +285,8 @@ final class TurntableCaptureEngine: ScanEngine {
 
     private static func defaultName(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.locale = Locale(identifier: "en_US")
         formatter.dateFormat = "d MMM HH:mm"
-        return "Tabla \(formatter.string(from: date))"
+        return "Product \(formatter.string(from: date))"
     }
 }

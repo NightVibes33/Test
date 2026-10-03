@@ -27,13 +27,13 @@ struct RoomFlowView: View {
                 content(for: engine)
             } else if let startupError {
                 RoomMessageView(
-                    title: String(localized: "Oda taraması başlatılamadı"),
+                    title: String(localized: "Room scan couldn't start"),
                     message: startupError,
                     systemImage: "exclamationmark.triangle.fill",
                     tint: .orange
                 ) { dismiss() }
             } else {
-                ProgressView("Hazırlanıyor…").tint(.white)
+                ProgressView("Preparing…").tint(.white)
             }
         }
         .preferredColorScheme(.dark)
@@ -47,7 +47,7 @@ struct RoomFlowView: View {
     private func content(for engine: RoomCaptureEngine) -> some View {
         switch engine.phase {
         case .idle:
-            ProgressView("Hazırlanıyor…").tint(.white)
+            ProgressView("Preparing…").tint(.white)
 
         // `.preparing` is included: the session is intentionally not running yet,
         // and it must not start until the capture view below is mounted.
@@ -75,7 +75,7 @@ struct RoomFlowView: View {
 
         case .failed(let message):
             RoomMessageView(
-                title: String(localized: "Oda taraması başarısız"),
+                title: String(localized: "Room scan failed"),
                 message: message,
                 systemImage: "exclamationmark.triangle.fill",
                 tint: .orange
@@ -182,13 +182,13 @@ private struct RoomSetupGuide: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Oda taraması")
+                Text("Room Scan")
                     .font(.title2.bold())
 
                 // Said up front because it is the most common disappointment: this
                 // mode is not a higher-resolution object scanner, it is a different
                 // product entirely.
-                Text("Bu mod odanın yapısını çıkarır: duvarlar, kapılar, pencereler ve mobilya. Mobilya tanınmış kutular olarak gelir — koltuğun kumaş kıvrımlarını değil. Detaylı obje modeli için Fotogrametri modunu kullan.")
+                Text("This mode captures the room structure: walls, doors, windows, and furniture. On LiDAR devices, recognized furniture may begin as simplified geometry; the photographic pass adds visual detail.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -196,22 +196,22 @@ private struct RoomSetupGuide: View {
                 photographicOption
 
                 requirement(
-                    String(localized: "Duvarlardan 1-2 metre uzakta dolaş"),
-                    detail: String(localized: "LiDAR menzili yaklaşık 5 metre. Duvara yapışırsan yüzeyin tamamını göremez, çok uzaklaşırsan ölçüm zayıflar."),
+                    String(localized: "Stay 1–2 meters from the walls"),
+                    detail: String(localized: "On depth-enhanced devices, keeping some distance helps the sensor see the whole surface. Camera-only scans also need overlapping views."),
                     systemImage: "figure.walk",
                     isCritical: true
                 )
 
                 requirement(
-                    String(localized: "Telefonu duvara doğru tut, yavaşça süpür"),
-                    detail: String(localized: "Göğüs hizasında tut ve hafifçe aşağı-yukarı çevir; taban ve tavan birleşimlerini görmesi gerekiyor. Hızlı hareket edersen 'yavaşla' uyarısı çıkar."),
+                    String(localized: "Aim toward each wall and move slowly"),
+                    detail: String(localized: "Keep the device around chest height and tilt slightly up and down so floor and ceiling edges are captured. Move slowly to preserve tracking."),
                     systemImage: "iphone.gen3.radiowaves.left.and.right",
                     isCritical: true
                 )
 
                 requirement(
                     "Bir turu tamamla",
-                    detail: String(localized: "Odanın çevresini kesintisiz dolaşıp başladığın yere dön. Yarım tur kalan duvarları eksik bırakır."),
+                    detail: String(localized: "Walk a complete loop around the space and return near where you started. A partial loop leaves missing surfaces."),
                     systemImage: "arrow.trianglehead.clockwise"
                 )
 
@@ -219,36 +219,36 @@ private struct RoomSetupGuide: View {
                     // Measured, not a hunch: a single 75-frame loop produced a torn
                     // shell with a hole where the floor was only ever seen edge-on.
                     requirement(
-                        String(localized: "Fotoğraflı model için iki tur at"),
-                        detail: String(localized: "Birinci turda telefonu duvarlara doğru tut. İkinci turda biraz aşağı eğ, zemini ve mobilyanın önünü gör. Tek tur yeterli kare bırakmıyor ve model yırtık çıkıyor."),
+                        String(localized: "Make two passes for the photographic model"),
+                        detail: String(localized: "On the first pass, cover the walls. On the second, angle lower to capture the floor and furniture fronts. Extra overlap reduces holes."),
                         systemImage: "arrow.triangle.2.circlepath",
                         isCritical: true
                     )
                 }
 
                 requirement(
-                    String(localized: "Işıklar açık olsun"),
-                    detail: String(localized: "Duvarı LiDAR ölçer ama 'bu bir kapı' kararını kamera görüntüsü verir. Karanlıkta sınıflandırma çalışmaz."),
+                    String(localized: "Keep the room well lit"),
+                    detail: String(localized: "Even when depth is available, camera imagery helps classify and texture the room. Good lighting improves both paths."),
                     systemImage: "lightbulb"
                 )
 
                 requirement(
-                    String(localized: "Ayna ve büyük camlara dikkat"),
-                    detail: String(localized: "Yansıma LiDAR'ı yanıltır; aynanın arkasında olmayan bir oda çıkabilir. Mümkünse o duvarı biraz uzaktan geç."),
+                    String(localized: "Watch mirrors and large glass"),
+                    detail: String(localized: "Reflections can confuse both visual reconstruction and depth sensing. Capture reflective surfaces from several angles."),
                     systemImage: "rectangle.on.rectangle.angled"
                 )
 
                 requirement(
                     "Tek seferde tek oda",
-                    detail: String(localized: "RoomPlan'in sahne boyut sınırı var. Ev taramak için odaları ayrı ayrı tarayıp modelleri birlikte kullan."),
+                    detail: String(localized: "For very large homes, scan rooms separately so each space gets enough detail."),
                     systemImage: "square.split.bottomrightquarter"
                 )
 
-                Button("Anladım, Başla", action: onContinue)
+                Button("Start Scanning", action: onContinue)
                     .buttonStyle(RoomPrimaryButton())
                     .padding(.top, 4)
 
-                Button("Vazgeç", action: onCancel)
+                Button("Cancel", action: onCancel)
                     .font(.footnote)
                     .frame(maxWidth: .infinity)
             }
@@ -261,18 +261,18 @@ private struct RoomSetupGuide: View {
     private var photographicOption: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle(isOn: $wantsPhotographicModel) {
-                Text("Fotoğraflı model de üret")
+                Text("Also build a photographic model")
                     .font(.subheadline.weight(.semibold))
             }
 
-            Text("RoomPlan hiç renk üretmiyor — çıktısı tasarım gereği sadece geometri, o yüzden gri. Bu seçenek yürürken kamera kareleri de toplar ve onlardan **ikinci bir model** çıkarır: dokulu, gerçek görünümlü. Kütüphaneye iki kayıt olarak düşer.")
+            Text("The structural room model prioritizes measured geometry. This option also collects camera views while you walk and builds a second, textured visual model.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if wantsPhotographicModel {
                 Label(
-                    "Deneysel. Fotogrametri geometriyi yüzey deseninden türetir; boş boyalı duvarlarda zayıf kalır, mobilyalı ve dokulu odalarda iyi çıkar. Ayrıca oda modelinden sonra birkaç dakika daha işlem sürer.",
+                    "Experimental. Photographic reconstruction works best in furnished or textured spaces and may need additional processing after the structural model.",
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.caption)
@@ -349,7 +349,7 @@ private struct RoomCoverageDial: View {
                 }
             }
 
-            Text("dış halka duvar · iç halka zemin")
+            Text("outer ring walls · inner ring floor")
                 .font(.system(size: 8))
                 .foregroundStyle(.white.opacity(0.55))
         }
@@ -461,14 +461,14 @@ private struct RoomOverlay: View {
             .impact(weight: .light),
             trigger: engine.wallSectors.count + engine.floorSectors.count
         )
-        .confirmationDialog("Taramayı iptal et?", isPresented: $isConfirmingCancel, titleVisibility: .visible) {
-            Button("İptal Et ve Çık", role: .destructive, action: onCancel)
-            Button("Taramaya Dön", role: .cancel) {}
+        .confirmationDialog("Cancel scan?", isPresented: $isConfirmingCancel, titleVisibility: .visible) {
+            Button("Cancel and Exit", role: .destructive, action: onCancel)
+            Button("Return to Scan", role: .cancel) {}
         } message: {
-            Text("Şu ana kadar taranan oda silinecek.")
+            Text("The room captured so far will be deleted.")
         }
         .alert(
-            "Oda modeli oluşturulamadı",
+            "The room model couldn't be created",
             isPresented: Binding(get: { finishError != nil }, set: { if !$0 { finishError = nil } })
         ) {
             Button("Tamam") { finishError = nil }
@@ -495,7 +495,7 @@ private struct RoomOverlay: View {
             // no number to show and RoomPlan reports no shot count of its own.
             if engine.capturesPhotographicModel {
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text("\(engine.keyframeCount) kare")
+                    Text("\(engine.keyframeCount) frames")
                         .font(.footnote.weight(.semibold).monospacedDigit())
                     if let resolution = engine.frameResolution {
                         // Shown because it is the single biggest factor in how the
@@ -524,21 +524,21 @@ private struct RoomOverlay: View {
     /// second loop looking down is a different job, and telling someone to keep
     /// circling the walls at that point is wrong.
     private var guidance: String {
-        guard isCapturing else { return String(localized: "Kamera başlatılıyor…") }
+        guard isCapturing else { return String(localized: "Starting camera…") }
         guard engine.capturesPhotographicModel else {
-            return String(localized: "Duvarların çevresinde yavaşça dolaş — çizgiler oluştukça o yüzey yakalanıyor")
+            return String(localized: "Walk slowly around the walls — surfaces fill in as they are captured")
         }
 
         let total = RoomKeyframeCollector.sectorCount
         let walls = engine.wallSectors.count
         if walls < total {
-            return "Sarı iğneyi gri kalan yönlere çevir — \(total - walls) yön eksik"
+            return "Point the indicator toward the remaining gray directions — \(total - walls) directions left"
         }
         let floors = engine.floorSectors.count
         if floors < total {
-            return "Duvarlar tamam. Şimdi telefonu aşağı eğip ikinci turu at — iç halkada \(total - floors) yön eksik"
+            return "Walls are covered. Angle the device lower for a second pass — \(total - floors) directions left"
         }
-        return String(localized: "Her yön çekildi. İstersen daha fazla kare topla ya da bitir.")
+        return String(localized: "All directions covered. You can capture more detail or finish.")
     }
 
     private var actionBar: some View {
@@ -550,7 +550,7 @@ private struct RoomOverlay: View {
                 .foregroundStyle(.white.opacity(0.85))
                 .multilineTextAlignment(.center)
 
-            Picker("Çıktı", selection: Binding(
+            Picker("Output", selection: Binding(
                 get: { engine.exportStyle },
                 set: { engine.exportStyle = $0 }
             )) {
@@ -583,7 +583,7 @@ private struct RoomOverlay: View {
                 if isFinishing {
                     ProgressView().tint(.black)
                 } else {
-                    Text("Bitir ve Modeli Oluştur")
+                    Text("Finish and Build Model")
                 }
             }
             .buttonStyle(RoomPrimaryButton())
@@ -620,11 +620,11 @@ private struct RoomProcessingOverlay: View {
                 // Indeterminate on purpose: RoomPlan reports no progress while it
                 // turns the captured data into a room, and a fake bar would be a lie.
                 ProgressView().tint(.white)
-                Text("Oda modeli oluşturuluyor")
+                Text("Building room model")
                     .font(.headline)
                 Text(isReconstructingPhotos
-                     ? "Oda modeli birkaç saniye, ardından fotoğraflı model birkaç dakika sürer. Uygulamayı arka plana almayın."
-                     : "Genelde birkaç saniye sürer. Uygulamayı arka plana almayın.")
+                     ? "The structural model finishes first, then the photographic model continues. Keep ScanAnything open."
+                     : "Keep ScanAnything open while the model finishes.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -657,16 +657,16 @@ private struct RoomResultView: View {
     private var content: some View {
         VStack(spacing: 18) {
             modelCard(
-                title: String(localized: "Yapı modeli"),
-                caption: String(localized: "gerçek ölçülerde · renksiz"),
+                title: String(localized: "Structural model"),
+                caption: String(localized: "real scale · structural"),
                 record: record,
                 extra: structureCaption
             )
 
             if let photographicRecord {
                 modelCard(
-                    title: String(localized: "Fotoğraflı model"),
-                    caption: String(localized: "dokulu · ölçeksiz"),
+                    title: String(localized: "Photographic model"),
+                    caption: String(localized: "textured · unscaled"),
                     record: photographicRecord,
                     extra: photographicRecord.summary
                 )
@@ -680,7 +680,7 @@ private struct RoomResultView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Button("Bitti", action: onDone)
+            Button("Done", action: onDone)
                 .buttonStyle(RoomPrimaryButton())
                 .padding(.horizontal, 40)
         }
@@ -728,7 +728,7 @@ private struct RoomResultView: View {
 
     private static func metres(_ millimetres: [Int]) -> String {
         let values = millimetres.map { String(format: "%.2f", Double($0) / 1000) }
-        return "\(values[0]) × \(values[2]) m taban · \(values[1]) m yükseklik"
+        return "\(values[0]) × \(values[2]) m floor · \(values[1]) m height"
     }
 }
 
@@ -749,7 +749,7 @@ private struct RoomMessageView: View {
                 .multilineTextAlignment(.center)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Button("Kapat", action: onDismiss)
+            Button("Close", action: onDismiss)
                 .buttonStyle(RoomPrimaryButton())
                 .padding(.horizontal, 40)
         }

@@ -27,7 +27,7 @@ final class RoomCaptureEngine: ScanEngine {
 
     static var availability: EngineAvailability {
         guard RoomCaptureSession.isSupported else {
-            return .unsupportedDevice(reason: String(localized: "Oda taraması LiDAR gerektiriyor; bu cihaz desteklemiyor."))
+            return .unsupportedDevice(reason: String(localized: "RoomPlan enhancement isn't available on this device."))
         }
         return .available
     }
@@ -166,7 +166,7 @@ final class RoomCaptureEngine: ScanEngine {
             // The room scan is the main event; losing the extra model is a note, not
             // a failure.
             Self.logger.error("Kare toplayıcı başlatılamadı: \(error.localizedDescription, privacy: .public)")
-            photographicNote = "Fotoğraflı model için çalışma alanı açılamadı: \(error.localizedDescription)"
+            photographicNote = "Couldn't prepare the photographic model workspace: \(error.localizedDescription)"
         }
     }
 
@@ -176,7 +176,7 @@ final class RoomCaptureEngine: ScanEngine {
         }
 
         guard hasStartedSession else {
-            throw ScanEngineError.sessionUnavailable(String(localized: "Kamera oturumu henüz başlamadı."))
+            throw ScanEngineError.sessionUnavailable(String(localized: "The camera session hasn't started yet."))
         }
 
         cameraWatchdog?.cancel()
@@ -201,7 +201,7 @@ final class RoomCaptureEngine: ScanEngine {
                 try room.export(to: modelURL, exportOptions: style.options)
             }.value
         } catch {
-            Self.logger.error("Oda dışa aktarılamadı: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Room dışa aktarılamadı: \(error.localizedDescription, privacy: .public)")
             phase = .failed(message: error.localizedDescription)
             throw ScanEngineError.reconstructionFailed(error.localizedDescription)
         }
@@ -245,7 +245,7 @@ final class RoomCaptureEngine: ScanEngine {
         let frames = collector.savedCount
         guard frames >= RoomKeyframeCollector.minimumFrames else {
             storage.discard(photoWorkspace)
-            photographicNote = "Fotoğraflı model için yeterli kare toplanamadı (\(frames)/\(RoomKeyframeCollector.minimumFrames)). Odayı daha geniş dolaşmak gerekiyor."
+            photographicNote = "Not enough views were collected for the photographic model (\(frames)/\(RoomKeyframeCollector.minimumFrames)). Cover more of the room before finishing."
             return
         }
 
@@ -268,7 +268,7 @@ final class RoomCaptureEngine: ScanEngine {
 
             let photoRecord = ScanRecord(
                 id: photoWorkspace.id,
-                name: "\(roomName) · fotoğraflı",
+                name: "\(roomName) · photographic",
                 engine: Self.kind,
                 assetKind: .room,
                 // Stills alone carry no scale. The parametric model next to it does,
@@ -287,7 +287,7 @@ final class RoomCaptureEngine: ScanEngine {
         } catch {
             Self.logger.error("Fotoğraflı model başarısız: \(error.localizedDescription, privacy: .public)")
             storage.discard(photoWorkspace)
-            photographicNote = "Fotoğraflı model oluşturulamadı: \(error.localizedDescription)"
+            photographicNote = "The photographic model couldn't be created: \(error.localizedDescription)"
         }
     }
 
@@ -334,7 +334,7 @@ final class RoomCaptureEngine: ScanEngine {
 
                 if captureView.captureSession.arSession.currentFrame == nil {
                     if elapsed >= 3 {
-                        cameraDiagnostic = "Kamera \(Int(elapsed)) saniyedir kare üretmiyor — ARKit oturumu başlamamış."
+                        cameraDiagnostic = "Camera \(Int(elapsed)) seconds without a frame — the ARKit session may not have started."
                     }
                 } else {
                     cameraDiagnostic = nil
@@ -360,9 +360,9 @@ final class RoomCaptureEngine: ScanEngine {
 
     private static func defaultName(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.locale = Locale(identifier: "en_US")
         formatter.dateFormat = "d MMM HH:mm"
-        return "Oda \(formatter.string(from: date))"
+        return "Room \(formatter.string(from: date))"
     }
 }
 
