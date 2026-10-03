@@ -27,25 +27,17 @@ final class ScanStorage {
     private static let logger = Logger(subsystem: "com.nightvibes33.scananything", category: "storage")
 
     private(set) var scans: [ScanRecord] = []
-    private(set) var completedScanCount = 0
-
-    var hasFreeScanRemaining: Bool {
-        completedScanCount < 3
-    }
 
     private let fileManager = FileManager.default
     private let scansRoot: URL
     private let libraryFile: URL
-    private let usageFile: URL
 
     init() {
         let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         scansRoot = documents.appending(path: "Scans", directoryHint: .isDirectory)
         libraryFile = scansRoot.appending(path: "library.json", directoryHint: .notDirectory)
-        usageFile = scansRoot.appending(path: "usage.json", directoryHint: .notDirectory)
         try? fileManager.createDirectory(at: scansRoot, withIntermediateDirectories: true)
         load()
-        loadUsage()
     }
 
     // MARK: - Library
@@ -76,31 +68,6 @@ final class ScanStorage {
         }
     }
 
-    private struct UsageState: Codable {
-        var completedScans: Int
-    }
-
-    private func loadUsage() {
-        guard let data = try? Data(contentsOf: usageFile),
-              let state = try? JSONDecoder().decode(UsageState.self, from: data)
-        else {
-            completedScanCount = 0
-            return
-        }
-        completedScanCount = max(0, state.completedScans)
-    }
-
-    private func persistUsage() {
-        do {
-            let data = try JSONEncoder().encode(
-                UsageState(completedScans: completedScanCount)
-            )
-            try data.write(to: usageFile, options: .atomic)
-        } catch {
-            Self.logger.error("Usage counter could not be saved: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
     // MARK: - Workspaces
 
     func makeWorkspace() throws -> ScanWorkspace {
@@ -119,9 +86,7 @@ final class ScanStorage {
     func commit(_ record: ScanRecord, workspace: ScanWorkspace) {
         precondition(record.id == workspace.id, "Record and workspace identifiers must match")
         scans.insert(record, at: 0)
-        completedScanCount += 1
         persist()
-        persistUsage()
     }
 
     // MARK: - Records

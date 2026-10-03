@@ -3,13 +3,9 @@ import SwiftUI
 /// Pre-flight screen: describe the object, get a mode recommendation, pick detail,
 /// then hand off to the engine's capture flow.
 struct ScanSetupView: View {
-    @Environment(ScanStorage.self) private var storage
-    @Environment(StoreManager.self) private var store
-
     @State private var profile = ObjectProfile()
     @State private var overriddenKind: ScanEngineKind?
     @State private var isPresentingCapture = false
-    @State private var isPresentingPaywall = false
     @State private var permissionDenied = false
 
     private var availableKinds: Set<ScanEngineKind> {
@@ -64,9 +60,6 @@ struct ScanSetupView: View {
             case .trueDepth: TrueDepthFlowView()
             case .roomPlan: RoomFlowView()
             }
-        }
-        .sheet(isPresented: $isPresentingPaywall) {
-            ProPaywallView()
         }
         .alert("Kamera erişimi kapalı", isPresented: $permissionDenied) {
             Button("Tamam", role: .cancel) {}
@@ -334,11 +327,6 @@ struct ScanSetupView: View {
 
     private var startButton: some View {
         Button {
-            if !store.isPro && !storage.hasFreeScanRemaining {
-                isPresentingPaywall = true
-                return
-            }
-
             Task {
                 guard await DeviceCapabilities.requestCameraAccess() else {
                     permissionDenied = true

@@ -19,11 +19,7 @@ struct RootView: View {
 }
 
 private struct ScanHomeView: View {
-    @Environment(ScanStorage.self) private var storage
-    @Environment(StoreManager.self) private var store
-
     @State private var isPresentingCapture = false
-    @State private var isPresentingPaywall = false
     @State private var permissionDenied = false
 
     private var usesEnhancedPipeline: Bool {
@@ -51,11 +47,6 @@ private struct ScanHomeView: View {
 
                 VStack(spacing: 12) {
                     Button {
-                        if !store.isPro && !storage.hasFreeScanRemaining {
-                            isPresentingPaywall = true
-                            return
-                        }
-
                         Task {
                             guard await DeviceCapabilities.requestCameraAccess() else {
                                 permissionDenied = true
@@ -110,9 +101,6 @@ private struct ScanHomeView: View {
             } else {
                 CameraOnlyCaptureView()
             }
-        }
-        .sheet(isPresented: $isPresentingPaywall) {
-            ProPaywallView()
         }
         .alert("Camera access is off", isPresented: $permissionDenied) {
             Button("OK", role: .cancel) {}
@@ -178,20 +166,6 @@ private struct ScanAnythingSettingsView: View {
                     "Terms of Use",
                     destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
                 )
-                NavigationLink("Open-source acknowledgements") {
-                    List {
-                        Section("ObjectScanner") {
-                            Text("Original scanning foundation by Burak Şahinkaya. Apache License 2.0. The upstream LICENSE and NOTICE files are included with this source tree.")
-                        }
-                        Section("msplat-ios") {
-                            Text("On-device Gaussian Splatting training. Apache License 2.0.")
-                        }
-                        Section("MetalSplatter") {
-                            Text("Gaussian Splatting renderer for Apple platforms. MIT License.")
-                        }
-                    }
-                    .navigationTitle("Acknowledgements")
-                }
             }
         }
         .navigationTitle("Settings")
