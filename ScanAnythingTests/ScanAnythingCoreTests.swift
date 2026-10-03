@@ -121,6 +121,21 @@ struct ScanAnythingCoreTests {
         #expect(CameraOnlyCapturePurpose.room.isolatesForeground == false)
     }
 
+    @Test("Library records can carry a user-facing asset kind independent of backend")
+    func assetKindIsIndependentFromEngine() {
+        let record = ScanRecord(
+            name: "Chair",
+            engine: .cameraOnly,
+            assetKind: .object,
+            modelFileName: "model.ply",
+            isMetricallyScaled: false
+        )
+
+        #expect(record.assetKind == .object)
+        #expect(record.assetKind?.displayName == "Object")
+        #expect(record.engine == .cameraOnly)
+    }
+
     @Test("Colored Gaussian seed PLY round-trips XYZ with RGB records")
     func coloredSeedPLYRoundTrip() throws {
         let url = FileManager.default.temporaryDirectory
