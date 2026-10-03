@@ -89,7 +89,12 @@ enum GaussianReconstructor {
 
             try Task.checkCancellation()
             msplatSync()
-            trainer.exportSpz(to: outputPath)
+
+            // Keep the trained Gaussian parameters as float32. SPZ intentionally
+            // quantizes position, scale, rotation, color, and SH coefficients;
+            // PLY is the max-fidelity master and MetalSplatter/SplatIO can read it
+            // directly for the in-app preview.
+            trainer.exportPly(to: outputPath)
             msplatSync()
 
             guard FileManager.default.fileExists(atPath: outputPath) else {
