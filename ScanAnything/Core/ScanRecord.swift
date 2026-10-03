@@ -5,6 +5,7 @@ struct ScanRecord: Identifiable, Codable, Hashable, Sendable {
     var name: String
     let createdAt: Date
     let engine: ScanEngineKind
+    let assetKind: ScanAssetKind?
     let modelFileName: String
     let isMetricallyScaled: Bool
     let imageCount: Int?
@@ -29,6 +30,7 @@ struct ScanRecord: Identifiable, Codable, Hashable, Sendable {
         name: String,
         createdAt: Date = Date(),
         engine: ScanEngineKind,
+        assetKind: ScanAssetKind? = nil,
         modelFileName: String = "model.usdz",
         isMetricallyScaled: Bool,
         imageCount: Int? = nil,
@@ -41,6 +43,7 @@ struct ScanRecord: Identifiable, Codable, Hashable, Sendable {
         self.name = name
         self.createdAt = createdAt
         self.engine = engine
+        self.assetKind = assetKind
         self.modelFileName = modelFileName
         self.isMetricallyScaled = isMetricallyScaled
         self.imageCount = imageCount
@@ -66,6 +69,32 @@ enum ReconstructionDetail: String, Codable, CaseIterable, Sendable, Identifiable
         switch self {
         case .reduced:
             "iOS supports reduced-detail on-device photogrammetry. Source images can be reprocessed on macOS at higher detail."
+        }
+    }
+}
+
+
+enum ScanAssetKind: String, Codable, Sendable, Hashable {
+    case object
+    case room
+    case product
+    case freeform
+
+    var displayName: String {
+        switch self {
+        case .object: "Object"
+        case .room: "Room"
+        case .product: "Product"
+        case .freeform: "Freeform"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .object: "cube.transparent"
+        case .room: "house"
+        case .product: "arrow.trianglehead.2.clockwise.rotate.90"
+        case .freeform: "viewfinder"
         }
     }
 }
