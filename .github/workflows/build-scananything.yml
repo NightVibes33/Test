@@ -45,6 +45,19 @@ jobs:
           set -euxo pipefail
           BUILD_JOBS=3 bash scripts/bootstrap-msplat.sh
 
+      - name: Cache Depth Anything Core ML model
+        id: cache-depth-anything
+        uses: actions/cache@v4
+        with:
+          path: ScanAnything/Models/DepthAnythingV2SmallF16.mlpackage
+          key: depth-anything-v2-small-f16-cfef6f6f2a70783dedc0bfae40cecbc2052285d3-v1
+
+      - name: Bootstrap learned depth prior
+        if: steps.cache-depth-anything.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          bash scripts/bootstrap-depth-anything.sh
+
       - name: Resolve packages
         run: |
           set -euxo pipefail
