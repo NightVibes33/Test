@@ -1,0 +1,3 @@
+[submodule "Vendor/msplat-ios"]
+	path = Vendor/msplat-ios
+	url = https://github.com/frs0n/msplat-ios.git
