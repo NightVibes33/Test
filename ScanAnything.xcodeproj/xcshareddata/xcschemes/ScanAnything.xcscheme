@@ -21,6 +21,20 @@
                ReferencedContainer = "container:ScanAnything.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "TESTTARGET"
+               BuildableName = "ScanAnythingTests.xctest"
+               BlueprintName = "ScanAnythingTests"
+               ReferencedContainer = "container:ScanAnything.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
