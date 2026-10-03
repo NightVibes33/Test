@@ -17,10 +17,11 @@ ScanAnything has one consumer-facing scan flow and chooses the best reconstructi
 3. Camera intrinsics and camera-to-world poses are stored with each accepted frame.
 4. Capture coverage is measured across azimuth and elevation bands rather than by frame count alone.
 5. ARKit raw feature points seed the reconstruction with camera-sampled sRGB instead of a flat gray fallback.
-6. The capture is written as a Nerfstudio-compatible dataset.
-7. msplat trains a 3D Gaussian Splat locally with Metal using a 30,000-step progressive-resolution quality profile.
-8. The master result is stored as float32 Gaussian PLY so training detail is not quantized away.
-9. MetalSplatter renders the PLY result directly in the library.
+6. Apple's Depth Anything V2 Small Core ML model runs on selected keyframes; its relative inverse depth is calibrated against ARKit metric feature depths and back-projected into an additional dense seed cloud.
+7. The enriched capture is written as a Nerfstudio-compatible dataset.
+8. msplat trains a 3D Gaussian Splat locally with Metal using a 30,000-step progressive-resolution quality profile.
+9. The master result is stored as float32 Gaussian PLY so training detail is not quantized away.
+10. MetalSplatter renders the PLY result directly in the library.
 
 No server upload is required.
 
@@ -96,3 +97,18 @@ LiDAR/Object Capture scans retain the upstream source images/checkpoints and fin
 The scanner foundation comes from ObjectScanner under Apache-2.0. Camera-only training uses msplat-ios under Apache-2.0. Gaussian rendering uses MetalSplatter under MIT.
 
 See `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md`.
+
+
+### Learned depth model
+
+The camera-only max-quality path uses Apple's FP16 Core ML conversion of Depth
+Anything V2 Small. The model weights are intentionally not committed to this
+repository. CI downloads the exact pinned revision and verifies the model and
+weight SHA-256 values before building:
+
+```bash
+bash scripts/bootstrap-depth-anything.sh
+```
+
+If the model is absent or a frame cannot be calibrated against enough ARKit
+metric anchors, the scan safely falls back to the colored ARKit sparse seed.
