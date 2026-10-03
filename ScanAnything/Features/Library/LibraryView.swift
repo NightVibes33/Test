@@ -272,7 +272,7 @@ private struct ScanRow: View {
             if FileManager.default.fileExists(
                 atPath: heroURL.path(percentEncoded: false)
             ) {
-                ModelThumbnailView(url: heroURL, side: 54)
+                ModelThumbnailView(url: heroURL, side: 68)
             } else if record.isPreviewable {
                 ModelThumbnailView(url: modelURL, side: 68)
             } else {
