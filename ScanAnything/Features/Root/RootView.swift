@@ -19,13 +19,6 @@ struct RootView: View {
 }
 
 private struct ScanHomeView: View {
-    @State private var isPresentingCapture = false
-    @State private var permissionDenied = false
-
-    private var usesEnhancedPipeline: Bool {
-        DeviceCapabilities.supportsObjectCapture && DeviceCapabilities.supportsPhotogrammetry
-    }
-
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -39,74 +32,55 @@ private struct ScanHomeView: View {
                     Text("Scan Anything")
                         .font(.largeTitle.bold())
 
-                    Text("Turn real objects into 3D with your iPhone.")
+                    Text("Take a few good photos and turn real objects and spaces into clean 3D assets.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
 
-                VStack(spacing: 12) {
-                    Button {
-                        Task {
-                            guard await DeviceCapabilities.requestCameraAccess() else {
-                                permissionDenied = true
-                                return
-                            }
-                            isPresentingCapture = true
-                        }
-                    } label: {
-                        Label("Scan Anything", systemImage: "camera.viewfinder")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 58)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-
-                    HStack(spacing: 8) {
-                        Image(systemName: usesEnhancedPipeline ? "sensor.tag.radiowaves.forward.fill" : "camera.fill")
-                        Text(usesEnhancedPipeline ? "Enhanced LiDAR + photogrammetry" : "Camera 3D • no LiDAR required")
-                    }
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                }
-
-                VStack(alignment: .leading, spacing: 14) {
-                    feature("Move around it", "Capture every side while the app keeps the best tracked views.", "rotate.3d")
-                    feature("Build it on-device", "Processing stays on your iPhone; no upload is required.", "iphone.gen3")
-                    feature("Keep and share it", "Save your scans in a local library and export supported formats.", "square.and.arrow.up")
-                }
-                .padding()
-                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 22))
-
                 NavigationLink {
                     ScanSetupView()
                 } label: {
-                    HStack {
-                        Label("More scan modes", systemImage: "slider.horizontal.3")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                    }
-                    .padding()
-                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+                    Label("Scan Anything", systemImage: "camera.viewfinder")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 58)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Text("Object  •  Room  •  Product  •  Freeform")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    feature(
+                        "A few good views",
+                        "Capture the subject from different sides instead of recording hundreds of frames.",
+                        "camera.on.rectangle"
+                    )
+                    feature(
+                        "Automatic cleanup",
+                        "Object scans isolate the foreground before reconstruction to reduce table and wall background.",
+                        "wand.and.stars"
+                    )
+                    feature(
+                        "Works without Pro hardware",
+                        "LiDAR and depth sensors improve supported scans automatically but never unlock the mode.",
+                        "iphone.gen3"
+                    )
+                    feature(
+                        "3D library",
+                        "Finished objects and spaces stay organized locally for preview and export.",
+                        "square.stack.3d.up"
+                    )
+                }
+                .padding()
+                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 22))
             }
             .padding()
         }
         .navigationTitle("Scan")
-        .fullScreenCover(isPresented: $isPresentingCapture) {
-            if usesEnhancedPipeline {
-                ObjectCaptureFlowView()
-            } else {
-                CameraOnlyCaptureView()
-            }
-        }
-        .alert("Camera access is off", isPresented: $permissionDenied) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Enable Camera access for ScanAnything in Settings to create 3D scans.")
-        }
     }
 
     private func feature(_ title: String, _ detail: String, _ symbol: String) -> some View {

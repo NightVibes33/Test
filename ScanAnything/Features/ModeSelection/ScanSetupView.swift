@@ -1,436 +1,163 @@
 import SwiftUI
 
-/// Pre-flight screen: describe the object, get a mode recommendation, pick detail,
-/// then hand off to the engine's capture flow.
+/// User-facing scan choices.
+///
+/// These are intents, not hardware engines. Every choice stays available on a
+/// supported iPhone/iPad. LiDAR, TrueDepth, RoomPlan and Apple's Object Capture
+/// are implementation details that may improve a scan when present, never a
+/// requirement the user has to understand.
+private enum ScanIntent: String, CaseIterable, Identifiable {
+    case object
+    case room
+    case product
+    case freeform
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .object: "Object"
+        case .room: "Room / Space"
+        case .product: "Product / Turntable"
+        case .freeform: "Freeform"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .object:
+            "Take a small set of photos and build a clean standalone 3D object."
+        case .room:
+            "Walk through a room or space. LiDAR improves it automatically when available."
+        case .product:
+            "Capture an item from every side. A fixed-camera turntable is used when supported."
+        case .freeform:
+            "Furniture, vehicles, larger items and scenes without a hardware-specific workflow."
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .object: "cube.transparent"
+        case .room: "house"
+        case .product: "arrow.trianglehead.2.clockwise.rotate.90"
+        case .freeform: "viewfinder"
+        }
+    }
+}
+
 struct ScanSetupView: View {
-    @State private var profile = ObjectProfile()
-    @State private var overriddenKind: ScanEngineKind?
+    @State private var selectedIntent: ScanIntent = .object
     @State private var isPresentingCapture = false
     @State private var permissionDenied = false
 
-    private var availableKinds: Set<ScanEngineKind> {
-        var kinds: Set<ScanEngineKind> = []
-        if DeviceCapabilities.supportsCameraOnly { kinds.insert(.cameraOnly) }
-        if ObjectCaptureEngine.availability.isUsable { kinds.insert(.objectCapture) }
-        if TurntableCaptureEngine.availability.isUsable { kinds.insert(.turntable) }
-        if TrueDepthEngine.availability.isUsable { kinds.insert(.trueDepth) }
-        if RoomCaptureEngine.availability.isUsable { kinds.insert(.roomPlan) }
-        return kinds
-    }
-
-    private var recommendation: ModeRecommendation {
-        profile.recommendation(availableKinds: availableKinds)
-    }
-
-    private var selectedKind: ScanEngineKind {
-        overriddenKind ?? recommendation.kind
-    }
-
-    private var canStart: Bool {
-        selectedKind.isImplemented && availableKinds.contains(selectedKind)
-    }
-
     var body: some View {
-        Form {
-            hardwareWarningSection
-            // A room is not an object, so the object questionnaire, its
-            // recommendation and the photogrammetry detail note all stop applying
-            // the moment room mode is picked.
-            if selectedKind == .roomPlan {
-                roomSection
-            } else {
-                objectSection
-                recommendationSection
-            }
-            modeSection
-            if selectedKind == .cameraOnly {
-                cameraOnlyDetailSection
-            } else if selectedKind != .roomPlan {
-                detailSection
-            }
-            diagnosticsSection
-        }
-        .navigationTitle("Yeni Tarama")
-        .safeAreaInset(edge: .bottom) { startButton }
-        .fullScreenCover(isPresented: $isPresentingCapture) {
-            switch selectedKind {
-            case .cameraOnly: CameraOnlyCaptureView()
-            case .objectCapture: ObjectCaptureFlowView()
-            case .turntable: TurntableFlowView()
-            case .trueDepth: TrueDepthFlowView()
-            case .roomPlan: RoomFlowView()
-            }
-        }
-        .alert("Kamera erişimi kapalı", isPresented: $permissionDenied) {
-            Button("Tamam", role: .cancel) {}
-        } message: {
-            Text("Tarama için Ayarlar > ObjectScanner üzerinden kamera erişimini açın.")
-        }
-        .onChange(of: profile) { _, _ in
-            overriddenKind = nil
-        }
-    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("What are you scanning?")
+                        .font(.largeTitle.bold())
 
-    // MARK: - Sections
-
-    /// Only shown for conditions that actually prevent scanning.
-    @ViewBuilder
-    private var hardwareWarningSection: some View {
-        if let warning = DeviceCapabilities.blockingHardwareWarning {
-            Section {
-                Label {
-                    Text(warning)
-                        .font(.footnote)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "wrench.and.screwdriver.fill")
-                }
-                .foregroundStyle(.orange)
-            } header: {
-                Text("Donanım uyarısı")
-            }
-        }
-    }
-
-    private var objectSection: some View {
-        Section {
-            Picker("Boyut", selection: $profile.size) {
-                ForEach(ObjectProfile.Size.allCases) { Text($0.displayName).tag($0) }
-            }
-            Picker("Yüzey", selection: $profile.finish) {
-                ForEach(ObjectProfile.Finish.allCases) { Text($0.displayName).tag($0) }
-            }
-            Picker("Desen", selection: $profile.pattern) {
-                ForEach(ObjectProfile.Pattern.allCases) { Text($0.displayName).tag($0) }
-            }
-        } header: {
-            Text("Objeyi tanımlayın")
-        } footer: {
-            Text("Bu üç cevap hangi sensörün doğru olduğunu belirler. En kritik olan desen: fotogrametri geometriyi yüzey deseninden üretir.")
-        }
-    }
-
-    /// Replaces the object questionnaire in room mode.
-    ///
-    /// Room mode needs no questions: RoomPlan's technique does not change with the
-    /// subject the way the object modes do. What it does need is an honest
-    /// statement of what comes out, because "3D oda modeli" sets expectations that
-    /// a parametric floor plan does not meet.
-    private var roomSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Odanın yapısını çıkarır")
-                    .font(.headline)
-                Text("LiDAR duvarları, kapıları, pencereleri ve mobilyayı ayrı ayrı tanır ve gerçek ölçülerle yerleştirir. Boyalı düz duvar fotogrametriyi çökertir; bu mod tam o yüzeylerde çalışır çünkü geometriyi desenden değil ölçümden alır.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Divider()
-
-                Label(
-                    "Mobilya tanınmış kutular olarak gelir — koltuğun detaylı mesh'i çıkmaz. Detaylı obje için Fotogrametri modu.",
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .font(.footnote)
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
-
-                Label(
-                    "Model gerçek metre cinsinden çıkar; kütüphanede oda ölçülerini görürsünüz.",
-                    systemImage: "ruler"
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-                Label(
-                    "Tek seferde tek oda. Ev için odaları ayrı ayrı tarayın.",
-                    systemImage: "square.split.bottomrightquarter"
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 4)
-        } header: {
-            Text("Oda taraması")
-        }
-    }
-
-    private var recommendationSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    Image(systemName: recommendation.kind.symbolName)
-                        .font(.title2)
-                        .foregroundStyle(recommendation.strength.tint)
-                        .frame(width: 32)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 6) {
-                            Text(recommendation.kind.displayName)
-                                .font(.headline)
-                            if let badge = recommendation.kind.maturity.badge {
-                                Text(badge)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.orange)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(.orange.opacity(0.16), in: Capsule())
-                            }
-                        }
-                        Text(recommendation.strength.label)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(recommendation.strength.tint)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: recommendation.strength.symbolName)
-                        .foregroundStyle(recommendation.strength.tint)
-                }
-
-                Text(recommendation.rationale)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !recommendation.warnings.isEmpty || !recommendation.tips.isEmpty {
-                    Divider()
-                }
-
-                ForEach(recommendation.warnings, id: \.self) { warning in
-                    Label(warning, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                ForEach(recommendation.tips, id: \.self) { tip in
-                    Label(tip, systemImage: "lightbulb.fill")
-                        .font(.footnote)
+                    Text("Choose the result you want. ScanAnything picks the best available camera, depth and reconstruction path automatically.")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
-            }
-            .padding(.vertical, 6)
-            // Coloured rule keyed to how well the mode fits, so a String(localized: "geçici çözüm")
-            // reads as a caveat at a glance instead of looking like a green light.
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(recommendation.strength.tint)
-                    .frame(width: 3)
-                    .clipShape(Capsule())
-                    .offset(x: -14)
-            }
-            .animation(.easeInOut(duration: 0.2), value: recommendation)
-        } header: {
-            Text("Öneri")
-        }
-    }
 
-    private var modeSection: some View {
-        Section {
-            ForEach(ScanEngineKind.allCases) { kind in
-                ModeRow(
-                    kind: kind,
-                    isSelected: kind == selectedKind,
-                    isRecommended: kind == recommendation.kind,
-                    blockedReason: blockedReason(for: kind)
-                )
-                .contentShape(.rect)
-                .onTapGesture {
-                    guard blockedReason(for: kind) == nil else { return }
-                    overriddenKind = kind
-                }
-            }
-        } header: {
-            Text("Mod")
-        } footer: {
-            Text("Öneriyi geçersiz kılabilirsiniz. **beta** işaretli modlar çalışır ama güvenilir değil: sonuç objeye ve ortama göre belirgin şekilde değişir.")
-        }
-    }
+                VStack(spacing: 12) {
+                    ForEach(ScanIntent.allCases) { intent in
+                        Button {
+                            selectedIntent = intent
+                        } label: {
+                            HStack(alignment: .top, spacing: 14) {
+                                Image(systemName: intent.symbol)
+                                    .font(.title2)
+                                    .frame(width: 32)
+                                    .foregroundStyle(selectedIntent == intent ? .primary : .secondary)
 
-    private var detailSection: some View {
-        Section {
-            Label("Cihaz üstü yeniden yapılandırma: reduced", systemImage: "cpu")
-                .font(.subheadline)
-            Label(
-                "Kaynak görüntüler saklanır; tam detay için kütüphaneden Mac'e aktarabilirsiniz.",
-                systemImage: "arrow.up.forward.app"
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        } header: {
-            Text("Yeniden yapılandırma")
-        } footer: {
-            // Worth stating plainly rather than hiding behind a disabled picker:
-            // the ceiling is Apple's, not this app's.
-            Text("iOS SDK'sı cihaz üstü fotogrametride yalnızca `reduced` seviyesini sunuyor. `medium` / `full` / `raw` sadece macOS'ta mevcut.")
-        }
-    }
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(intent.title)
+                                        .font(.headline)
+                                    Text(intent.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
 
-    private var cameraOnlyDetailSection: some View {
-        Section {
-            Label("On-device Gaussian reconstruction", systemImage: "cpu")
-                .font(.subheadline)
-            Label(
-                "Source images and ARKit poses stay on this iPhone and are used to build an SPZ Gaussian Splat.",
-                systemImage: "lock.iphone"
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        } header: {
-            Text("Reconstruction")
-        } footer: {
-            Text("Camera 3D does not require LiDAR. It prioritizes realistic appearance; LiDAR/Object Capture remains the geometry-first mesh path on supported Pro devices.")
-        }
-    }
+                                Spacer(minLength: 8)
 
-    @ViewBuilder
-    private var diagnosticsSection: some View {
-        Section("Cihaz yetenekleri") {
-            ForEach(DeviceCapabilities.summary, id: \.label) { item in
-                HStack {
-                    Text(item.label)
-                    Spacer()
-                    Image(systemName: item.value ? "checkmark.circle.fill" : "xmark.circle")
-                        .foregroundStyle(item.value ? .green : .secondary)
-                }
-                .font(.subheadline)
-            }
-        }
-
-        // A dead lens does not enumerate, and the virtual combination devices
-        // that depend on it vanish too. Listing what the system actually hands
-        // out makes two units of the same model directly comparable.
-        Section {
-            ForEach(Array(DeviceCapabilities.rearCaptureDevices.enumerated()), id: \.offset) { _, device in
-                HStack {
-                    Text(device.label)
-                        .font(.footnote)
-                    Spacer()
-                    if device.isVirtual {
-                        Text("sanal")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                                Image(systemName: selectedIntent == intent ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                                    .foregroundStyle(selectedIntent == intent ? .tint : .tertiary)
+                            }
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                selectedIntent == intent
+                                    ? Color.accentColor.opacity(0.13)
+                                    : Color.secondary.opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 18)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(intent.title)
                     }
                 }
-            }
-        } header: {
-            Text("Arka kamera envanteri")
-        } footer: {
-            Text("\(DeviceCapabilities.physicalRearLensCount) fiziksel lens. Aynı modelin iki cihazında bu liste farklıysa eksik olan lens arızalı demektir.")
-        }
-    }
 
-    private var startButton: some View {
-        Button {
-            Task {
-                guard await DeviceCapabilities.requestCameraAccess() else {
-                    permissionDenied = true
-                    return
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("No Pro-model iPhone or iPad is required.", systemImage: "iphone.gen3")
+                    Label("Extra depth sensors are used automatically when they can improve the result.", systemImage: "sensor.tag.radiowaves.forward")
+                    Label("ScanAnything Pro is an app subscription and remains separate from device hardware.", systemImage: "sparkles")
                 }
-                isPresentingCapture = true
-            }
-        } label: {
-            Text(canStart ? String(localized: "Taramayı Başlat") : (blockedReason(for: selectedKind) ?? String(localized: "Kullanılamıyor")))
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(!canStart)
-        .padding()
-        .background(.bar)
-    }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(16)
+                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 18))
 
-    private func blockedReason(for kind: ScanEngineKind) -> String? {
-        guard kind.isImplemented else { return String(localized: "Henüz gelmedi") }
-        switch kind {
-        case .cameraOnly:
-            return DeviceCapabilities.supportsCameraOnly ? nil : "Camera-only 3D is not supported on this device."
-        case .objectCapture: return ObjectCaptureEngine.availability.blockedReason
-        case .turntable: return TurntableCaptureEngine.availability.blockedReason
-        case .trueDepth: return TrueDepthEngine.availability.blockedReason
-        case .roomPlan: return RoomCaptureEngine.availability.blockedReason
-        }
-    }
-}
-
-private struct ModeRow: View {
-    let kind: ScanEngineKind
-    let isSelected: Bool
-    let isRecommended: Bool
-    let blockedReason: String?
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: kind.symbolName)
-                .font(.title3)
-                .frame(width: 28)
-                .foregroundStyle(blockedReason == nil ? .primary : .tertiary)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(kind.displayName)
-                        .font(.body.weight(isSelected ? .semibold : .regular))
-                    if let badge = kind.maturity.badge {
-                        Text(badge)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.orange.opacity(0.16), in: Capsule())
+                Button {
+                    Task {
+                        guard await DeviceCapabilities.requestCameraAccess() else {
+                            permissionDenied = true
+                            return
+                        }
+                        isPresentingCapture = true
                     }
-                    if isRecommended {
-                        Text("önerilen")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.tint.opacity(0.18), in: Capsule())
-                    }
+                } label: {
+                    Label("Start \(selectedIntent.title)", systemImage: "camera.viewfinder")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
                 }
-                Text(blockedReason ?? kind.tagline)
-                    .font(.caption)
-                    .foregroundStyle(blockedReason == nil ? .secondary : .tertiary)
+                .buttonStyle(.borderedProminent)
+                .disabled(!DeviceCapabilities.supportsCameraOnly)
             }
-
-            Spacer()
-
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.tint)
+            .padding()
+        }
+        .navigationTitle("New Scan")
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $isPresentingCapture) {
+            switch selectedIntent {
+            case .object:
+                CameraOnlyCaptureView()
+            case .room:
+                if RoomCaptureEngine.availability.isUsable {
+                    RoomFlowView()
+                } else {
+                    CameraOnlyCaptureView()
+                }
+            case .product:
+                if TurntableCaptureEngine.availability.isUsable {
+                    TurntableFlowView()
+                } else {
+                    CameraOnlyCaptureView()
+                }
+            case .freeform:
+                CameraOnlyCaptureView()
             }
         }
-        .opacity(blockedReason == nil ? 1 : 0.55)
-    }
-}
-
-private extension ModeRecommendation.Strength {
-    var label: String {
-        switch self {
-        case .strong: "iyi uyum"
-        case .qualified: String(localized: "çekinceli")
-        case .fallback: String(localized: "geçici çözüm")
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        case .strong: "checkmark.seal.fill"
-        case .qualified: "exclamationmark.triangle.fill"
-        case .fallback: "arrow.triangle.branch"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .strong: .green
-        case .qualified: .orange
-        case .fallback: .yellow
+        .alert("Camera access is off", isPresented: $permissionDenied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Enable Camera access for ScanAnything in Settings to create 3D scans.")
         }
     }
 }

@@ -105,7 +105,7 @@ enum DeviceCapabilities {
     /// hardware is worse than no banner at all.
     static var blockingHardwareWarning: String? {
         if AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) == nil {
-            return String(localized: "Arka ana kamera bulunamadı. Tarama yapılamaz.")
+            return String(localized: "Rear main camera not found. Scanning is unavailable.")
         }
         return nil
     }
@@ -129,14 +129,14 @@ enum DeviceCapabilities {
         [
             ("Camera-only 3D", supportsCameraOnly),
             ("Object Capture", supportsObjectCapture),
-            (String(localized: "Fotogrametri (cihaz üstü)"), supportsPhotogrammetry),
-            (String(localized: "Oda taraması (RoomPlan)"), supportsRoomCapture),
-            ("LiDAR sahne mesh'i", supportsSceneReconstruction),
-            (String(localized: "LiDAR derinlik cihazı"), AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) != nil),
-            (String(localized: "Ultra geniş kamera"), AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) != nil),
-            ("Telefoto kamera", AVCaptureDevice.default(.builtInTelephotoCamera, for: .video, position: .back) != nil),
-            (String(localized: "TrueDepth sensörü"), hasTrueDepthCamera),
-            (String(localized: "Ön↔arka kalibrasyon (hibrit için)"), hasFrontToRearCalibration),
+            (String(localized: "On-device photogrammetry"), supportsPhotogrammetry),
+            (String(localized: "RoomPlan"), supportsRoomCapture),
+            ("LiDAR scene mesh", supportsSceneReconstruction),
+            (String(localized: "LiDAR depth camera"), AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) != nil),
+            (String(localized: "Ultra-wide camera"), AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) != nil),
+            ("Telephoto camera", AVCaptureDevice.default(.builtInTelephotoCamera, for: .video, position: .back) != nil),
+            (String(localized: "TrueDepth sensor"), hasTrueDepthCamera),
+            (String(localized: "Front↔rear calibration"), hasFrontToRearCalibration),
         ]
     }
 }
