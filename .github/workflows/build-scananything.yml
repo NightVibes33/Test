@@ -3,7 +3,7 @@ name: Build ScanAnything
 on:
   push:
     branches:
-      - scananything
+      - scananything-app
   workflow_dispatch:
 
 permissions:
@@ -18,52 +18,50 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          submodules: recursive
           fetch-depth: 1
 
       - name: Toolchain
         run: |
+          set -euxo pipefail
           xcodebuild -version
           swift --version
           cmake --version || brew install cmake
           xcodebuild -downloadComponent MetalToolchain
 
-      - name: Build msplat for iOS
+      - name: Fetch msplat
         run: |
-          chmod +x Vendor/msplat-ios/scripts/build-xcframework.sh
-          BUILD_JOBS=3 Vendor/msplat-ios/scripts/build-xcframework.sh
+          set -euxo pipefail
+          rm -rf Vendor/msplat
+          git clone --depth 1 https://github.com/frs0n/msplat-ios.git Vendor/msplat
+          git -C Vendor/msplat checkout e8611098583059b82e0b7d35259fb4e9c42df248
+
+      - name: Build msplat for Apple platforms
+        run: |
+          set -euxo pipefail
+          chmod +x Vendor/msplat/scripts/build-xcframework.sh
+          BUILD_JOBS=3 Vendor/msplat/scripts/build-xcframework.sh
 
       - name: Resolve packages
         run: |
-          xcodebuild \
-            -project ObjectScanner.xcodeproj \
-            -scheme ObjectScanner \
-            -resolvePackageDependencies
+          set -euxo pipefail
+          xcodebuild             -project ScanAnything.xcodeproj             -scheme ScanAnything             -resolvePackageDependencies
 
       - name: Build unsigned app
         run: |
           set -o pipefail
           rm -rf DerivedData
-          xcodebuild \
-            -project ObjectScanner.xcodeproj \
-            -scheme ObjectScanner \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build | tee xcodebuild.log
+          xcodebuild             -project ScanAnything.xcodeproj             -scheme ScanAnything             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath DerivedData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""             build | tee xcodebuild.log
 
       - name: Package unsigned IPA
         run: |
-          APP="$(find DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name '*.app' -print -quit)"
+          set -euxo pipefail
+          APP="$(find DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'ScanAnything.app' -print -quit)"
           test -n "$APP"
           rm -rf Payload ScanAnything-unsigned.ipa
           mkdir Payload
-          ditto "$APP" "Payload/$(basename "$APP")"
+          ditto "$APP" "Payload/ScanAnything.app"
           /usr/bin/zip -qry ScanAnything-unsigned.ipa Payload
+          unzip -l ScanAnything-unsigned.ipa | grep 'Payload/ScanAnything.app/Info.plist'
 
       - name: Upload IPA
         uses: actions/upload-artifact@v6
