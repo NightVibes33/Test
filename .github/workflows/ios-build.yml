@@ -1,0 +1,47 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [scananything]
+  pull_request:
+    branches: [scananything]
+  workflow_dispatch:
+
+concurrency:
+  group: scananything-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          sw_vers
+          cmake --version || brew install cmake
+
+      - name: Build msplat
+        run: bash scripts/bootstrap-msplat.sh
+
+      - name: Resolve packages
+        run: |
+          xcodebuild             -resolvePackageDependencies             -project ScanAnything.xcodeproj             -scheme ScanAnything
+
+      - name: Build unsigned iOS app
+        run: |
+          set -o pipefail
+          xcodebuild             -project ScanAnything.xcodeproj             -scheme ScanAnything             -configuration Debug             -destination 'generic/platform=iOS'             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             build | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scananything-build-log
+          path: build.log
+          if-no-files-found: ignore
