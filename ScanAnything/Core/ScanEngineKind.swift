@@ -2,6 +2,7 @@ import Foundation
 
 enum ScanEngineKind: String, Codable, CaseIterable, Sendable, Identifiable {
     case objectCapture
+    case cameraOnly
     case turntable
     case trueDepth
     case roomPlan
@@ -11,6 +12,7 @@ enum ScanEngineKind: String, Codable, CaseIterable, Sendable, Identifiable {
     var displayName: String {
         switch self {
         case .objectCapture: "Object"
+        case .cameraOnly: "Camera 3D"
         case .turntable: "Turntable"
         case .trueDepth: "TrueDepth"
         case .roomPlan: "Room"
@@ -20,6 +22,7 @@ enum ScanEngineKind: String, Codable, CaseIterable, Sendable, Identifiable {
     var tagline: String {
         switch self {
         case .objectCapture: "Rear camera • guided 3D capture"
+        case .cameraOnly: "Rear camera • no LiDAR required • on-device 3DGS"
         case .turntable: "Fixed camera • rotating object"
         case .trueDepth: "Front depth sensor • close-range geometry"
         case .roomPlan: "LiDAR • walls, doors and furniture"
@@ -29,6 +32,7 @@ enum ScanEngineKind: String, Codable, CaseIterable, Sendable, Identifiable {
     var symbolName: String {
         switch self {
         case .objectCapture: "camera.viewfinder"
+        case .cameraOnly: "sparkles.rectangle.stack"
         case .turntable: "arrow.trianglehead.clockwise.rotate.90"
         case .trueDepth: "faceid"
         case .roomPlan: "house"
@@ -40,14 +44,14 @@ enum ScanEngineKind: String, Codable, CaseIterable, Sendable, Identifiable {
     var producesMesh: Bool {
         switch self {
         case .objectCapture, .turntable, .roomPlan: true
-        case .trueDepth: false
+        case .cameraOnly, .trueDepth: false
         }
     }
 
     var maturity: Maturity {
         switch self {
         case .objectCapture, .roomPlan: .stable
-        case .turntable, .trueDepth: .beta
+        case .cameraOnly, .turntable, .trueDepth: .beta
         }
     }
 
