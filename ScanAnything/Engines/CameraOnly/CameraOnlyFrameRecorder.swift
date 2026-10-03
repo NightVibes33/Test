@@ -21,7 +21,12 @@ struct CameraOnlyCaptureSnapshot: Sendable {
 }
 
 enum CameraOnlyCaptureEvent: Sendable {
-    case progress(count: Int, featurePointCount: Int, message: String)
+    case progress(
+        count: Int,
+        featurePointCount: Int,
+        viewCoverage: Double,
+        message: String
+    )
     case failure(String)
 }
 
@@ -42,12 +47,12 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     private var frames: [CameraOnlyFrameMetadata] = []
     private var featurePoints: [SIMD3<Float>] = []
     private var featurePointIdentifiers = Set<UInt64>()
+    private var coveredViewBins = Set<Int>()
+    private var sharpnessGate: CameraOnlyFrameQualityGate
     private var lastCapturedTransform: simd_float4x4?
     private var lastCapturedTimestamp: TimeInterval = -1
     private var lastProgressEventTimestamp: TimeInterval = -1
     private var lastProgressMessage = ""
-
-    private let maximumFeaturePoints = 250_000
 
     init(
         imagesURL: URL,
@@ -57,6 +62,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         self.imagesURL = imagesURL
         self.quality = quality
         self.eventHandler = eventHandler
+        self.sharpnessGate = CameraOnlyFrameQualityGate(quality: quality)
         super.init()
     }
 
@@ -83,9 +89,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         let trackingMessage: String
         switch frame.camera.trackingState {
         case .normal:
-            trackingMessage = coverage >= 0.95
-                ? "Great coverage — you can finish now"
-                : "Move slowly around the object"
+            trackingMessage = guidanceMessage
         case .limited(let reason):
             emitProgress(
                 message: limitedTrackingMessage(reason),
@@ -103,6 +107,15 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         guard shouldCapture(frame) else {
             emitProgress(
                 message: trackingMessage,
+                timestamp: frame.timestamp
+            )
+            return
+        }
+
+        let sharpness = SharpnessMeter.scoreFast(frame.capturedImage)
+        guard sharpnessGate.accepts(sharpness: sharpness) else {
+            emitProgress(
+                message: "Hold steadier — blurry view skipped",
                 timestamp: frame.timestamp
             )
             return
@@ -149,13 +162,15 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
             )
         )
 
+        coveredViewBins.insert(viewBin(for: camera.transform))
+
         // Consecutive ARFrames often report the same tracked world feature.
         // Preserve stable identifiers only once so the Gaussian seed represents
         // actual scene geometry rather than duplicated observations.
         if let cloud = frame.rawFeaturePoints,
-           featurePoints.count < maximumFeaturePoints {
+           featurePoints.count < quality.maximumFeaturePoints {
             for (identifier, point) in zip(cloud.identifiers, cloud.points) {
-                guard featurePoints.count < maximumFeaturePoints else { break }
+                guard featurePoints.count < quality.maximumFeaturePoints else { break }
                 if featurePointIdentifiers.insert(identifier).inserted {
                     featurePoints.append(point)
                 }
@@ -166,9 +181,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         lastCapturedTimestamp = frame.timestamp
 
         emitProgress(
-            message: coverage >= 0.95
-                ? "Great coverage — you can finish now"
-                : "Move slowly around the object",
+            message: guidanceMessage,
             timestamp: frame.timestamp,
             force: true
         )
@@ -189,12 +202,34 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         eventHandler(.progress(
             count: frames.count,
             featurePointCount: featurePoints.count,
+            viewCoverage: viewCoverage,
             message: message
         ))
     }
 
-    private var coverage: Double {
-        min(1, Double(frames.count) / Double(quality.targetFrameCount))
+    private var viewCoverage: Double {
+        let denominator = quality.azimuthSectorCount * quality.elevationBandCount
+        guard denominator > 0 else { return 0 }
+        return min(1, Double(coveredViewBins.count) / Double(denominator))
+    }
+
+    private var guidanceMessage: String {
+        if frames.count >= quality.minimumFrameCount,
+           featurePoints.count >= quality.minimumFeaturePoints,
+           viewCoverage >= quality.minimumViewCoverage {
+            return "Great coverage — you can finish now"
+        }
+
+        if frames.count >= quality.minimumFrameCount,
+           viewCoverage < quality.minimumViewCoverage {
+            return "Change height and fill the missing angles"
+        }
+
+        if viewCoverage >= 0.42 {
+            return "Make a second pass from a different height"
+        }
+
+        return "Orbit slowly around the object"
     }
 
     private func shouldCapture(_ frame: ARFrame) -> Bool {
@@ -230,8 +265,43 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         let clamped = max(-1 as Float, min(1 as Float, dotValue))
         let rotation = acos(clamped)
 
+        // Purely rotating the phone does not add parallax. Require meaningful
+        // translation, or at least some translation when rotation is the main
+        // source of viewpoint change.
         return translation >= quality.minimumTranslation ||
-            rotation >= quality.minimumRotation
+            (
+                translation >= quality.minimumTranslation * 0.45 &&
+                rotation >= quality.minimumRotation
+            )
+    }
+
+    private func viewBin(for transform: simd_float4x4) -> Int {
+        let forward = simd_normalize(-SIMD3<Float>(
+            transform.columns.2.x,
+            transform.columns.2.y,
+            transform.columns.2.z
+        ))
+
+        let azimuth = atan2(forward.x, -forward.z)
+        let normalizedAzimuth = (azimuth + .pi) / (2 * .pi)
+        let rawSector = Int(normalizedAzimuth * Float(quality.azimuthSectorCount))
+        let sector = min(
+            quality.azimuthSectorCount - 1,
+            max(0, rawSector)
+        )
+
+        let band: Int
+        if quality.elevationBandCount <= 1 {
+            band = 0
+        } else {
+            // For an object-centric orbit, a camera above the object points
+            // downward and a lower pass points upward. Splitting on the forward
+            // vector's vertical sign therefore detects the second-height pass
+            // without requiring LiDAR or a known object centroid.
+            band = forward.y >= 0 ? 1 : 0
+        }
+
+        return band * quality.azimuthSectorCount + sector
     }
 
     private func matrixRows(_ matrix: simd_float4x4) -> [[Double]] {
