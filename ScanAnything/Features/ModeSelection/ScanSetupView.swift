@@ -12,6 +12,7 @@ struct ScanSetupView: View {
 
     private var availableKinds: Set<ScanEngineKind> {
         var kinds: Set<ScanEngineKind> = []
+        if DeviceCapabilities.supportsCameraOnly3D { kinds.insert(.cameraOnly) }
         if ObjectCaptureEngine.availability.isUsable { kinds.insert(.objectCapture) }
         if TurntableCaptureEngine.availability.isUsable { kinds.insert(.turntable) }
         if TrueDepthEngine.availability.isUsable { kinds.insert(.trueDepth) }
@@ -20,7 +21,19 @@ struct ScanSetupView: View {
     }
 
     private var recommendation: ModeRecommendation {
-        profile.recommendation(availableKinds: availableKinds)
+        let recommendation = profile.recommendation(availableKinds: availableKinds)
+        if recommendation.kind == .objectCapture,
+           !availableKinds.contains(.objectCapture),
+           availableKinds.contains(.cameraOnly) {
+            return ModeRecommendation(
+                kind: .cameraOnly,
+                strength: recommendation.strength,
+                rationale: "This iPhone does not have Apple's LiDAR Object Capture pipeline, so ScanAnything will use camera-only on-device 3D reconstruction.",
+                warnings: recommendation.warnings,
+                tips: recommendation.tips
+            )
+        }
+        return recommendation
     }
 
     private var selectedKind: ScanEngineKind {
@@ -54,6 +67,7 @@ struct ScanSetupView: View {
         .fullScreenCover(isPresented: $isPresentingCapture) {
             switch selectedKind {
             case .objectCapture: ObjectCaptureFlowView()
+            case .cameraOnly: CameraOnlyCaptureView()
             case .turntable: TurntableFlowView()
             case .trueDepth: TrueDepthFlowView()
             case .roomPlan: RoomFlowView()
@@ -62,7 +76,7 @@ struct ScanSetupView: View {
         .alert("Kamera erişimi kapalı", isPresented: $permissionDenied) {
             Button("Tamam", role: .cancel) {}
         } message: {
-            Text("Tarama için Ayarlar > ObjectScanner üzerinden kamera erişimini açın.")
+            Text("Tarama için Ayarlar > ScanAnything üzerinden kamera erişimini açın.")
         }
         .onChange(of: profile) { _, _ in
             overriddenKind = nil
@@ -250,22 +264,35 @@ struct ScanSetupView: View {
         }
     }
 
+    @ViewBuilder
     private var detailSection: some View {
-        Section {
-            Label("Cihaz üstü yeniden yapılandırma: reduced", systemImage: "cpu")
-                .font(.subheadline)
-            Label(
-                "Kaynak görüntüler saklanır; tam detay için kütüphaneden Mac'e aktarabilirsiniz.",
-                systemImage: "arrow.up.forward.app"
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        } header: {
-            Text("Yeniden yapılandırma")
-        } footer: {
-            // Worth stating plainly rather than hiding behind a disabled picker:
-            // the ceiling is Apple's, not this app's.
-            Text("iOS SDK'sı cihaz üstü fotogrametride yalnızca `reduced` seviyesini sunuyor. `medium` / `full` / `raw` sadece macOS'ta mevcut.")
+        if selectedKind == .cameraOnly {
+            Section {
+                Label("On-device Gaussian Splat reconstruction", systemImage: "cpu")
+                    .font(.subheadline)
+                Label("No LiDAR or server required. The finished scan is stored as compact SPZ.", systemImage: "sparkles.rectangle.stack")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Reconstruction")
+            } footer: {
+                Text("Camera-only mode prioritizes realistic appearance. It is not a metric polygon mesh, so USDZ/OBJ/STL mesh export is reserved for LiDAR Object Capture scans.")
+            }
+        } else {
+            Section {
+                Label("Cihaz üstü yeniden yapılandırma: reduced", systemImage: "cpu")
+                    .font(.subheadline)
+                Label(
+                    "Kaynak görüntüler saklanır; tam detay için kütüphaneden Mac'e aktarabilirsiniz.",
+                    systemImage: "arrow.up.forward.app"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            } header: {
+                Text("Yeniden yapılandırma")
+            } footer: {
+                Text("iOS SDK'sı cihaz üstü fotogrametride yalnızca `reduced` seviyesini sunuyor. `medium` / `full` / `raw` sadece macOS'ta mevcut.")
+            }
         }
     }
 
@@ -331,6 +358,8 @@ struct ScanSetupView: View {
         guard kind.isImplemented else { return String(localized: "Henüz gelmedi") }
         switch kind {
         case .objectCapture: return ObjectCaptureEngine.availability.blockedReason
+        case .cameraOnly:
+            return DeviceCapabilities.supportsCameraOnly3D ? nil : "ARKit world tracking is unavailable on this device."
         case .turntable: return TurntableCaptureEngine.availability.blockedReason
         case .trueDepth: return TrueDepthEngine.availability.blockedReason
         case .roomPlan: return RoomCaptureEngine.availability.blockedReason
