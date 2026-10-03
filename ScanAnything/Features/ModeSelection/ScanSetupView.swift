@@ -12,6 +12,7 @@ struct ScanSetupView: View {
 
     private var availableKinds: Set<ScanEngineKind> {
         var kinds: Set<ScanEngineKind> = []
+        if DeviceCapabilities.supportsCameraOnly { kinds.insert(.cameraOnly) }
         if ObjectCaptureEngine.availability.isUsable { kinds.insert(.objectCapture) }
         if TurntableCaptureEngine.availability.isUsable { kinds.insert(.turntable) }
         if TrueDepthEngine.availability.isUsable { kinds.insert(.trueDepth) }
@@ -44,7 +45,9 @@ struct ScanSetupView: View {
                 recommendationSection
             }
             modeSection
-            if selectedKind != .roomPlan {
+            if selectedKind == .cameraOnly {
+                cameraOnlyDetailSection
+            } else if selectedKind != .roomPlan {
                 detailSection
             }
             diagnosticsSection
@@ -53,6 +56,7 @@ struct ScanSetupView: View {
         .safeAreaInset(edge: .bottom) { startButton }
         .fullScreenCover(isPresented: $isPresentingCapture) {
             switch selectedKind {
+            case .cameraOnly: CameraOnlyCaptureView()
             case .objectCapture: ObjectCaptureFlowView()
             case .turntable: TurntableFlowView()
             case .trueDepth: TrueDepthFlowView()
@@ -269,6 +273,23 @@ struct ScanSetupView: View {
         }
     }
 
+    private var cameraOnlyDetailSection: some View {
+        Section {
+            Label("On-device Gaussian reconstruction", systemImage: "cpu")
+                .font(.subheadline)
+            Label(
+                "Source images and ARKit poses stay on this iPhone and are used to build an SPZ Gaussian Splat.",
+                systemImage: "lock.iphone"
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        } header: {
+            Text("Reconstruction")
+        } footer: {
+            Text("Camera 3D does not require LiDAR. It prioritizes realistic appearance; LiDAR/Object Capture remains the geometry-first mesh path on supported Pro devices.")
+        }
+    }
+
     @ViewBuilder
     private var diagnosticsSection: some View {
         Section("Cihaz yetenekleri") {
@@ -330,6 +351,8 @@ struct ScanSetupView: View {
     private func blockedReason(for kind: ScanEngineKind) -> String? {
         guard kind.isImplemented else { return String(localized: "Henüz gelmedi") }
         switch kind {
+        case .cameraOnly:
+            return DeviceCapabilities.supportsCameraOnly ? nil : "Camera-only 3D is not supported on this device."
         case .objectCapture: return ObjectCaptureEngine.availability.blockedReason
         case .turntable: return TurntableCaptureEngine.availability.blockedReason
         case .trueDepth: return TrueDepthEngine.availability.blockedReason

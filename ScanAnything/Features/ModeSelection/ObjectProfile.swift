@@ -75,6 +75,14 @@ extension ObjectProfile {
     /// TrueDepth's active illumination is for.
     func recommendation(availableKinds: Set<ScanEngineKind>) -> ModeRecommendation {
         let trueDepthUsable = availableKinds.contains(.trueDepth)
+        let objectCaptureUsable = availableKinds.contains(.objectCapture)
+        let cameraOnlyUsable = availableKinds.contains(.cameraOnly)
+
+        func appearanceFallback() -> ScanEngineKind {
+            if objectCaptureUsable { return .objectCapture }
+            if cameraOnlyUsable { return .cameraOnly }
+            return availableKinds.first ?? .cameraOnly
+        }
 
         var warnings: [String] = []
         var tips: [String] = []
@@ -114,9 +122,9 @@ extension ObjectProfile {
             warnings.append(String(localized: "Bu obje için doğru araç TrueDepth modu, ancak o mod henüz gelmedi (Faz 2)."))
             tips.append(String(localized: "Geçici çözüm: objeye silinebilir işaretler koyun — kurşun kalem noktaları, düşük yapışkanlı bant parçaları veya üzerine desenli bir örtü. Fotogrametriye eşleşecek özellik vermek yeterli."))
             return ModeRecommendation(
-                kind: .objectCapture,
+                kind: appearanceFallback(),
                 strength: .fallback,
-                rationale: String(localized: "Desensiz yüzeyde fotogrametri zorlanır, ama şu an mevcut olan tek mod bu."),
+                rationale: String(localized: "Desensiz yüzey görüntü tabanlı yeniden yapılandırmayı zorlar; kullanılabilen en iyi görüntü tabanlı moda geçiliyor."),
                 warnings: warnings,
                 tips: tips
             )
@@ -126,7 +134,7 @@ extension ObjectProfile {
         // pattern and leaves holes. Photogrammetry only needs enough light.
         if finish == .matte, pattern == .rich {
             return ModeRecommendation(
-                kind: .objectCapture,
+                kind: appearanceFallback(),
                 strength: .strong,
                 rationale: String(localized: "Mat ve dokulu yüzey fotogrametrinin en iyi çalıştığı durum. Bu objede geometri detayı TrueDepth'ten belirgin şekilde yüksek olur."),
                 warnings: warnings,
@@ -135,7 +143,7 @@ extension ObjectProfile {
         }
 
         return ModeRecommendation(
-            kind: .objectCapture,
+            kind: appearanceFallback(),
             strength: finish == .glossy ? .qualified : .strong,
             rationale: String(localized: "Yüzeyde eşleşmeye yetecek kadar detay var; fotogrametri bu objede iyi sonuç verir."),
             warnings: warnings,

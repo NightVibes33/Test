@@ -15,6 +15,12 @@ import SwiftUI
 @MainActor
 enum DeviceCapabilities {
 
+    /// Camera-only ARKit capture. This is the baseline path for regular iPhones.
+    static var supportsCameraOnly: Bool {
+        ARWorldTrackingConfiguration.isSupported &&
+        AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) != nil
+    }
+
     /// Guided Object Capture. Needs a LiDAR-class device; RealityKit decides.
     static var supportsObjectCapture: Bool {
         ObjectCaptureSession.isSupported
@@ -121,6 +127,7 @@ enum DeviceCapabilities {
     /// Human-readable summary for the diagnostics row in mode selection.
     static var summary: [(label: String, value: Bool)] {
         [
+            ("Camera-only 3D", supportsCameraOnly),
             ("Object Capture", supportsObjectCapture),
             (String(localized: "Fotogrametri (cihaz üstü)"), supportsPhotogrammetry),
             (String(localized: "Oda taraması (RoomPlan)"), supportsRoomCapture),
