@@ -26,3 +26,6 @@ xcuserdata/
 *.ply
 *.obj
 *.stl
+
+# Rebuilt from pinned source by scripts/bootstrap-msplat.sh
+Vendor/msplat/
