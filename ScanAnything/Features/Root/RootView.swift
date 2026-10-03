@@ -120,10 +120,10 @@ private struct ScanAnythingSettingsView: View {
 
             Section("This Device") {
                 LabeledContent("Universal scanning", value: DeviceCapabilities.supportsCameraOnly ? "Ready" : "Unavailable")
-                capability("LiDAR enhancement", DeviceCapabilities.supportsSceneReconstruction)
-                capability("Object Capture enhancement", DeviceCapabilities.supportsObjectCapture)
-                capability("RoomPlan enhancement", DeviceCapabilities.supportsRoomCapture)
-                capability("TrueDepth enhancement", DeviceCapabilities.hasTrueDepthCamera)
+                enhancement("LiDAR enhancement", DeviceCapabilities.supportsSceneReconstruction)
+                enhancement("Object Capture enhancement", DeviceCapabilities.supportsObjectCapture)
+                enhancement("RoomPlan enhancement", DeviceCapabilities.supportsRoomCapture)
+                enhancement("TrueDepth enhancement", DeviceCapabilities.hasTrueDepthCamera)
             }
 
             Section("About") {
