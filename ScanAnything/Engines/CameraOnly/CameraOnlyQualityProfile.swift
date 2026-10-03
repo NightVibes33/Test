@@ -38,6 +38,15 @@ struct CameraOnlyQualityProfile: Sendable, Equatable {
     let splitScreenSize: Float
     let datasetDownscaleFactor: Float
 
+    // iPhone stability controls. These do not lower source capture resolution or
+    // the 30K optimization budget; they bound transient memory/GPU backlog.
+    let imageCacheMB: Int
+    let gpuSyncInterval: Int
+    let memorySafetyHeadroomMB: Int
+    let minimumEmergencyFinalizeIteration: Int
+    let seriousThermalPauseMilliseconds: Int
+    let criticalThermalPauseMilliseconds: Int
+
     let learnedDepthPriorEnabled: Bool
     let depthPriorKeyframeCount: Int
     let depthPriorMinimumAnchors: Int
@@ -71,9 +80,18 @@ struct CameraOnlyQualityProfile: Sendable, Equatable {
         densifyGradThresh: 0.00018,
         densifySizeThresh: 0.01,
         stopScreenSizeAt: 12_000,
-        stopDensifyAt: 15_000,
+        // Learned depth already gives the model a dense seed. Stop population
+        // growth sooner, then spend the rest of the 30K budget refining the
+        // existing splats at full resolution instead of ballooning memory.
+        stopDensifyAt: 12_000,
         splitScreenSize: 0.045,
         datasetDownscaleFactor: 1.0,
+        imageCacheMB: 256,
+        gpuSyncInterval: 50,
+        memorySafetyHeadroomMB: 320,
+        minimumEmergencyFinalizeIteration: 18_000,
+        seriousThermalPauseMilliseconds: 200,
+        criticalThermalPauseMilliseconds: 1_000,
         learnedDepthPriorEnabled: true,
         depthPriorKeyframeCount: 24,
         depthPriorMinimumAnchors: 32,

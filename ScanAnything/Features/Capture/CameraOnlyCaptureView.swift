@@ -52,13 +52,14 @@ struct CameraOnlyCaptureView: View {
                     .tint(.white)
                     .padding(.horizontal, 36)
 
-                Text("Building high-detail 3D")
+                Text(engine.processingMessage)
                     .font(.title3.bold())
+                    .multilineTextAlignment(.center)
                 Text("\(Int(engine.processingProgress * 100))% • \(engine.gaussianCount.formatted()) splats")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
 
-                Text("Full-resolution training finishes on this iPhone.")
+                Text("Keep ScanAnything open while the iPhone finishes the model.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }

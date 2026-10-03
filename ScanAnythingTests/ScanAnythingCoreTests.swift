@@ -77,12 +77,28 @@ struct ScanAnythingCoreTests {
         #expect(quality.shDegree == 3)
         #expect(quality.ssimWeight == 0.20)
         #expect(quality.numDownscales == 3)
-        #expect(quality.stopDensifyAt >= 15_000)
+        #expect(quality.stopDensifyAt >= 10_000)
+        #expect(quality.stopDensifyAt <= 12_000)
         #expect(
             quality.resolutionSchedule * quality.numDownscales <
             quality.stopDensifyAt
         )
         #expect(quality.stopDensifyAt < quality.trainingIterations)
+
+        // Long native-resolution runs must bound transient iPhone pressure and
+        // periodically wait for Metal so UI progress tracks completed GPU work.
+        #expect(quality.imageCacheMB <= 256)
+        #expect(quality.gpuSyncInterval <= 100)
+        #expect(quality.memorySafetyHeadroomMB >= 256)
+        #expect(
+            quality.minimumEmergencyFinalizeIteration >
+            quality.stopDensifyAt
+        )
+        #expect(
+            quality.minimumEmergencyFinalizeIteration <
+            quality.trainingIterations
+        )
+        #expect(quality.criticalThermalPauseMilliseconds >= 500)
 
         #expect(quality.learnedDepthPriorEnabled)
         #expect(quality.depthPriorKeyframeCount >= 16)

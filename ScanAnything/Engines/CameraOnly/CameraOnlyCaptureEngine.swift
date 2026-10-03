@@ -29,6 +29,7 @@ final class CameraOnlyCaptureEngine {
     private(set) var viewCoverage = 0.0
     private(set) var trackingMessage = "Orbit slowly around the object"
     private(set) var processingProgress = 0.0
+    private(set) var processingMessage = "Preparing high-resolution dataset"
     private(set) var gaussianCount = 0
     private(set) var captureFormatDescription = "High quality"
 
@@ -61,6 +62,7 @@ final class CameraOnlyCaptureEngine {
         featurePointCount = 0
         viewCoverage = 0
         processingProgress = 0
+        processingMessage = "Preparing high-resolution dataset"
         gaussianCount = 0
         trackingMessage = "Orbit slowly around the object"
 
@@ -126,7 +128,8 @@ final class CameraOnlyCaptureEngine {
         session.delegate = nil
         UIApplication.shared.isIdleTimerDisabled = true
         phase = .reconstructing
-        processingProgress = 0
+        processingProgress = 0.01
+        processingMessage = "Preparing high-resolution dataset"
 
         let snapshot = recorder.snapshot()
         let count = snapshot.frames.count
@@ -163,6 +166,8 @@ final class CameraOnlyCaptureEngine {
                 }.value
 
                 try Task.checkCancellation()
+                self.processingProgress = 0.05
+                self.processingMessage = "Optimizing high-detail 3D"
 
                 let splats = try await GaussianReconstructor.reconstruct(
                     datasetRoot: workspace.root,
@@ -170,11 +175,21 @@ final class CameraOnlyCaptureEngine {
                     quality: quality
                 ) { [weak self] progress, splatCount in
                     guard let self else { return }
-                    self.processingProgress = progress
+                    self.processingProgress = min(0.95, 0.05 + (progress * 0.90))
                     self.gaussianCount = splatCount
+
+                    if progress >= 0.99 {
+                        self.processingMessage = "Finalizing Gaussian model"
+                    } else if progress >= 0.90 {
+                        self.processingMessage = "Finishing full-resolution training"
+                    } else {
+                        self.processingMessage = "Optimizing high-detail 3D"
+                    }
                 }
 
                 try Task.checkCancellation()
+                self.processingProgress = 0.96
+                self.processingMessage = "Creating scan preview"
 
                 if let heroFrame = snapshot.frames[safe: snapshot.frames.count / 2] {
                     let inputURL = workspace.root.appending(path: heroFrame.filePath)
@@ -188,6 +203,8 @@ final class CameraOnlyCaptureEngine {
                 }
 
                 try Task.checkCancellation()
+                self.processingProgress = 0.99
+                self.processingMessage = "Saving scan"
 
                 let record = ScanRecord(
                     id: workspace.id,
@@ -203,6 +220,7 @@ final class CameraOnlyCaptureEngine {
                 storage.commit(record, workspace: workspace)
                 self.workspace = nil
                 self.recorder = nil
+                self.processingProgress = 1.0
                 UIApplication.shared.isIdleTimerDisabled = false
                 phase = .done(record)
             } catch is CancellationError {

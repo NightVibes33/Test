@@ -1,5 +1,7 @@
+import Darwin
 import Foundation
 import Msplat
+import os
 
 enum GaussianReconstructionError: LocalizedError {
     case insufficientFrames(Int)
@@ -16,6 +18,17 @@ enum GaussianReconstructionError: LocalizedError {
 }
 
 enum GaussianReconstructor {
+    private static let logger = Logger(
+        subsystem: "com.nightvibes33.scananything",
+        category: "gaussian-reconstruction"
+    )
+
+    private static func availableMemoryMB() -> Int {
+        let bytes = os_proc_available_memory()
+        guard bytes > 0 else { return 0 }
+        return Int(bytes) >> 20
+    }
+
     static func reconstruct(
         datasetRoot: URL,
         outputURL: URL,
@@ -26,9 +39,14 @@ enum GaussianReconstructor {
         let outputPath = outputURL.path(percentEncoded: false)
 
         return try await Task.detached(priority: .userInitiated) {
+            // msplat's iOS default image cache is 512 MB. Native-resolution
+            // training already carries large model + transient Metal buffers, so
+            // use a tighter cache on 8 GB-class phones and reload frames as needed.
+            setenv("MSPLAT_IMAGE_CACHE_MB", String(quality.imageCacheMB), 1)
+
             // Keep the captured 4K source intact. msplat progressively trains
             // coarse-to-fine, then spends most of the 30K budget at native
-            // resolution. The image cache remains bounded by msplat on iOS.
+            // resolution.
             let dataset = GaussianDataset(
                 path: datasetPath,
                 downscaleFactor: quality.datasetDownscaleFactor
@@ -56,39 +74,84 @@ enum GaussianReconstructor {
 
             let trainer = GaussianTrainer(dataset: dataset, config: configuration)
             let total = max(1, Int(quality.trainingIterations))
+            let syncEvery = max(1, quality.gpuSyncInterval)
+            var splatCount = trainer.splatCount
+            var emergencyFinalized = false
+
+            await progress(0, splatCount)
 
             for index in 0..<total {
-                if index % 25 == 0 {
+                if index % syncEvery == 0 {
                     try Task.checkCancellation()
                 }
 
-                // Preserve the requested quality budget under sustained load.
-                // Briefly yielding under thermal pressure is preferable to
-                // reducing resolution, splat density, or iteration count.
-                if index % 50 == 0 {
-                    switch ProcessInfo.processInfo.thermalState {
-                    case .serious:
-                        try await Task.sleep(for: .milliseconds(35))
-                    case .critical:
-                        try await Task.sleep(for: .milliseconds(150))
-                    case .nominal, .fair:
-                        break
-                    @unknown default:
-                        break
-                    }
+                // Drain Objective-C/Metal autoreleases every step instead of
+                // letting a 30K-step detached task retain them until completion.
+                let stats = autoreleasepool {
+                    trainer.step()
+                }
+                splatCount = stats.splatCount
+
+                let completed = index + 1
+                let shouldSynchronize =
+                    completed % syncEvery == 0 ||
+                    completed == total
+
+                guard shouldSynchronize else { continue }
+
+                // trainer.step() submits Metal work asynchronously. Synchronizing
+                // here keeps the command queue bounded and makes the displayed
+                // percentage represent GPU-completed work instead of CPU-enqueued
+                // work that can pile up and appear to freeze late in the run.
+                msplatSync()
+                try Task.checkCancellation()
+
+                let trainingFraction = Double(completed) / Double(total)
+                await progress(trainingFraction * 0.96, splatCount)
+
+                let availableMB = Self.availableMemoryMB()
+                if completed % 500 == 0 {
+                    Self.logger.info(
+                        "step=\(completed) splats=\(splatCount) availableMB=\(availableMB)"
+                    )
                 }
 
-                let stats = trainer.step()
-                if index % 25 == 0 || index == total - 1 {
-                    await progress(
-                        Double(index + 1) / Double(total),
-                        stats.splatCount
+                // os_proc_available_memory is the remaining jetsam headroom on
+                // iOS. If the phone is close to being killed after substantial
+                // full-resolution training, preserve the current converged model
+                // instead of risking a permanent late-stage stall/loss.
+                if availableMB > 0,
+                   availableMB <= quality.memorySafetyHeadroomMB,
+                   completed >= quality.minimumEmergencyFinalizeIteration {
+                    emergencyFinalized = true
+                    Self.logger.warning(
+                        "Finalizing early for memory safety at step=\(completed), availableMB=\(availableMB)"
                     )
+                    break
+                }
+
+                // Real cooldown, not a token yield. Quality stays unchanged; only
+                // wall time stretches when the A-series SoC reaches sustained
+                // thermal pressure.
+                switch ProcessInfo.processInfo.thermalState {
+                case .serious:
+                    try await Task.sleep(
+                        for: .milliseconds(quality.seriousThermalPauseMilliseconds)
+                    )
+                case .critical:
+                    try await Task.sleep(
+                        for: .milliseconds(quality.criticalThermalPauseMilliseconds)
+                    )
+                case .nominal, .fair:
+                    break
+                @unknown default:
+                    break
                 }
             }
 
             try Task.checkCancellation()
             msplatSync()
+            await progress(emergencyFinalized ? 0.97 : 0.975, splatCount)
 
             // Keep the trained Gaussian parameters as float32. SPZ intentionally
             // quantizes position, scale, rotation, color, and SH coefficients;
@@ -96,11 +159,13 @@ enum GaussianReconstructor {
             // directly for the in-app preview.
             trainer.exportPly(to: outputPath)
             msplatSync()
+            splatCount = trainer.splatCount
+            await progress(1.0, splatCount)
 
             guard FileManager.default.fileExists(atPath: outputPath) else {
                 throw GaussianReconstructionError.missingOutput
             }
-            return trainer.splatCount
+            return splatCount
         }.value
     }
 }
