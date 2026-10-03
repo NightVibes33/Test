@@ -103,10 +103,6 @@ private struct ScanHomeView: View {
 private struct ScanAnythingSettingsView: View {
     @Environment(StoreManager.self) private var store
 
-    private var enhanced: Bool {
-        DeviceCapabilities.supportsObjectCapture && DeviceCapabilities.supportsPhotogrammetry
-    }
-
     var body: some View {
         List {
             Section("ScanAnything Pro") {
@@ -145,12 +141,12 @@ private struct ScanAnythingSettingsView: View {
         .navigationTitle("Settings")
     }
 
-    private func capability(_ title: String, _ available: Bool) -> some View {
+    private func enhancement(_ title: String, _ available: Bool) -> some View {
         HStack {
             Text(title)
             Spacer()
-            Image(systemName: available ? "checkmark.circle.fill" : "minus.circle")
-                .foregroundStyle(available ? .green : .secondary)
+            Text(available ? "Available" : "Not present")
+                .foregroundStyle(.secondary)
         }
     }
 }
