@@ -334,7 +334,7 @@ struct ScanSetupView: View {
 
     private var startButton: some View {
         Button {
-            if !store.isPro && storage.scans.count >= 3 {
+            if !store.isPro && !storage.hasFreeScanRemaining {
                 isPresentingPaywall = true
                 return
             }

@@ -51,7 +51,7 @@ private struct ScanHomeView: View {
 
                 VStack(spacing: 12) {
                     Button {
-                        if !store.isPro && storage.scans.count >= 3 {
+                        if !store.isPro && !storage.hasFreeScanRemaining {
                             isPresentingPaywall = true
                             return
                         }
