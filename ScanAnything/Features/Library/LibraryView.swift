@@ -65,7 +65,11 @@ struct LibraryView: View {
 
     @ViewBuilder
     private func row(for record: ScanRecord) -> some View {
-        let content = ScanRow(record: record, modelURL: storage.modelURL(for: record))
+        let content = ScanRow(
+            record: record,
+            modelURL: storage.modelURL(for: record),
+            heroURL: storage.directoryURL(for: record).appending(path: "hero.png")
+        )
 
         if isSelecting {
             Button {
@@ -151,17 +155,20 @@ struct LibraryView: View {
 private struct ScanRow: View {
     let record: ScanRecord
     let modelURL: URL
+    let heroURL: URL
 
     var body: some View {
         HStack(spacing: 12) {
             if record.isPreviewable {
                 ModelThumbnailView(url: modelURL, side: 54)
+            } else if record.isGaussianSplat {
+                HeroThumbnailView(url: heroURL, side: 54)
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(.quaternary)
                     .frame(width: 54, height: 54)
                     .overlay {
-                        Image(systemName: record.isGaussianSplat ? "sparkles.rectangle.stack" : "aqi.medium")
+                        Image(systemName: "aqi.medium")
                             .foregroundStyle(.secondary)
                     }
             }
