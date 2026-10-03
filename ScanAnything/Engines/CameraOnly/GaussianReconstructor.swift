@@ -19,27 +19,31 @@ enum GaussianReconstructor {
     static func reconstruct(
         datasetRoot: URL,
         outputURL: URL,
-        iterations: Int32 = 2_500,
+        iterations: Int32 = 8_000,
         progress: @escaping @MainActor @Sendable (_ fraction: Double, _ splats: Int) -> Void
     ) async throws -> Int {
         let datasetPath = datasetRoot.path(percentEncoded: false)
         let outputPath = outputURL.path(percentEncoded: false)
 
         return try await Task.detached(priority: .userInitiated) {
-            let dataset = GaussianDataset(path: datasetPath, downscaleFactor: 2.0)
-            guard dataset.numTrain >= 10 else {
+            // Preserve the full captured resolution. Training itself starts
+            // progressively downscaled and reaches native resolution later.
+            let dataset = GaussianDataset(path: datasetPath, downscaleFactor: 1.0)
+            guard dataset.numTrain >= 48 else {
                 throw GaussianReconstructionError.insufficientFrames(dataset.numTrain)
             }
 
             var configuration = TrainingConfig()
             configuration.iterations = iterations
-            configuration.shDegree = 2
-            configuration.shDegreeInterval = 500
-            configuration.numDownscales = 1
-            configuration.resolutionSchedule = 1_000
-            configuration.warmupLength = 250
+            configuration.shDegree = 3
+            configuration.shDegreeInterval = 1_000
+            configuration.numDownscales = 2
+            configuration.resolutionSchedule = 2_500
+            configuration.warmupLength = 500
             configuration.refineEvery = 100
-            configuration.stopDensifyAt = max(800, iterations / 2)
+            configuration.stopScreenSizeAt = 6_000
+            configuration.stopDensifyAt = min(5_500, max(3_000, iterations - 2_000))
+            configuration.downscaleFactor = 1.0
 
             let trainer = GaussianTrainer(dataset: dataset, config: configuration)
             let total = max(1, Int(iterations))
