@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import ScanAnything
 
@@ -78,6 +79,33 @@ struct ScanAnythingCoreTests {
             quality.stopDensifyAt
         )
         #expect(quality.stopDensifyAt < quality.trainingIterations)
+
+        #expect(quality.learnedDepthPriorEnabled)
+        #expect(quality.depthPriorKeyframeCount >= 16)
+        #expect(quality.depthPriorMinimumAnchors >= 24)
+        #expect(quality.depthPriorMaximumPoints >= 100_000)
+        #expect(quality.depthPriorVoxelSize <= 0.004)
+    }
+
+    @Test("Colored Gaussian seed PLY round-trips XYZ with RGB records")
+    func coloredSeedPLYRoundTrip() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "scananything-colored-seed-\(UUID().uuidString).ply")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let points = [
+            SIMD3<Float>(0.1, 0.2, 0.3),
+            SIMD3<Float>(-1.5, 2.25, 0.75)
+        ]
+        let colors = [
+            SIMD3<UInt8>(255, 32, 16),
+            SIMD3<UInt8>(1, 128, 240)
+        ]
+
+        try PointCloudFile.write(points: points, colors: colors, to: url)
+        let roundTrip = try PointCloudFile.read(from: url)
+
+        #expect(roundTrip == points)
     }
 
     @Test("Camera-only blur gate rejects a soft outlier after calibration")
