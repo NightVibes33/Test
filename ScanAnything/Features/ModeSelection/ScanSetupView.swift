@@ -18,7 +18,7 @@ private enum ScanIntent: String, CaseIterable, Identifiable {
         switch self {
         case .object: "Object"
         case .room: "Room / Space"
-        case .product: "Product / Turntable"
+        case .product: "Product"
         case .freeform: "Freeform"
         }
     }
@@ -30,7 +30,7 @@ private enum ScanIntent: String, CaseIterable, Identifiable {
         case .room:
             "Walk through a room or space. LiDAR improves it automatically when available."
         case .product:
-            "Capture an item from every side. A fixed-camera turntable is used when supported."
+            "Capture an item from every side. ScanAnything automatically chooses the best capture workflow."
         case .freeform:
             "Furniture, vehicles, larger items and scenes without a hardware-specific workflow."
         }
