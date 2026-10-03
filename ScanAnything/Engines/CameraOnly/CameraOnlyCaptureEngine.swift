@@ -25,18 +25,21 @@ final class CameraOnlyCaptureEngine {
     private(set) var phase: Phase = .idle
     private(set) var capturedCount = 0
     private(set) var featurePointCount = 0
-    private(set) var trackingMessage = "Move slowly around the object"
+    private(set) var viewCoverage = 0.0
+    private(set) var trackingMessage = "Orbit slowly around the object"
     private(set) var processingProgress = 0.0
     private(set) var gaussianCount = 0
     private(set) var captureFormatDescription = "High quality"
 
     var coverage: Double {
-        min(1, Double(capturedCount) / Double(quality.targetFrameCount))
+        guard quality.minimumViewCoverage > 0 else { return 0 }
+        return min(1, viewCoverage / quality.minimumViewCoverage)
     }
 
     var canFinish: Bool {
         capturedCount >= quality.minimumFrameCount &&
-        featurePointCount >= quality.minimumFeaturePoints
+        featurePointCount >= quality.minimumFeaturePoints &&
+        viewCoverage >= quality.minimumViewCoverage
     }
 
     init(storage: ScanStorage) {
@@ -55,9 +58,10 @@ final class CameraOnlyCaptureEngine {
 
         capturedCount = 0
         featurePointCount = 0
+        viewCoverage = 0
         processingProgress = 0
         gaussianCount = 0
-        trackingMessage = "Move slowly around the object"
+        trackingMessage = "Orbit slowly around the object"
 
         let recorder = CameraOnlyFrameRecorder(
             imagesURL: workspace.imagesURL,
@@ -100,9 +104,7 @@ final class CameraOnlyCaptureEngine {
         else { return }
 
         guard canFinish else {
-            phase = .failed(
-                "Keep scanning. Capture at least \(quality.minimumFrameCount) well-tracked views around the object."
-            )
+            trackingMessage = "Keep scanning — fill missing angles and change height"
             return
         }
 
@@ -204,9 +206,15 @@ final class CameraOnlyCaptureEngine {
         guard case .capturing = phase else { return }
 
         switch event {
-        case .progress(let count, let featurePointCount, let message):
+        case .progress(
+            let count,
+            let featurePointCount,
+            let viewCoverage,
+            let message
+        ):
             capturedCount = count
             self.featurePointCount = featurePointCount
+            self.viewCoverage = viewCoverage
             trackingMessage = message
         case .failure(let message):
             trackingMessage = message
