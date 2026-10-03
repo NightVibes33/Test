@@ -18,6 +18,54 @@ enum ObjectIsolationError: LocalizedError {
 }
 
 enum ObjectIsolationService {
+    static func replaceBackgroundWithBlackJPEG(
+        imageAt inputURL: URL
+    ) async throws {
+        let data = try Data(contentsOf: inputURL)
+        guard let source = CIImage(data: data) else {
+            throw ObjectIsolationError.renderFailed
+        }
+
+        let context = CIContext(options: [.cacheIntermediates: false])
+        guard let cgImage = context.createCGImage(source, from: source.extent) else {
+            throw ObjectIsolationError.renderFailed
+        }
+
+        let handler = ImageRequestHandler(cgImage)
+        let request = GenerateForegroundInstanceMaskRequest()
+        guard let observation = try await handler.perform(request),
+              !observation.allInstances.isEmpty
+        else {
+            throw ObjectIsolationError.noForeground
+        }
+
+        let maskedBuffer = try observation.generateMaskedImage(
+            for: observation.allInstances,
+            imageFrom: handler,
+            croppedToInstancesExtent: false
+        )
+
+        let isolated = CIImage(cvPixelBuffer: maskedBuffer)
+        let black = CIImage(
+            color: CIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        ).cropped(to: isolated.extent)
+        let composed = isolated.composited(over: black)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+            ?? CGColorSpaceCreateDeviceRGB()
+
+        guard let jpeg = context.jpegRepresentation(
+            of: composed,
+            colorSpace: colorSpace,
+            options: [
+                kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 1.0
+            ]
+        ) else {
+            throw ObjectIsolationError.renderFailed
+        }
+
+        try jpeg.write(to: inputURL, options: .atomic)
+    }
+
     static func createTransparentPNG(
         imageAt inputURL: URL,
         outputURL: URL

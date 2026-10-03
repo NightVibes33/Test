@@ -224,6 +224,16 @@ final class CameraOnlyCaptureEngine {
                 try await Task.detached(priority: .userInitiated) {
                     try Task.checkCancellation()
 
+                    if purpose.isolatesForeground {
+                        for frame in snapshot.frames {
+                            try Task.checkCancellation()
+                            let imageURL = workspace.root.appending(path: frame.filePath)
+                            try? await ObjectIsolationService.replaceBackgroundWithBlackJPEG(
+                                imageAt: imageURL
+                            )
+                        }
+                    }
+
                     let enrichedPoints = LearnedDepthSeedService.enrich(
                         snapshot: snapshot,
                         root: workspace.root,
@@ -248,7 +258,8 @@ final class CameraOnlyCaptureEngine {
                 let splats = try await GaussianReconstructor.reconstruct(
                     datasetRoot: workspace.root,
                     outputURL: outputURL,
-                    quality: quality
+                    quality: quality,
+                    backgroundIsolated: purpose.isolatesForeground
                 ) { [weak self] progress, splatCount in
                     guard let self else { return }
                     self.processingProgress = min(0.95, 0.05 + (progress * 0.90))
@@ -267,7 +278,8 @@ final class CameraOnlyCaptureEngine {
                 self.processingProgress = 0.96
                 self.processingMessage = "Creating scan preview"
 
-                if let heroFrame = snapshot.frames[safe: snapshot.frames.count / 2] {
+                if purpose.isolatesForeground,
+                   let heroFrame = snapshot.frames[safe: snapshot.frames.count / 2] {
                     let inputURL = workspace.root.appending(path: heroFrame.filePath)
                     let heroURL = workspace.root.appending(path: "hero.png")
                     _ = try? await Task.detached(priority: .utility) {

@@ -33,6 +33,7 @@ enum GaussianReconstructor {
         datasetRoot: URL,
         outputURL: URL,
         quality: CameraOnlyQualityProfile = .highDetail,
+        backgroundIsolated: Bool = false,
         progress: @escaping @MainActor @Sendable (_ fraction: Double, _ splats: Int) -> Void
     ) async throws -> Int {
         let datasetPath = datasetRoot.path(percentEncoded: false)
@@ -71,6 +72,12 @@ enum GaussianReconstructor {
             configuration.stopDensifyAt = quality.stopDensifyAt
             configuration.splitScreenSize = quality.splitScreenSize
             configuration.downscaleFactor = quality.datasetDownscaleFactor
+            if backgroundIsolated {
+                // Foreground-isolated training images are composited over black.
+                // Matching the renderer background removes the incentive to grow
+                // Gaussians just to explain the table or wall behind the object.
+                configuration.bgColor = (0, 0, 0)
+            }
 
             let trainer = GaussianTrainer(dataset: dataset, config: configuration)
             let total = max(1, Int(quality.trainingIterations))
