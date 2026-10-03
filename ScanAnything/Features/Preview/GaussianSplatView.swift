@@ -49,6 +49,7 @@ struct GaussianSplatView: UIViewRepresentable {
     static func dismantleUIView(_ uiView: MTKView, coordinator: Coordinator) {
         uiView.isPaused = true
         uiView.delegate = nil
+        coordinator.renderer?.cancelLoading()
         coordinator.renderer = nil
     }
 }
@@ -60,6 +61,7 @@ fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
     private let queue: MTLCommandQueue
     private var splatRenderer: SplatRenderer?
     private var loadedURL: URL?
+    private var loadTask: Task<Void, Never>?
     private var drawableSize = CGSize(width: 1, height: 1)
     private let inFlight = DispatchSemaphore(value: 2)
 
@@ -91,10 +93,11 @@ fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
     }
 
     func load(_ url: URL) {
+        loadTask?.cancel()
         loadedURL = url
         splatRenderer = nil
 
-        Task { [weak self] in
+        loadTask = Task { [weak self] in
             guard let self, let view else { return }
 
             do {
@@ -112,11 +115,20 @@ fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
 
                 let chunk = try SplatChunk(device: device, from: points)
                 await renderer.addChunk(chunk)
+                try Task.checkCancellation()
                 splatRenderer = renderer
+            } catch is CancellationError {
+                return
             } catch {
                 splatRenderer = nil
             }
         }
+    }
+
+    func cancelLoading() {
+        loadTask?.cancel()
+        loadTask = nil
+        splatRenderer = nil
     }
 
     func draw(in view: MTKView) {

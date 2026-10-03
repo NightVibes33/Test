@@ -52,20 +52,12 @@ enum GaussianReconstructor {
                 if index % 25 == 0 || index == total - 1 {
                     let fraction = Double(index + 1) / Double(total)
                     let splats = stats.splatCount
-                    Task { @MainActor in
-                        progress(fraction, splats)
-                    }
+                    await progress(fraction, splats)
                 }
             }
 
             try Task.checkCancellation()
             trainer.exportSpz(to: outputPath)
-
-            let plyPath = outputURL
-                .deletingPathExtension()
-                .appendingPathExtension("ply")
-                .path(percentEncoded: false)
-            trainer.exportPly(to: plyPath)
             msplatSync()
 
             guard FileManager.default.fileExists(atPath: outputPath) else {
