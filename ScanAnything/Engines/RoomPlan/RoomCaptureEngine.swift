@@ -213,6 +213,7 @@ final class RoomCaptureEngine: ScanEngine {
             id: workspace.id,
             name: Self.defaultName(for: Date()),
             engine: Self.kind,
+            assetKind: .room,
             // ARKit world tracking with LiDAR: the geometry is in real metres.
             isMetricallyScaled: true,
             dimensionsMillimetres: summary.dimensionsMillimetres,
@@ -269,6 +270,8 @@ final class RoomCaptureEngine: ScanEngine {
                 id: photoWorkspace.id,
                 name: "\(roomName) · fotoğraflı",
                 engine: Self.kind,
+                assetKind: .room,
+            assetKind: .room,
                 // Stills alone carry no scale. The parametric model next to it does,
                 // which is how this one can be scaled later.
                 isMetricallyScaled: false,
