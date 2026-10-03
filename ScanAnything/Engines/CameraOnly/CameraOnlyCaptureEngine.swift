@@ -77,6 +77,43 @@ enum CameraOnlyCapturePurpose: String, Sendable {
     }
 }
 
+private struct CameraOnlyPreparedDataset: Sendable {
+    let backgroundIsolated: Bool
+    let dimensionsMillimetres: [Int]?
+}
+
+private enum CameraOnlyGeometryMetrics {
+    static func robustDimensionsMillimetres(
+        points: [CameraOnlyFeaturePoint]
+    ) -> [Int]? {
+        guard points.count >= 100 else { return nil }
+
+        let xs = points.map { $0.position.x }.sorted()
+        let ys = points.map { $0.position.y }.sorted()
+        let zs = points.map { $0.position.z }.sorted()
+
+        func span(_ values: [Float]) -> Float {
+            let last = values.count - 1
+            let low = min(last, max(0, Int(Double(last) * 0.02)))
+            let high = min(last, max(low, Int(Double(last) * 0.98)))
+            return max(0, values[high] - values[low])
+        }
+
+        let metres = [span(xs), span(ys), span(zs)]
+        guard metres.allSatisfy({ $0.isFinite }),
+              let longest = metres.max(),
+              longest >= 0.01,
+              longest <= 50
+        else {
+            return nil
+        }
+
+        return metres.map {
+            max(1, Int(($0 * 1_000).rounded()))
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class CameraOnlyCaptureEngine {
@@ -238,7 +275,7 @@ final class CameraOnlyCaptureEngine {
             guard let self else { return }
 
             do {
-                let backgroundWasIsolated = try await Task.detached(priority: .userInitiated) {
+                let prepared = try await Task.detached(priority: .userInitiated) {
                     try Task.checkCancellation()
 
                     // Calibrate learned metric depth from the untouched camera
@@ -285,11 +322,24 @@ final class CameraOnlyCaptureEngine {
                         to: workspace.root
                     )
 
-                    return reconstructionPurpose.isolatesForeground &&
+                    let backgroundIsolated =
+                        reconstructionPurpose.isolatesForeground &&
                         trainingSnapshot.frames.count >= reconstructionQuality.minimumFrameCount &&
                         trainingSnapshot.frames.allSatisfy {
                             $0.filePath.hasPrefix("isolated-images/")
                         }
+
+                    let dimensions =
+                        reconstructionPurpose.isolatesForeground && !backgroundIsolated
+                        ? nil
+                        : CameraOnlyGeometryMetrics.robustDimensionsMillimetres(
+                            points: trainingSnapshot.featurePoints
+                        )
+
+                    return CameraOnlyPreparedDataset(
+                        backgroundIsolated: backgroundIsolated,
+                        dimensionsMillimetres: dimensions
+                    )
                 }.value
 
                 try Task.checkCancellation()
@@ -300,7 +350,7 @@ final class CameraOnlyCaptureEngine {
                     datasetRoot: workspace.root,
                     outputURL: outputURL,
                     quality: quality,
-                    backgroundIsolated: backgroundWasIsolated
+                    backgroundIsolated: prepared.backgroundIsolated
                 ) { [weak self] progress, splatCount in
                     guard let self else { return }
                     self.processingProgress = min(0.95, 0.05 + (progress * 0.90))
@@ -329,9 +379,12 @@ final class CameraOnlyCaptureEngine {
                     engine: .cameraOnly,
                     assetKind: reconstructionPurpose.assetKind,
                     modelFileName: "model.ply",
-                    isMetricallyScaled: false,
+                    // ARKit world poses and both ARKit/LiDAR seed coordinates use
+                    // metres, so the fixed-camera optimization preserves metric scale.
+                    isMetricallyScaled: true,
                     imageCount: count,
                     pointCount: splats,
+                    dimensionsMillimetres: prepared.dimensionsMillimetres,
                     detail: nil,
                     summary: reconstructionPurpose.summary
                 )
