@@ -82,16 +82,29 @@ final class CameraOnlyCaptureEngine {
         configuration.environmentTexturing = .none
         configuration.videoHDRAllowed = false
 
-        if let format = ARWorldTrackingConfiguration.recommendedVideoFormatFor4KResolution
-            ?? ARWorldTrackingConfiguration.supportedVideoFormats.first {
+        let highResolutionFormat =
+            ARWorldTrackingConfiguration.recommendedVideoFormatForHighResolutionFrameCapturing
+        let selectedFormat =
+            highResolutionFormat ??
+            ARWorldTrackingConfiguration.recommendedVideoFormatFor4KResolution ??
+            ARWorldTrackingConfiguration.supportedVideoFormats.first
+
+        if let format = selectedFormat {
             configuration.videoFormat = format
 
             let width = Int(format.imageResolution.width)
             let height = Int(format.imageResolution.height)
             let longEdge = max(width, height)
-            let prefix = longEdge >= 3_800 ? "4K" : "High quality"
-            captureFormatDescription =
-                "\(prefix) • \(width)×\(height) • \(format.framesPerSecond) fps"
+
+            if highResolutionFormat != nil,
+               format.isRecommendedForHighResolutionFrameCapturing {
+                captureFormatDescription =
+                    "Hi-Res stills • \(width)×\(height) tracking • \(format.framesPerSecond) fps"
+            } else {
+                let prefix = longEdge >= 3_800 ? "4K" : "High quality"
+                captureFormatDescription =
+                    "\(prefix) • \(width)×\(height) • \(format.framesPerSecond) fps"
+            }
         }
 
         session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
