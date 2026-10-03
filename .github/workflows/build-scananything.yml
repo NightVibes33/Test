@@ -10,12 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: scananything-macos26-${{ github.ref }}
+  group: scananything-macos-latest-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   unsigned-ipa:
-    runs-on: macos-26
+    runs-on: macos-latest
     timeout-minutes: 60
 
     steps:
@@ -23,6 +23,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 1
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
 
       - name: Toolchain
         run: |
@@ -37,7 +42,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Vendor/msplat
-          key: msplat-ios-e8611098583059b82e0b7d35259fb4e9c42df248-macos26-v1
+          key: msplat-ios-e8611098583059b82e0b7d35259fb4e9c42df248-xcode26.2-macos-latest-v1
 
       - name: Bootstrap msplat for iOS
         if: steps.cache-msplat.outputs.cache-hit != 'true'
