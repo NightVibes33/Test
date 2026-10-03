@@ -128,6 +128,19 @@ final class CameraOnlyCaptureEngine {
 
                 try Task.checkCancellation()
 
+                if let heroFrame = snapshot.frames[safe: snapshot.frames.count / 2] {
+                    let inputURL = workspace.root.appending(path: heroFrame.filePath)
+                    let heroURL = workspace.root.appending(path: "hero.png")
+                    _ = try? await Task.detached(priority: .utility) {
+                        try await ObjectIsolationService.createTransparentPNG(
+                            imageAt: inputURL,
+                            outputURL: heroURL
+                        )
+                    }.value
+                }
+
+                try Task.checkCancellation()
+
                 let record = ScanRecord(
                     id: workspace.id,
                     name: "3D Scan",
@@ -181,5 +194,12 @@ final class CameraOnlyCaptureEngine {
         case .failure(let message):
             trackingMessage = message
         }
+    }
+}
+
+
+private extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
