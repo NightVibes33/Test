@@ -151,8 +151,9 @@ enum ObjectIsolationService {
             throw ObjectIsolationError.noForeground
         }
 
+        let instances = preferredInstances(in: observation)
         let maskedBuffer = try observation.generateMaskedImage(
-            for: observation.allInstances,
+            for: instances,
             imageFrom: handler,
             croppedToInstancesExtent: false
         )
@@ -196,8 +197,9 @@ enum ObjectIsolationService {
             throw ObjectIsolationError.noForeground
         }
 
+        let instances = preferredInstances(in: observation)
         let maskedBuffer = try observation.generateMaskedImage(
-            for: observation.allInstances,
+            for: instances,
             imageFrom: handler,
             croppedToInstancesExtent: false
         )
@@ -236,6 +238,31 @@ enum ObjectIsolationService {
             ),
             mask: mask
         )
+    }
+
+    /// Object capture coaches the user to keep the subject centered. Prefer the
+    /// instance under that aim point so other foreground objects do not become
+    /// part of the reconstructed asset. Nearby center samples handle imperfect
+    /// framing; all instances are only a fallback when the subject misses them.
+    private static func preferredInstances(
+        in observation: InstanceMaskObservation
+    ) -> IndexSet {
+        let aimPoints: [NormalizedPoint] = [
+            NormalizedPoint(x: 0.50, y: 0.50),
+            NormalizedPoint(x: 0.50, y: 0.58),
+            NormalizedPoint(x: 0.50, y: 0.42),
+            NormalizedPoint(x: 0.42, y: 0.50),
+            NormalizedPoint(x: 0.58, y: 0.50)
+        ]
+
+        for point in aimPoints {
+            let instances = observation.instanceAtPoint(point)
+            if !instances.isEmpty {
+                return instances
+            }
+        }
+
+        return observation.allInstances
     }
 
     private static func makeMask(
