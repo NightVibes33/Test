@@ -101,6 +101,12 @@ fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
             guard let self, let view else { return }
 
             do {
+                let points = try await Task.detached(priority: .userInitiated) {
+                    let reader = try AutodetectSceneReader(url)
+                    return try await reader.readAll()
+                }.value
+                try Task.checkCancellation()
+
                 let renderer = try SplatRenderer(
                     device: device,
                     colorFormat: view.colorPixelFormat,
@@ -109,10 +115,6 @@ fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
                     maxViewCount: 1,
                     maxSimultaneousRenders: 2
                 )
-                let reader = try AutodetectSceneReader(url)
-                let points = try await reader.readAll()
-                try Task.checkCancellation()
-
                 let chunk = try SplatChunk(device: device, from: points)
                 await renderer.addChunk(chunk)
                 try Task.checkCancellation()
