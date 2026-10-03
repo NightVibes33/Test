@@ -14,6 +14,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  runner-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Confirm hosted runner
+        run: |
+          echo "GitHub-hosted runner started"
+          uname -a
+
   unsigned-ipa:
     runs-on: macos-latest
     timeout-minutes: 60
