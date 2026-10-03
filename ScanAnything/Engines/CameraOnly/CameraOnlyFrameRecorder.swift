@@ -215,18 +215,22 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
         }
 
         let camera = frame.camera
-        let intrinsics = camera.intrinsics
-        let resolution = camera.imageResolution
+        let intrinsics = scaledIntrinsics(
+            camera: camera,
+            pixelBuffer: frame.capturedImage
+        )
+        let width = CVPixelBufferGetWidth(frame.capturedImage)
+        let height = CVPixelBufferGetHeight(frame.capturedImage)
 
         frames.append(
             CameraOnlyFrameMetadata(
                 filePath: "images/\(fileName)",
-                width: Int(resolution.width),
-                height: Int(resolution.height),
-                fx: Double(intrinsics[0][0]),
-                fy: Double(intrinsics[1][1]),
-                cx: Double(intrinsics[2][0]),
-                cy: Double(intrinsics[2][1]),
+                width: width,
+                height: height,
+                fx: Double(intrinsics.fx),
+                fy: Double(intrinsics.fy),
+                cx: Double(intrinsics.cx),
+                cy: Double(intrinsics.cy),
                 transformMatrix: matrixRows(camera.transform)
             )
         )
@@ -275,7 +279,10 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
         let worldToCamera = camera.transform.inverse
-        let intrinsics = camera.intrinsics
+        let intrinsics = scaledIntrinsics(
+            camera: camera,
+            pixelBuffer: pixelBuffer
+        )
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
 
@@ -292,8 +299,8 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
             let depth = -cameraPoint.z
             guard depth > 0.02 else { continue }
 
-            let u = intrinsics[0][0] * cameraPoint.x / depth + intrinsics[2][0]
-            let v = intrinsics[2][1] - intrinsics[1][1] * cameraPoint.y / depth
+            let u = intrinsics.fx * cameraPoint.x / depth + intrinsics.cx
+            let v = intrinsics.cy - intrinsics.fy * cameraPoint.y / depth
             guard u.isFinite, v.isFinite else { continue }
 
             let x = Int(u.rounded())
@@ -314,6 +321,28 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate, @unchecked Sen
                 )
             )
         }
+    }
+
+    private func scaledIntrinsics(
+        camera: ARCamera,
+        pixelBuffer: CVPixelBuffer
+    ) -> (fx: Float, fy: Float, cx: Float, cy: Float) {
+        let intrinsics = camera.intrinsics
+        let resolution = camera.imageResolution
+        let width = Float(CVPixelBufferGetWidth(pixelBuffer))
+        let height = Float(CVPixelBufferGetHeight(pixelBuffer))
+
+        let sourceWidth = max(Float(resolution.width), 1)
+        let sourceHeight = max(Float(resolution.height), 1)
+        let scaleX = width / sourceWidth
+        let scaleY = height / sourceHeight
+
+        return (
+            fx: intrinsics[0][0] * scaleX,
+            fy: intrinsics[1][1] * scaleY,
+            cx: intrinsics[2][0] * scaleX,
+            cy: intrinsics[2][1] * scaleY
+        )
     }
 
     private func sampleColor(
