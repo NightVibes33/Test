@@ -52,6 +52,21 @@ jobs:
           rm -rf DerivedData
           xcodebuild             -project ScanAnything.xcodeproj             -scheme ScanAnything             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath DerivedData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""             build | tee xcodebuild.log
 
+      - name: Compile Swift Testing bundle
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ScanAnything.xcodeproj \
+            -target ScanAnythingTests \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath TestDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild-tests.log
+
       - name: Package unsigned IPA
         run: |
           set -euxo pipefail
@@ -76,5 +91,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ScanAnything-build-log
-          path: xcodebuild.log
+          path: |
+            xcodebuild.log
+            xcodebuild-tests.log
           if-no-files-found: ignore

@@ -13,14 +13,30 @@
 /* End PBXBuildFile section */
 
 
+/* Begin PBXContainerItemProxy section */
+		TESTPROXY /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = PROJECTOBJ /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = APPTARGET;
+			remoteInfo = ScanAnything;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		PRODUCTAPPREF /* ScanAnything.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ScanAnything.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		TESTPRODUCTREF /* ScanAnythingTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScanAnythingTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		SYNCROOTGROUP /* ScanAnything */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ScanAnything;
+			sourceTree = "<group>";
+		};
+		TESTSYNCROOT /* ScanAnythingTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ScanAnythingTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -36,6 +52,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		TESTFRAMEWORKSPHASE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -43,6 +66,7 @@
 			isa = PBXGroup;
 			children = (
 				SYNCROOTGROUP /* ScanAnything */,
+				TESTSYNCROOT /* ScanAnythingTests */,
 				PRODUCTSGROUP /* Products */,
 			);
 			sourceTree = "<group>";
@@ -51,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				PRODUCTAPPREF /* ScanAnything.app */,
+				TESTPRODUCTREF /* ScanAnythingTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,6 +108,29 @@
 			productReference = PRODUCTAPPREF /* ScanAnything.app */;
 			productType = "com.apple.product-type.application";
 		};
+		TESTTARGET /* ScanAnythingTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TESTCONFIGLIST /* Build configuration list for PBXNativeTarget "ScanAnythingTests" */;
+			buildPhases = (
+				TESTSOURCESPHASE /* Sources */,
+				TESTFRAMEWORKSPHASE /* Frameworks */,
+				TESTRESOURCESPHASE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				TESTDEPENDENCY /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				TESTSYNCROOT /* ScanAnythingTests */,
+			);
+			name = ScanAnythingTests;
+			packageProductDependencies = (
+			);
+			productName = ScanAnythingTests;
+			productReference = TESTPRODUCTREF /* ScanAnythingTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -95,6 +143,9 @@
 				TargetAttributes = {
 					APPTARGET = {
 						CreatedOnToolsVersion = 26.6;
+					};
+					TESTTARGET = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -118,12 +169,20 @@
 			projectRoot = "";
 			targets = (
 				APPTARGET /* ScanAnything */,
+				TESTTARGET /* ScanAnythingTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		RESOURCESPHASE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TESTRESOURCESPHASE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -140,7 +199,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		TESTSOURCESPHASE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		TESTDEPENDENCY /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = APPTARGET /* ScanAnything */;
+			targetProxy = TESTPROXY /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCLocalSwiftPackageReference section */
 		MSPLATPACKAGE /* XCLocalSwiftPackageReference "msplat" */ = {
@@ -314,6 +388,48 @@
 			};
 			name = Release;
 		};
+		TESTDEBUG /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nightvibes33.scananything.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ScanAnything.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ScanAnything";
+			};
+			name = Debug;
+		};
+		TESTRELEASE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nightvibes33.scananything.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ScanAnything.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ScanAnything";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -334,6 +450,15 @@
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
+		};
+		TESTCONFIGLIST /* Build configuration list for PBXNativeTarget "ScanAnythingTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TESTDEBUG /* Debug */,
+				TESTRELEASE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
