@@ -16,7 +16,7 @@ ScanAnything has one consumer-facing scan flow and chooses the best reconstructi
 2. Soft frames are rejected before they can contaminate the multi-view solve.
 3. Camera intrinsics and camera-to-world poses are stored with each accepted frame.
 4. Capture coverage is measured across azimuth and elevation bands rather than by frame count alone.
-5. ARKit raw feature points seed the reconstruction.
+5. ARKit raw feature points seed the reconstruction with camera-sampled sRGB instead of a flat gray fallback.
 6. The capture is written as a Nerfstudio-compatible dataset.
 7. msplat trains a 3D Gaussian Splat locally with Metal using a 30,000-step progressive-resolution quality profile.
 8. The master result is stored as float32 Gaussian PLY so training detail is not quantized away.
