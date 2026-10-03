@@ -15,6 +15,11 @@ struct LibraryView: View {
     @State private var isSelecting = false
     @State private var selection = Set<UUID>()
     @State private var isConfirmingBulkDelete = false
+    @State private var selectedFilter: LibraryFilter = .all
+
+    private var filteredScans: [ScanRecord] {
+        storage.scans.filter { selectedFilter.includes($0) }
+    }
 
     var body: some View {
         Group {
@@ -26,11 +31,35 @@ struct LibraryView: View {
                 )
             } else {
                 List {
-                    ForEach(storage.scans) { record in
-                        row(for: record)
+                    Section {
+                        filterBar
+                            .listRowInsets(
+                                EdgeInsets(
+                                    top: 8,
+                                    leading: 0,
+                                    bottom: 8,
+                                    trailing: 0
+                                )
+                            )
                     }
-                    .onDelete { offsets in
-                        delete(storage.scans.enumerated().filter { offsets.contains($0.offset) }.map(\.element))
+
+                    if filteredScans.isEmpty {
+                        ContentUnavailableView(
+                            "No \(selectedFilter.title.lowercased()) scans",
+                            systemImage: selectedFilter.symbolName,
+                            description: Text("Choose another category or create a new scan.")
+                        )
+                    } else {
+                        ForEach(filteredScans) { record in
+                            row(for: record)
+                        }
+                        .onDelete { offsets in
+                            delete(
+                                filteredScans.enumerated()
+                                    .filter { offsets.contains($0.offset) }
+                                    .map(\.element)
+                            )
+                        }
                     }
                 }
             }
@@ -92,6 +121,33 @@ struct LibraryView: View {
         }
     }
 
+    private var filterBar: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(LibraryFilter.allCases) { filter in
+                    Button {
+                        selectedFilter = filter
+                        selection.removeAll()
+                    } label: {
+                        Label(filter.title, systemImage: filter.symbolName)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                selectedFilter == filter
+                                    ? Color.accentColor.opacity(0.18)
+                                    : Color.secondary.opacity(0.10),
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+        }
+        .scrollIndicators(.hidden)
+    }
+
     // MARK: - Toolbar
 
     private var selectionTitle: String {
@@ -108,11 +164,16 @@ struct LibraryView: View {
     }
 
     private var selectAllButton: some View {
-        Button(selection.count == storage.scans.count ? "Deselect All" : "Select All") {
-            if selection.count == storage.scans.count {
-                selection.removeAll()
+        let visibleIDs = Set(filteredScans.map(\.id))
+        let allVisibleSelected =
+            !visibleIDs.isEmpty &&
+            visibleIDs.isSubset(of: selection)
+
+        return Button(allVisibleSelected ? "Deselect All" : "Select All") {
+            if allVisibleSelected {
+                selection.subtract(visibleIDs)
             } else {
-                selection = Set(storage.scans.map(\.id))
+                selection.formUnion(visibleIDs)
             }
         }
     }
@@ -153,6 +214,51 @@ struct LibraryView: View {
     }
 }
 
+private enum LibraryFilter: String, CaseIterable, Identifiable {
+    case all
+    case object
+    case room
+    case product
+    case freeform
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .object: "Objects"
+        case .room: "Rooms"
+        case .product: "Products"
+        case .freeform: "Freeform"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .all: "square.grid.2x2"
+        case .object: "cube.transparent"
+        case .room: "house"
+        case .product: "shippingbox"
+        case .freeform: "viewfinder"
+        }
+    }
+
+    func includes(_ record: ScanRecord) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .object:
+            record.assetKind == .object
+        case .room:
+            record.assetKind == .room
+        case .product:
+            record.assetKind == .product
+        case .freeform:
+            record.assetKind == .freeform
+        }
+    }
+}
+
 private struct ScanRow: View {
     let record: ScanRecord
     let modelURL: URL
@@ -168,11 +274,11 @@ private struct ScanRow: View {
             ) {
                 ModelThumbnailView(url: heroURL, side: 54)
             } else if record.isPreviewable {
-                ModelThumbnailView(url: modelURL, side: 54)
+                ModelThumbnailView(url: modelURL, side: 68)
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(.quaternary)
-                    .frame(width: 54, height: 54)
+                    .frame(width: 68, height: 68)
                     .overlay {
                         Image(systemName: record.isGaussianSplat ? "sparkles.rectangle.stack" : "aqi.medium")
                             .foregroundStyle(.secondary)
@@ -188,7 +294,8 @@ private struct ScanRow: View {
                         record.assetKind?.displayName ?? record.engine.displayName,
                         systemImage: record.assetKind?.symbolName ?? record.engine.symbolName
                     )
-                    if let summary = record.summary {
+                    if let summary = record.summary,
+                       summary != record.assetKind?.displayName {
                         Text("·")
                         Text(summary)
                     }
@@ -249,7 +356,7 @@ struct ScanDetailView: View {
                         .frame(height: 360)
                         .listRowInsets(EdgeInsets())
                 } footer: {
-                    Text("Camera-only 3D model rendered directly on the iPhone.")
+                    Text("Interactive 3D model rendered directly on this device.")
                 }
             } else if record.isPreviewable {
                 Section {
