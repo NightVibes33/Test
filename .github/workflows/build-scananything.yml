@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: scananything-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unsigned-ipa:
     runs-on: xcode-27
