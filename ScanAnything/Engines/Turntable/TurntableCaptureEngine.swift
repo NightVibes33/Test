@@ -196,6 +196,7 @@ final class TurntableCaptureEngine: ScanEngine {
             id: workspace.id,
             name: Self.defaultName(for: Date()),
             engine: Self.kind,
+            assetKind: .product,
             // Scale comes from the depth embedded in each still. Without a LiDAR
             // device there is none, and claiming real dimensions would be a lie.
             isMetricallyScaled: deliversDepth,
