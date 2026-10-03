@@ -22,7 +22,16 @@ final class StoreManager {
 
     init() {
         transactionUpdatesTask = Task { [weak self] in
-            await self?.observeTransactionUpdates()
+            for await result in Transaction.updates {
+                guard !Task.isCancelled else { return }
+                guard let self else { return }
+                guard case .verified(let transaction) = result else { continue }
+
+                if Self.proProductIDs.contains(transaction.productID) {
+                    await transaction.finish()
+                    await self.refreshEntitlements()
+                }
+            }
         }
     }
 
@@ -98,18 +107,6 @@ final class StoreManager {
         }
 
         isPro = entitled
-    }
-
-    private func observeTransactionUpdates() async {
-        for await result in Transaction.updates {
-            guard !Task.isCancelled else { return }
-            guard case .verified(let transaction) = result else { continue }
-
-            if Self.proProductIDs.contains(transaction.productID) {
-                await transaction.finish()
-                await refreshEntitlements()
-            }
-        }
     }
 
     private func verified<T>(
