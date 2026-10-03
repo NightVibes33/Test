@@ -59,16 +59,19 @@ jobs:
       - name: Compile Swift Testing bundle
         run: |
           set -o pipefail
+          rm -rf TestDerivedData
           xcodebuild \
             -project ScanAnything.xcodeproj \
-            -target ScanAnythingTests \
+            -scheme ScanAnything \
             -configuration Debug \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
+            -derivedDataPath TestDerivedData \
+            -only-testing:ScanAnythingTests \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build | tee xcodebuild-tests.log
+            build-for-testing | tee xcodebuild-tests.log
 
       - name: Package unsigned IPA
         run: |
