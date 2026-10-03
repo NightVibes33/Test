@@ -50,19 +50,44 @@ struct ScanAnythingCoreTests {
         #expect(record.isPreviewable)
         #expect(record.engine.producesMesh)
     }
-    @Test("High-detail Camera 3D keeps native source resolution")
+
+    @Test("High-detail Camera 3D preserves 4K input and uses a full msplat quality budget")
     func highDetailCameraQualityProfile() {
         let quality = CameraOnlyQualityProfile.highDetail
 
         #expect(quality.datasetDownscaleFactor == 1.0)
-        #expect(quality.targetFrameCount >= 160)
-        #expect(quality.minimumFrameCount >= 72)
+        #expect(quality.targetFrameCount >= 200)
+        #expect(quality.minimumFrameCount >= 100)
         #expect(quality.maximumFrameCount >= quality.targetFrameCount)
-        #expect(quality.minimumFeaturePoints >= 1_000)
-        #expect(quality.trainingIterations >= 8_000)
+        #expect(quality.minimumFeaturePoints >= 2_000)
+        #expect(quality.maximumFeaturePoints >= 250_000)
+
+        #expect(quality.sharpnessWarmupFrames >= 6)
+        #expect(quality.sharpnessFloorFraction >= 0.60)
+        #expect(quality.minimumViewCoverage > 0.50)
+
+        #expect(quality.trainingIterations == 30_000)
         #expect(quality.shDegree == 3)
-        #expect(quality.stopDensifyAt >= 5_500)
-        #expect(quality.resolutionSchedule * quality.numDownscales < quality.trainingIterations)
+        #expect(quality.ssimWeight == 0.20)
+        #expect(quality.numDownscales == 3)
+        #expect(quality.stopDensifyAt >= 15_000)
+        #expect(
+            quality.resolutionSchedule * quality.numDownscales <
+            quality.stopDensifyAt
+        )
+        #expect(quality.stopDensifyAt < quality.trainingIterations)
     }
 
+    @Test("Camera-only blur gate rejects a soft outlier after calibration")
+    func cameraOnlyBlurGateRejectsSoftOutlier() {
+        let quality = CameraOnlyQualityProfile.highDetail
+        var gate = CameraOnlyFrameQualityGate(quality: quality)
+
+        for _ in 0..<quality.sharpnessWarmupFrames {
+            #expect(gate.accepts(sharpness: 100))
+        }
+
+        #expect(gate.accepts(sharpness: 80))
+        #expect(gate.accepts(sharpness: 30) == false)
+    }
 }
