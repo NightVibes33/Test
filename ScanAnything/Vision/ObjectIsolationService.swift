@@ -2,6 +2,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import CoreVideo
 import Foundation
+import ImageIO
 import simd
 import Vision
 
