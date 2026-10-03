@@ -86,10 +86,14 @@ struct ScanAnythingCoreTests {
         var gate = CameraOnlyFrameQualityGate(quality: quality)
 
         for _ in 0..<quality.sharpnessWarmupFrames {
-            #expect(gate.accepts(sharpness: 100))
+            let accepted = gate.accepts(sharpness: 100)
+            #expect(accepted)
         }
 
-        #expect(gate.accepts(sharpness: 80))
-        #expect(gate.accepts(sharpness: 30) == false)
+        let sharpAccepted = gate.accepts(sharpness: 80)
+        #expect(sharpAccepted)
+
+        let softAccepted = gate.accepts(sharpness: 30)
+        #expect(softAccepted == false)
     }
 }
