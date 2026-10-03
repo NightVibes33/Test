@@ -231,7 +231,7 @@ final class CameraOnlyCaptureEngine {
             guard let self else { return }
 
             do {
-                try await Task.detached(priority: .userInitiated) {
+                let backgroundWasIsolated = try await Task.detached(priority: .userInitiated) {
                     try Task.checkCancellation()
 
                     // Calibrate learned metric depth from the untouched camera
@@ -277,6 +277,12 @@ final class CameraOnlyCaptureEngine {
                         snapshot: trainingSnapshot,
                         to: workspace.root
                     )
+
+                    return reconstructionPurpose.isolatesForeground &&
+                        trainingSnapshot.frames.count >= reconstructionQuality.minimumFrameCount &&
+                        trainingSnapshot.frames.allSatisfy {
+                            $0.filePath.hasPrefix("isolated-images/")
+                        }
                 }.value
 
                 try Task.checkCancellation()
@@ -287,7 +293,7 @@ final class CameraOnlyCaptureEngine {
                     datasetRoot: workspace.root,
                     outputURL: outputURL,
                     quality: quality,
-                    backgroundIsolated: reconstructionPurpose.isolatesForeground
+                    backgroundIsolated: backgroundWasIsolated
                 ) { [weak self] progress, splatCount in
                     guard let self else { return }
                     self.processingProgress = min(0.95, 0.05 + (progress * 0.90))
