@@ -77,7 +77,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     }
 
     private func consume(_ frame: ARFrame) {
-        guard frames.count < maximumFrameCount else { return }
+        guard frames.count < quality.maximumFrameCount else { return }
 
         let trackingMessage: String
         switch frame.camera.trackingState {
@@ -113,7 +113,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
 
         guard let data = imageContext.jpegRepresentation(
             of: image,
-            colorSpace: CGColorSpaceCreateDeviceRGB(),
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
             options: jpegOptions
         ) else {
             eventHandler(.failure("Could not encode this camera frame."))
@@ -189,11 +189,11 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     }
 
     private var coverage: Double {
-        min(1, Double(frames.count) / Double(targetFrameCount))
+        min(1, Double(frames.count) / Double(quality.targetFrameCount))
     }
 
     private func shouldCapture(_ frame: ARFrame) -> Bool {
-        guard frame.timestamp - lastCapturedTimestamp >= 0.15 else { return false }
+        guard frame.timestamp - lastCapturedTimestamp >= quality.minimumCaptureInterval else { return false }
         guard let previous = lastCapturedTransform else { return true }
 
         let current = frame.camera.transform
@@ -225,7 +225,7 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
 
         // Tighter pose spacing gives the trainer substantially more overlap,
         // which matters much more at 4K than simply collecting a few wide views.
-        return translation >= 0.018 || rotation >= 0.045
+        return translation >= quality.minimumTranslation || rotation >= quality.minimumRotation
     }
 
     private func matrixRows(_ matrix: simd_float4x4) -> [[Double]] {
