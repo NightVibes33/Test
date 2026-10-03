@@ -38,6 +38,8 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     private var featurePoints: [SIMD3<Float>] = []
     private var lastCapturedTransform: simd_float4x4?
     private var lastCapturedTimestamp: TimeInterval = -1
+    private var lastProgressEventTimestamp: TimeInterval = -1
+    private var lastProgressMessage = ""
 
     private let targetFrameCount = 80
     private let maximumFrameCount = 140
@@ -79,27 +81,24 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
                 ? "Great coverage — you can finish now"
                 : "Move slowly around the object"
         case .limited(let reason):
-            eventHandler(.progress(
-                count: frames.count,
-                featurePointCount: featurePoints.count,
-                message: limitedTrackingMessage(reason)
-            ))
+            emitProgress(
+                message: limitedTrackingMessage(reason),
+                timestamp: frame.timestamp
+            )
             return
         case .notAvailable:
-            eventHandler(.progress(
-                count: frames.count,
-                featurePointCount: featurePoints.count,
-                message: "Tracking unavailable"
-            ))
+            emitProgress(
+                message: "Tracking unavailable",
+                timestamp: frame.timestamp
+            )
             return
         }
 
         guard shouldCapture(frame) else {
-            eventHandler(.progress(
-                count: frames.count,
-                featurePointCount: featurePoints.count,
-                message: trackingMessage
-            ))
+            emitProgress(
+                message: trackingMessage,
+                timestamp: frame.timestamp
+            )
             return
         }
 
@@ -150,12 +149,31 @@ final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
         lastCapturedTransform = camera.transform
         lastCapturedTimestamp = frame.timestamp
 
+        emitProgress(
+            message: coverage >= 0.95
+                ? "Great coverage — you can finish now"
+                : "Move slowly around the object",
+            timestamp: frame.timestamp,
+            force: true
+        )
+    }
+
+    private func emitProgress(
+        message: String,
+        timestamp: TimeInterval,
+        force: Bool = false
+    ) {
+        let messageChanged = message != lastProgressMessage
+        let enoughTimePassed = timestamp - lastProgressEventTimestamp >= 0.20
+
+        guard force || messageChanged || enoughTimePassed else { return }
+
+        lastProgressMessage = message
+        lastProgressEventTimestamp = timestamp
         eventHandler(.progress(
             count: frames.count,
             featurePointCount: featurePoints.count,
-            message: coverage >= 0.95
-                ? "Great coverage — you can finish now"
-                : "Move slowly around the object"
+            message: message
         ))
     }
 
