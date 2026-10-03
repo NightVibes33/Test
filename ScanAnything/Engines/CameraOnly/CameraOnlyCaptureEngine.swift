@@ -225,6 +225,16 @@ final class CameraOnlyCaptureEngine {
                 try await Task.detached(priority: .userInitiated) {
                     try Task.checkCancellation()
 
+                    // Calibrate learned metric depth from the untouched camera
+                    // images first. Background isolation is a rendering/training
+                    // concern and should not throw away cues the depth model or
+                    // ARKit anchor fit can use.
+                    let enrichedPoints = LearnedDepthSeedService.enrich(
+                        snapshot: snapshot,
+                        root: workspace.root,
+                        quality: reconstructionQuality
+                    )
+
                     if reconstructionPurpose.isolatesForeground {
                         for frame in snapshot.frames {
                             try Task.checkCancellation()
@@ -235,11 +245,6 @@ final class CameraOnlyCaptureEngine {
                         }
                     }
 
-                    let enrichedPoints = LearnedDepthSeedService.enrich(
-                        snapshot: snapshot,
-                        root: workspace.root,
-                        quality: reconstructionQuality
-                    )
                     let trainingSnapshot = CameraOnlyCaptureSnapshot(
                         frames: snapshot.frames,
                         featurePoints: enrichedPoints
