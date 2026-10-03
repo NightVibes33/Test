@@ -24,7 +24,7 @@ enum CameraOnlyCaptureEvent: Sendable {
     case failure(String)
 }
 
-final class CameraOnlyFrameRecorder: NSObject, @preconcurrency ARSessionDelegate {
+final class CameraOnlyFrameRecorder: NSObject, ARSessionDelegate {
     let delegateQueue = DispatchQueue(
         label: "com.nightvibes33.scananything.camera-capture",
         qos: .userInitiated

@@ -26,10 +26,6 @@ final class StoreManager {
         }
     }
 
-    deinit {
-        transactionUpdatesTask?.cancel()
-    }
-
     func prepare() async {
         await refreshEntitlements()
         await loadProducts()

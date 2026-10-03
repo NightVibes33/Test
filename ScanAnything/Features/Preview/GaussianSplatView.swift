@@ -54,7 +54,7 @@ struct GaussianSplatView: UIViewRepresentable {
 }
 
 @MainActor
-fileprivate final class ScanAnythingSplatRenderer: NSObject, @preconcurrency MTKViewDelegate {
+fileprivate final class ScanAnythingSplatRenderer: NSObject, MTKViewDelegate {
     private weak var view: MTKView?
     private let device: MTLDevice
     private let queue: MTLCommandQueue
