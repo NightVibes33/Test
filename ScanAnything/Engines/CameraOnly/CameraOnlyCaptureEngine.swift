@@ -116,7 +116,7 @@ final class CameraOnlyCaptureEngine {
         let snapshot = recorder.snapshot()
         let count = snapshot.frames.count
         let outputURL = workspace.root.appending(
-            path: "model.spz",
+            path: "model.ply",
             directoryHint: .notDirectory
         )
 
@@ -164,7 +164,7 @@ final class CameraOnlyCaptureEngine {
                     id: workspace.id,
                     name: "3D Scan",
                     engine: .cameraOnly,
-                    modelFileName: "model.spz",
+                    modelFileName: "model.ply",
                     isMetricallyScaled: false,
                     imageCount: count,
                     pointCount: splats,
