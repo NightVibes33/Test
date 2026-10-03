@@ -45,6 +45,7 @@ struct GaussianSplatView: UIViewRepresentable {
     private var rotation: Float = 0
     private let inFlight = DispatchSemaphore(value: 2)
 
+    @MainActor
     init?(view: MTKView) {
         guard let device = view.device,
               let queue = device.makeCommandQueue()
@@ -55,11 +56,13 @@ struct GaussianSplatView: UIViewRepresentable {
         super.init()
     }
 
+    @MainActor
     func loadIfNeeded(_ url: URL) {
         guard loadedURL != url else { return }
         load(url)
     }
 
+    @MainActor
     func load(_ url: URL) {
         loadedURL = url
         splatRenderer = nil
