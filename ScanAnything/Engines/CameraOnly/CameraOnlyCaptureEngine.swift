@@ -135,6 +135,8 @@ final class CameraOnlyCaptureEngine {
             directoryHint: .notDirectory
         )
 
+        let reconstructionQuality = quality
+
         reconstructionTask?.cancel()
         reconstructionTask = Task { [weak self] in
             guard let self else { return }
@@ -146,7 +148,7 @@ final class CameraOnlyCaptureEngine {
                     let enrichedPoints = LearnedDepthSeedService.enrich(
                         snapshot: snapshot,
                         root: workspace.root,
-                        quality: quality
+                        quality: reconstructionQuality
                     )
                     let trainingSnapshot = CameraOnlyCaptureSnapshot(
                         frames: snapshot.frames,
