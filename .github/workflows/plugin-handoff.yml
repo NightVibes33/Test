@@ -1,0 +1,35 @@
+name: Swift iOS Skills Plugin Handoff
+
+on:
+  push:
+    paths:
+      - ".github/workflows/plugin-handoff.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and validate plugin bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -fL "https://d2ol7oe51mr4n9.cloudfront.net/user_3JA62RTSWrerhK4O20lVs9K7hJj/2a72a786-9c5a-4374-b6d6-03c204463595.zip" -o plugin.zip
+          unzip -q plugin.zip -d out
+          test -f out/swift-ios-skills/plugin.json
+          test "$(find out/swift-ios-skills/skills -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 86
+          test "$(find out/swift-ios-skills/skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l)" -eq 86
+          python3 -m json.tool out/swift-ios-skills/plugin.json >/dev/null
+          echo "Validated 86 skills"
+
+      - name: Upload Plugin Creator archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-ios-skills-plugin
+          path: out/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
