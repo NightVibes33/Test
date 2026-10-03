@@ -65,7 +65,7 @@ struct CameraOnlyCaptureView: View {
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
 
-                Text("Keep ScanAnything open while the iPhone finishes the model.")
+                Text("Keep ScanAnything open while this device finishes the model.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }

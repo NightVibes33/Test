@@ -55,10 +55,10 @@ struct CameraOnlyQualityProfile: Sendable, Equatable {
     let depthPriorVoxelSize: Float
 
     static let highDetail = CameraOnlyQualityProfile(
-        targetFrameCount: 32,
-        minimumFrameCount: 18,
-        maximumFrameCount: 96,
-        minimumFeaturePoints: 1_500,
+        targetFrameCount: 20,
+        minimumFrameCount: 12,
+        maximumFrameCount: 72,
+        minimumFeaturePoints: 800,
         maximumFeaturePoints: 120_000,
         minimumCaptureInterval: 0.12,
         minimumTranslation: 0.020,
@@ -67,7 +67,7 @@ struct CameraOnlyQualityProfile: Sendable, Equatable {
         sharpnessFloorFraction: 0.65,
         azimuthSectorCount: 24,
         elevationBandCount: 2,
-        minimumViewCoverage: 0.30,
+        minimumViewCoverage: 0.20,
         trainingIterations: 30_000,
         shDegree: 3,
         shDegreeInterval: 1_000,

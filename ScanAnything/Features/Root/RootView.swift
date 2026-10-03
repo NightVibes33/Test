@@ -122,12 +122,12 @@ private struct ScanAnythingSettingsView: View {
                 }
             }
 
-            Section("This iPhone") {
-                LabeledContent("Object scanning", value: enhanced ? "Enhanced" : "Camera 3D")
-                capability("LiDAR scene mesh", DeviceCapabilities.supportsSceneReconstruction)
-                capability("Object Capture", DeviceCapabilities.supportsObjectCapture)
-                capability("Room scanning", DeviceCapabilities.supportsRoomCapture)
-                capability("TrueDepth", DeviceCapabilities.hasTrueDepthCamera)
+            Section("This Device") {
+                LabeledContent("Universal scanning", value: DeviceCapabilities.supportsCameraOnly ? "Ready" : "Unavailable")
+                capability("LiDAR enhancement", DeviceCapabilities.supportsSceneReconstruction)
+                capability("Object Capture enhancement", DeviceCapabilities.supportsObjectCapture)
+                capability("RoomPlan enhancement", DeviceCapabilities.supportsRoomCapture)
+                capability("TrueDepth enhancement", DeviceCapabilities.hasTrueDepthCamera)
             }
 
             Section("About") {

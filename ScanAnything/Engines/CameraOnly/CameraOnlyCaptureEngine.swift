@@ -11,18 +11,18 @@ enum CameraOnlyCapturePurpose: String, Sendable {
 
     var minimumFrameCount: Int {
         switch self {
-        case .object: 18
-        case .product: 24
-        case .freeform: 40
-        case .room: 60
+        case .object: 12
+        case .product: 18
+        case .freeform: 32
+        case .room: 48
         }
     }
 
     var minimumViewCoverage: Double {
         switch self {
-        case .object: 0.30
-        case .product: 0.34
-        case .freeform: 0.42
+        case .object: 0.20
+        case .product: 0.30
+        case .freeform: 0.40
         case .room: 0.45
         }
     }
