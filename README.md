@@ -1,5 +1,9 @@
 # ScanAnything
 
+## Platform scope
+
+ScanAnything v1 is iPhone-only and targets iOS 18+. Regular iPhones use the camera-only Gaussian pipeline; supported Pro/LiDAR iPhones automatically gain Apple Object Capture and LiDAR modes.
+
 Turn real objects into 3D on an iPhone.
 
 ScanAnything has one consumer-facing scan flow and chooses the best reconstruction pipeline available on the device.
