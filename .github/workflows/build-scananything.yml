@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   unsigned-ipa:
-    runs-on: xcode-27
+    runs-on: macos-26
     timeout-minutes: 60
 
     steps:
@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Vendor/msplat
-          key: msplat-ios-e8611098583059b82e0b7d35259fb4e9c42df248-xcode27-v1
+          key: msplat-ios-e8611098583059b82e0b7d35259fb4e9c42df248-macos26-v1
 
       - name: Bootstrap msplat for iOS
         if: steps.cache-msplat.outputs.cache-hit != 'true'
