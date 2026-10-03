@@ -58,6 +58,46 @@ enum PointCloudFile {
         logger.info("PLY yazıldı: \(points.count, privacy: .public) nokta")
     }
 
+    /// Writes XYZ plus 8-bit sRGB. msplat consumes these RGB properties to
+    /// initialize each Gaussian's DC spherical-harmonic coefficient.
+    static func write(
+        points: [SIMD3<Float>],
+        colors: [SIMD3<UInt8>],
+        to url: URL
+    ) throws {
+        guard !points.isEmpty else { throw FileError.empty }
+        precondition(points.count == colors.count)
+
+        var header = "ply\n"
+        header += "format binary_little_endian 1.0\n"
+        header += "comment ScanAnything colored Gaussian seed\n"
+        header += "element vertex \(points.count)\n"
+        header += "property float x\n"
+        header += "property float y\n"
+        header += "property float z\n"
+        header += "property uchar red\n"
+        header += "property uchar green\n"
+        header += "property uchar blue\n"
+        header += "end_header\n"
+
+        var data = Data(header.utf8)
+        data.reserveCapacity(data.count + points.count * 15)
+
+        for (point, color) in zip(points, colors) {
+            for component in [point.x, point.y, point.z] {
+                withUnsafeBytes(of: component.bitPattern.littleEndian) {
+                    data.append(contentsOf: $0)
+                }
+            }
+            data.append(color.x)
+            data.append(color.y)
+            data.append(color.z)
+        }
+
+        try data.write(to: url, options: .atomic)
+        logger.info("Colored PLY yazıldı: \(points.count, privacy: .public) nokta")
+    }
+
     // MARK: - Read
 
     static func read(from url: URL) throws -> [SIMD3<Float>] {
@@ -80,14 +120,19 @@ enum PointCloudFile {
         else { throw FileError.malformedHeader }
 
         let payload = data[headerRange.upperBound...]
-        guard payload.count >= count * 12 else { throw FileError.truncated }
+        let hasRGB =
+            header.contains("property uchar red") &&
+            header.contains("property uchar green") &&
+            header.contains("property uchar blue")
+        let vertexStride = hasRGB ? 15 : 12
+        guard payload.count >= count * vertexStride else { throw FileError.truncated }
 
         var points = [SIMD3<Float>]()
         points.reserveCapacity(count)
 
         payload.withUnsafeBytes { raw in
             for index in 0..<count {
-                let offset = index * 12
+                let offset = index * vertexStride
                 let x = Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: offset, as: UInt32.self)))
                 let y = Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: offset + 4, as: UInt32.self)))
                 let z = Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: offset + 8, as: UInt32.self)))
