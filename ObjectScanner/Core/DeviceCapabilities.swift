@@ -101,6 +101,12 @@ enum DeviceCapabilities {
         if AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) == nil {
             return String(localized: "Arka ana kamera bulunamadı. Tarama yapılamaz.")
         }
+        if !supportsObjectCapture {
+            return String(localized: "Object Capture bu cihazda desteklenmiyor. LiDAR'lı bir iPhone/iPad Pro gerekiyor.")
+        }
+        if !supportsPhotogrammetry {
+            return String(localized: "Bu cihaz cihaz-üstü fotogrametriyi desteklemiyor.")
+        }
         return nil
     }
 

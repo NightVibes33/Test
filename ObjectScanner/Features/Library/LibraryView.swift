@@ -157,12 +157,14 @@ private struct ScanRow: View {
             if record.isPreviewable {
                 ModelThumbnailView(url: modelURL, side: 54)
             } else {
+                // Quick Look cannot render a point cloud, so there is nothing to
+                // thumbnail until the meshing pass lands.
                 RoundedRectangle(cornerRadius: 10)
                     .fill(.quaternary)
                     .frame(width: 54, height: 54)
                     .overlay {
-                        Image(systemName: record.isGaussianSplat ? "sparkles.rectangle.stack" : "aqi.medium")
-                            .foregroundStyle(record.isGaussianSplat ? .tint : .secondary)
+                        Image(systemName: "aqi.medium")
+                            .foregroundStyle(.secondary)
                     }
             }
 
@@ -227,15 +229,7 @@ struct ScanDetailView: View {
 
     private func detail(for record: ScanRecord) -> some View {
         List {
-            if record.isGaussianSplat {
-                Section {
-                    GaussianSplatView(url: storage.modelURL(for: record))
-                        .frame(height: 360)
-                        .listRowInsets(EdgeInsets())
-                } footer: {
-                    Text("Camera-only 3D model rendered directly on the iPhone.")
-                }
-            } else if record.isPreviewable {
+            if record.isPreviewable {
                 Section {
                     ModelPreviewView(url: storage.modelURL(for: record))
                         .frame(height: 320)
@@ -247,7 +241,7 @@ struct ScanDetailView: View {
                         .frame(height: 320)
                         .listRowInsets(EdgeInsets())
                 } footer: {
-                    Text("Drag to rotate and pinch to zoom.")
+                    Text("Döndürmek için sürükleyin, yakınlaşmak için iki parmak.")
                 }
             }
 
@@ -307,25 +301,17 @@ struct ScanDetailView: View {
 
     @ViewBuilder
     private func exportSection(for record: ScanRecord) -> some View {
-        if record.isGaussianSplat {
-            Section {
-                Button("Prepare 3D file for sharing") {
-                    shareableURL = storage.modelURL(for: record)
-                }
-            } header: {
-                Text("Export")
-            } footer: {
-                Text("Exports the compact SPZ Gaussian Splat file.")
-            }
-        } else if record.isPreviewable {
+        if record.isPreviewable {
             meshExportSection(for: record)
         } else {
+            // `MeshExporter` runs through ModelIO, which has nothing to convert
+            // here — the PLY is already the deliverable.
             Section {
-                Button("Share PLY") { sharePointCloud(record) }
+                Button("PLY'yi Paylaş") { sharePointCloud(record) }
             } header: {
-                Text("Export")
+                Text("Dışa aktarma")
             } footer: {
-                Text("The point cloud is saved as PLY.")
+                Text("Nokta bulutu PLY olarak kaydedildi. Mesh'e çevirme (marching cubes) sonraki artımda gelecek.")
             }
         }
     }

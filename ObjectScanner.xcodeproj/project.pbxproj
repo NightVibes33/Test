@@ -6,21 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		MSPLATBUILDFILE /* Msplat in Frameworks */ = {isa = PBXBuildFile; productRef = MSPLATPRODUCT /* Msplat */; };
-		METALSPLATBUILDFILE /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = METALSPLATPRODUCT /* MetalSplatter */; };
-		SPLATIOBUILDFILE /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = SPLATIOPRODUCT /* SplatIO */; };
-/* End PBXBuildFile section */
-
-
 /* Begin PBXFileReference section */
-		PRODUCTAPPREF /* ScanAnything.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ScanAnything.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		PRODUCTAPPREF /* ObjectScanner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ObjectScanner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		SYNCROOTGROUP /* ScanAnything */ = {
+		SYNCROOTGROUP /* ObjectScanner */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ScanAnything;
+			path = ObjectScanner;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -30,9 +23,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				MSPLATBUILDFILE /* Msplat in Frameworks */,
-				METALSPLATBUILDFILE /* MetalSplatter in Frameworks */,
-				SPLATIOBUILDFILE /* SplatIO in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -42,7 +32,7 @@
 		MAINGROUP = {
 			isa = PBXGroup;
 			children = (
-				SYNCROOTGROUP /* ScanAnything */,
+				SYNCROOTGROUP /* ObjectScanner */,
 				PRODUCTSGROUP /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,7 +40,7 @@
 		PRODUCTSGROUP /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				PRODUCTAPPREF /* ScanAnything.app */,
+				PRODUCTAPPREF /* ObjectScanner.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -58,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		APPTARGET /* ScanAnything */ = {
+		APPTARGET /* ObjectScanner */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = TGTCONFIGLIST /* Build configuration list for PBXNativeTarget "ScanAnything" */;
+			buildConfigurationList = TGTCONFIGLIST /* Build configuration list for PBXNativeTarget "ObjectScanner" */;
 			buildPhases = (
 				SOURCESPHASE /* Sources */,
 				FRAMEWORKSPHASE /* Frameworks */,
@@ -71,16 +61,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				SYNCROOTGROUP /* ScanAnything */,
+				SYNCROOTGROUP /* ObjectScanner */,
 			);
-			name = ScanAnything;
+			name = ObjectScanner;
 			packageProductDependencies = (
-				MSPLATPRODUCT /* Msplat */,
-				METALSPLATPRODUCT /* MetalSplatter */,
-				SPLATIOPRODUCT /* SplatIO */,
 			);
-			productName = ScanAnything;
-			productReference = PRODUCTAPPREF /* ScanAnything.app */;
+			productName = ObjectScanner;
+			productReference = PRODUCTAPPREF /* ObjectScanner.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -98,7 +85,7 @@
 					};
 				};
 			};
-			buildConfigurationList = PRJCONFIGLIST /* Build configuration list for PBXProject "ScanAnything" */;
+			buildConfigurationList = PRJCONFIGLIST /* Build configuration list for PBXProject "ObjectScanner" */;
 			developmentRegion = tr;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -109,15 +96,11 @@
 			mainGroup = MAINGROUP;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			packageReferences = (
-				MSPLATPACKAGE /* XCLocalSwiftPackageReference "msplat" */,
-				METALSPLATPACKAGE /* XCRemoteSwiftPackageReference "MetalSplatter" */,
-			);
 			productRefGroup = PRODUCTSGROUP /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				APPTARGET /* ScanAnything */,
+				APPTARGET /* ObjectScanner */,
 			);
 		};
 /* End PBXProject section */
@@ -141,42 +124,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		MSPLATPACKAGE /* XCLocalSwiftPackageReference "msplat" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Vendor/msplat/swift;
-		};
-/* End XCLocalSwiftPackageReference section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		METALSPLATPACKAGE /* XCRemoteSwiftPackageReference "MetalSplatter" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/scier/MetalSplatter.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		MSPLATPRODUCT /* Msplat */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = MSPLATPACKAGE /* XCLocalSwiftPackageReference "msplat" */;
-			productName = Msplat;
-		};
-		METALSPLATPRODUCT /* MetalSplatter */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = METALSPLATPACKAGE /* XCRemoteSwiftPackageReference "MetalSplatter" */;
-			productName = MetalSplatter;
-		};
-		SPLATIOPRODUCT /* SplatIO */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = METALSPLATPACKAGE /* XCRemoteSwiftPackageReference "MetalSplatter" */;
-			productName = SplatIO;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		PRJDEBUG /* Debug */ = {
@@ -260,11 +207,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				
+				DEVELOPMENT_TEAM = U9PK44GM7H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = ScanAnything;
-				INFOPLIST_KEY_NSCameraUsageDescription = "ScanAnything uses the camera to capture objects and create 3D models.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Objeleri 3B taramak icin kameraya erisim gerekiyor.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
@@ -275,7 +221,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nightvibes33.scananything;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.ObjectScanner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
@@ -291,11 +237,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				
+				DEVELOPMENT_TEAM = U9PK44GM7H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = ScanAnything;
-				INFOPLIST_KEY_NSCameraUsageDescription = "ScanAnything uses the camera to capture objects and create 3D models.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Objeleri 3B taramak icin kameraya erisim gerekiyor.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
@@ -306,7 +251,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.nightvibes33.scananything;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.ObjectScanner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
@@ -317,7 +262,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		PRJCONFIGLIST /* Build configuration list for PBXProject "ScanAnything" */ = {
+		PRJCONFIGLIST /* Build configuration list for PBXProject "ObjectScanner" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				PRJDEBUG /* Debug */,
@@ -326,7 +271,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		TGTCONFIGLIST /* Build configuration list for PBXNativeTarget "ScanAnything" */ = {
+		TGTCONFIGLIST /* Build configuration list for PBXNativeTarget "ObjectScanner" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				TGTDEBUG /* Debug */,
