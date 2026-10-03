@@ -63,7 +63,11 @@ struct ScanAnythingCoreTests {
         #expect(quality.minimumFrameCount >= 100)
         #expect(quality.maximumFrameCount >= quality.targetFrameCount)
         #expect(quality.minimumFeaturePoints >= 2_000)
-        #expect(quality.maximumFeaturePoints >= 250_000)
+        #expect(quality.maximumFeaturePoints >= 100_000)
+        #expect(
+            quality.maximumFeaturePoints + quality.depthPriorMaximumPoints <=
+            250_000
+        )
 
         #expect(quality.sharpnessWarmupFrames >= 6)
         #expect(quality.sharpnessFloorFraction >= 0.60)
