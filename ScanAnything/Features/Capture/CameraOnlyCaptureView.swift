@@ -52,13 +52,13 @@ struct CameraOnlyCaptureView: View {
                     .tint(.white)
                     .padding(.horizontal, 36)
 
-                Text("Building your 3D model")
+                Text("Building high-detail 3D")
                     .font(.title3.bold())
                 Text("\(Int(engine.processingProgress * 100))% • \(engine.gaussianCount.formatted()) splats")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
 
-                Text("Everything is processing on this iPhone.")
+                Text("Full-resolution training finishes on this iPhone.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -112,11 +112,16 @@ struct CameraOnlyCaptureView: View {
 
                 Spacer()
 
-                Text("\(engine.capturedCount)")
-                    .font(.caption.bold().monospacedDigit())
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.black.opacity(0.55), in: Capsule())
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("\(engine.capturedCount) views")
+                        .font(.caption.bold().monospacedDigit())
+                    Text(engine.captureFormatDescription)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.55), in: Capsule())
             }
 
             Spacer()
