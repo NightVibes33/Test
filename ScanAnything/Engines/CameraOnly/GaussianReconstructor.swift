@@ -28,8 +28,8 @@ enum GaussianReconstructor {
         return try await Task.detached(priority: .userInitiated) {
             // Preserve the full captured resolution. Training itself starts
             // progressively downscaled and reaches native resolution later.
-            let dataset = GaussianDataset(path: datasetPath, downscaleFactor: 1.0)
-            guard dataset.numTrain >= 48 else {
+            let dataset = GaussianDataset(path: datasetPath, downscaleFactor: quality.datasetDownscaleFactor)
+            guard dataset.numTrain >= quality.minimumFrameCount else {
                 throw GaussianReconstructionError.insufficientFrames(dataset.numTrain)
             }
 
@@ -46,7 +46,7 @@ enum GaussianReconstructor {
             configuration.downscaleFactor = 1.0
 
             let trainer = GaussianTrainer(dataset: dataset, config: configuration)
-            let total = max(1, Int(iterations))
+            let total = max(1, Int(quality.trainingIterations))
 
             for index in 0..<total {
                 if index % 25 == 0 {
