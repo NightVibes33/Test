@@ -49,7 +49,8 @@ enum CameraOnlyDatasetWriter {
         )
 
         try PointCloudFile.write(
-            points: snapshot.featurePoints,
+            points: snapshot.featurePoints.map(\.position),
+            colors: snapshot.featurePoints.map(\.color),
             to: root.appending(path: "points3D.ply", directoryHint: .notDirectory)
         )
     }
