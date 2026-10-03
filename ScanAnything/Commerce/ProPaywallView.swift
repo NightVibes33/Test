@@ -99,10 +99,9 @@ struct ProPaywallView: View {
                         .multilineTextAlignment(.center)
 
                     HStack(spacing: 18) {
-                        Link(
-                            "Privacy Policy",
-                            destination: URL(string: "https://nightvibes33.github.io/ScanAnything/privacy.html")!
-                        )
+                        NavigationLink("Privacy Policy") {
+                            PrivacyPolicyView()
+                        }
                         Link(
                             "Terms",
                             destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
