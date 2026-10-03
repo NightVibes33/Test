@@ -12,13 +12,15 @@ ScanAnything has one consumer-facing scan flow and chooses the best reconstructi
 
 ### Regular iPhone — no LiDAR required
 
-1. ARKit captures tracked RGB camera frames.
-2. Camera intrinsics and camera-to-world poses are stored with each accepted frame.
-3. ARKit raw feature points seed the reconstruction.
-4. The capture is written as a Nerfstudio-compatible dataset.
-5. msplat trains a 3D Gaussian Splat locally with Metal.
-6. The result is stored as a compact SPZ model.
-7. MetalSplatter renders the result directly in the library.
+1. ARKit captures tracked RGB camera frames at the best available format, preferring its 4K recommendation.
+2. Soft frames are rejected before they can contaminate the multi-view solve.
+3. Camera intrinsics and camera-to-world poses are stored with each accepted frame.
+4. Capture coverage is measured across azimuth and elevation bands rather than by frame count alone.
+5. ARKit raw feature points seed the reconstruction.
+6. The capture is written as a Nerfstudio-compatible dataset.
+7. msplat trains a 3D Gaussian Splat locally with Metal using a 30,000-step progressive-resolution quality profile.
+8. The master result is stored as float32 Gaussian PLY so training detail is not quantized away.
+9. MetalSplatter renders the PLY result directly in the library.
 
 No server upload is required.
 
@@ -85,7 +87,7 @@ Camera-only scans retain:
 - accepted source JPEGs
 - `transforms.json`
 - ARKit feature-point seed PLY
-- final `model.spz`
+- final full-precision `model.ply`
 
 LiDAR/Object Capture scans retain the upstream source images/checkpoints and final USDZ.
 
