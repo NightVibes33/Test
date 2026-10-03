@@ -9,7 +9,7 @@ struct GaussianSplatView: UIViewRepresentable {
     let url: URL
 
     final class Coordinator {
-        var renderer: ScanAnythingSplatRenderer?
+        fileprivate var renderer: ScanAnythingSplatRenderer?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
