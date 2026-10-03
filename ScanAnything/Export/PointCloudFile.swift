@@ -12,7 +12,7 @@ import os
 /// The reader only handles the exact layout `write` emits — this is a round-trip
 /// for our own files, not a general PLY parser.
 enum PointCloudFile {
-    private static let logger = Logger(subsystem: "com.example.ObjectScanner", category: "pointcloud")
+    private static let logger = Logger(subsystem: "com.nightvibes33.scananything", category: "pointcloud")
 
     enum FileError: LocalizedError {
         case empty
@@ -35,7 +35,7 @@ enum PointCloudFile {
 
         var header = "ply\n"
         header += "format binary_little_endian 1.0\n"
-        header += "comment ObjectScanner TrueDepth\n"
+        header += "comment ScanAnything point cloud\n"
         header += "element vertex \(points.count)\n"
         header += "property float x\n"
         header += "property float y\n"

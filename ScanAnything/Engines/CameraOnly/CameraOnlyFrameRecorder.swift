@@ -1,0 +1,222 @@
+@preconcurrency import ARKit
+import CoreImage
+import Foundation
+import simd
+
+struct CameraOnlyFrameMetadata: Sendable {
+    let filePath: String
+    let width: Int
+    let height: Int
+    let fx: Double
+    let fy: Double
+    let cx: Double
+    let cy: Double
+    let transformMatrix: [[Double]]
+}
+
+struct CameraOnlyCaptureSnapshot: Sendable {
+    let frames: [CameraOnlyFrameMetadata]
+    let featurePoints: [SIMD3<Float>]
+}
+
+enum CameraOnlyCaptureEvent: Sendable {
+    case progress(count: Int, featurePointCount: Int, message: String)
+    case failure(String)
+}
+
+final class CameraOnlyFrameRecorder: NSObject, @preconcurrency ARSessionDelegate {
+    let delegateQueue = DispatchQueue(
+        label: "com.nightvibes33.scananything.camera-capture",
+        qos: .userInitiated
+    )
+
+    private let imagesURL: URL
+    private let eventHandler: @Sendable (CameraOnlyCaptureEvent) -> Void
+    private let imageContext = CIContext(options: [.cacheIntermediates: false])
+
+    private var frames: [CameraOnlyFrameMetadata] = []
+    private var featurePoints: [SIMD3<Float>] = []
+    private var lastCapturedTransform: simd_float4x4?
+    private var lastCapturedTimestamp: TimeInterval = -1
+
+    private let targetFrameCount = 80
+    private let maximumFrameCount = 140
+    private let maximumFeaturePoints = 100_000
+
+    init(
+        imagesURL: URL,
+        eventHandler: @escaping @Sendable (CameraOnlyCaptureEvent) -> Void
+    ) {
+        self.imagesURL = imagesURL
+        self.eventHandler = eventHandler
+        super.init()
+    }
+
+    func snapshot() -> CameraOnlyCaptureSnapshot {
+        delegateQueue.sync {
+            CameraOnlyCaptureSnapshot(
+                frames: frames,
+                featurePoints: featurePoints
+            )
+        }
+    }
+
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        consume(frame)
+    }
+
+    func session(_ session: ARSession, didFailWithError error: Error) {
+        eventHandler(.failure(error.localizedDescription))
+    }
+
+    private func consume(_ frame: ARFrame) {
+        guard frames.count < maximumFrameCount else { return }
+
+        let trackingMessage: String
+        switch frame.camera.trackingState {
+        case .normal:
+            trackingMessage = coverage >= 0.95
+                ? "Great coverage — you can finish now"
+                : "Move slowly around the object"
+        case .limited(let reason):
+            eventHandler(.progress(
+                count: frames.count,
+                featurePointCount: featurePoints.count,
+                message: limitedTrackingMessage(reason)
+            ))
+            return
+        case .notAvailable:
+            eventHandler(.progress(
+                count: frames.count,
+                featurePointCount: featurePoints.count,
+                message: "Tracking unavailable"
+            ))
+            return
+        }
+
+        guard shouldCapture(frame) else {
+            eventHandler(.progress(
+                count: frames.count,
+                featurePointCount: featurePoints.count,
+                message: trackingMessage
+            ))
+            return
+        }
+
+        let fileName = String(format: "frame_%04d.jpg", frames.count)
+        let imageURL = imagesURL.appending(path: fileName, directoryHint: .notDirectory)
+        let image = CIImage(cvPixelBuffer: frame.capturedImage)
+
+        guard let data = imageContext.jpegRepresentation(
+            of: image,
+            colorSpace: CGColorSpaceCreateDeviceRGB(),
+            options: [:]
+        ) else {
+            eventHandler(.failure("Could not encode this camera frame."))
+            return
+        }
+
+        do {
+            try data.write(to: imageURL, options: .atomic)
+        } catch {
+            eventHandler(.failure("Could not save this camera frame: \(error.localizedDescription)"))
+            return
+        }
+
+        let camera = frame.camera
+        let intrinsics = camera.intrinsics
+        let resolution = camera.imageResolution
+
+        frames.append(
+            CameraOnlyFrameMetadata(
+                filePath: "images/\(fileName)",
+                width: Int(resolution.width),
+                height: Int(resolution.height),
+                fx: Double(intrinsics[0][0]),
+                fy: Double(intrinsics[1][1]),
+                cx: Double(intrinsics[2][0]),
+                cy: Double(intrinsics[2][1]),
+                transformMatrix: matrixRows(camera.transform)
+            )
+        )
+
+        if let cloud = frame.rawFeaturePoints {
+            let room = max(0, maximumFeaturePoints - featurePoints.count)
+            if room > 0 {
+                featurePoints.append(contentsOf: cloud.points.prefix(room))
+            }
+        }
+
+        lastCapturedTransform = camera.transform
+        lastCapturedTimestamp = frame.timestamp
+
+        eventHandler(.progress(
+            count: frames.count,
+            featurePointCount: featurePoints.count,
+            message: coverage >= 0.95
+                ? "Great coverage — you can finish now"
+                : "Move slowly around the object"
+        ))
+    }
+
+    private var coverage: Double {
+        min(1, Double(frames.count) / Double(targetFrameCount))
+    }
+
+    private func shouldCapture(_ frame: ARFrame) -> Bool {
+        guard frame.timestamp - lastCapturedTimestamp >= 0.20 else { return false }
+        guard let previous = lastCapturedTransform else { return true }
+
+        let current = frame.camera.transform
+        let a = SIMD3<Float>(
+            previous.columns.3.x,
+            previous.columns.3.y,
+            previous.columns.3.z
+        )
+        let b = SIMD3<Float>(
+            current.columns.3.x,
+            current.columns.3.y,
+            current.columns.3.z
+        )
+        let translation = simd_distance(a, b)
+
+        let previousForward = simd_normalize(-SIMD3<Float>(
+            previous.columns.2.x,
+            previous.columns.2.y,
+            previous.columns.2.z
+        ))
+        let currentForward = simd_normalize(-SIMD3<Float>(
+            current.columns.2.x,
+            current.columns.2.y,
+            current.columns.2.z
+        ))
+        let dotValue = simd_dot(previousForward, currentForward)
+        let clamped = max(-1 as Float, min(1 as Float, dotValue))
+        let rotation = acos(clamped)
+
+        return translation >= 0.025 || rotation >= 0.07
+    }
+
+    private func matrixRows(_ matrix: simd_float4x4) -> [[Double]] {
+        (0..<4).map { row in
+            (0..<4).map { column in
+                Double(matrix[column][row])
+            }
+        }
+    }
+
+    private func limitedTrackingMessage(_ reason: ARCamera.TrackingState.Reason) -> String {
+        switch reason {
+        case .initializing:
+            "Initializing tracking…"
+        case .excessiveMotion:
+            "Slow down"
+        case .insufficientFeatures:
+            "Aim at a more textured area"
+        case .relocalizing:
+            "Recovering tracking…"
+        @unknown default:
+            "Tracking limited"
+        }
+    }
+}

@@ -1,5 +1,5 @@
 import ARKit
-import SceneKit
+import RealityKit
 import SwiftUI
 
 struct CameraOnlyCaptureView: View {
@@ -108,6 +108,7 @@ struct CameraOnlyCaptureView: View {
                         .background(.black.opacity(0.55), in: Circle())
                 }
                 .tint(.white)
+                .accessibilityLabel("Cancel scan")
 
                 Spacer()
 
@@ -184,17 +185,20 @@ struct CameraOnlyCaptureView: View {
 private struct ARCameraPreview: UIViewRepresentable {
     let session: ARSession
 
-    func makeUIView(context: Context) -> ARSCNView {
-        let view = ARSCNView(frame: .zero)
+    func makeUIView(context: Context) -> ARView {
+        let view = ARView(frame: .zero)
         view.session = session
-        view.scene = SCNScene()
-        view.automaticallyUpdatesLighting = false
+        view.environment.sceneUnderstanding.options = []
         return view
     }
 
-    func updateUIView(_ uiView: ARSCNView, context: Context) {
+    func updateUIView(_ uiView: ARView, context: Context) {
         if uiView.session !== session {
             uiView.session = session
         }
+    }
+
+    static func dismantleUIView(_ uiView: ARView, coordinator: ()) {
+        uiView.session.pause()
     }
 }

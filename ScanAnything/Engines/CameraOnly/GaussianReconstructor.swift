@@ -45,6 +45,9 @@ enum GaussianReconstructor {
             let total = max(1, Int(iterations))
 
             for index in 0..<total {
+                if index % 25 == 0 {
+                    try Task.checkCancellation()
+                }
                 let stats = trainer.step()
                 if index % 25 == 0 || index == total - 1 {
                     let fraction = Double(index + 1) / Double(total)
@@ -55,6 +58,7 @@ enum GaussianReconstructor {
                 }
             }
 
+            try Task.checkCancellation()
             trainer.exportSpz(to: outputPath)
             msplatSync()
 
