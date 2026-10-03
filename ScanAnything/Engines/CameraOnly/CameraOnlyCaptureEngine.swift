@@ -17,12 +17,11 @@ final class CameraOnlyCaptureEngine {
     let session = ARSession()
 
     private let storage: ScanStorage
+    private let quality = CameraOnlyQualityProfile.highDetail
     private var workspace: ScanWorkspace?
     private var recorder: CameraOnlyFrameRecorder?
     private var reconstructionTask: Task<Void, Never>?
 
-    private let targetFrameCount = 160
-    private let minimumFrameCount = 72
     private(set) var phase: Phase = .idle
     private(set) var capturedCount = 0
     private(set) var featurePointCount = 0
@@ -36,7 +35,8 @@ final class CameraOnlyCaptureEngine {
     }
 
     var canFinish: Bool {
-        capturedCount >= quality.minimumFrameCount && featurePointCount >= quality.minimumFeaturePoints
+        capturedCount >= quality.minimumFrameCount &&
+        featurePointCount >= quality.minimumFeaturePoints
     }
 
     init(storage: ScanStorage) {
@@ -60,7 +60,8 @@ final class CameraOnlyCaptureEngine {
         trackingMessage = "Move slowly around the object"
 
         let recorder = CameraOnlyFrameRecorder(
-            imagesURL: workspace.imagesURL
+            imagesURL: workspace.imagesURL,
+            quality: quality
         ) { [weak self] event in
             Task { @MainActor in
                 self?.handle(event)
@@ -76,9 +77,6 @@ final class CameraOnlyCaptureEngine {
         configuration.environmentTexturing = .none
         configuration.videoHDRAllowed = false
 
-        // ARKit does not automatically guarantee a 4K camera feed. Explicitly
-        // request its tracked 4K format when the device exposes one, then fall
-        // back to ARKit's highest-quality supported format.
         if let format = ARWorldTrackingConfiguration.recommendedVideoFormatFor4KResolution
             ?? ARWorldTrackingConfiguration.supportedVideoFormats.first {
             configuration.videoFormat = format
@@ -87,7 +85,8 @@ final class CameraOnlyCaptureEngine {
             let height = Int(format.imageResolution.height)
             let longEdge = max(width, height)
             let prefix = longEdge >= 3_800 ? "4K" : "High quality"
-            captureFormatDescription = "\(prefix) • \(width)×\(height) • \(format.framesPerSecond) fps"
+            captureFormatDescription =
+                "\(prefix) • \(width)×\(height) • \(format.framesPerSecond) fps"
         }
 
         session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
@@ -102,7 +101,7 @@ final class CameraOnlyCaptureEngine {
 
         guard canFinish else {
             phase = .failed(
-                "Keep scanning. Capture at least \(minimumFrameCount) well-tracked views around the object."
+                "Keep scanning. Capture at least \(quality.minimumFrameCount) well-tracked views around the object."
             )
             return
         }
@@ -136,7 +135,8 @@ final class CameraOnlyCaptureEngine {
 
                 let splats = try await GaussianReconstructor.reconstruct(
                     datasetRoot: workspace.root,
-                    outputURL: outputURL
+                    outputURL: outputURL,
+                    quality: quality
                 ) { [weak self] progress, splatCount in
                     guard let self else { return }
                     self.processingProgress = progress
@@ -213,7 +213,6 @@ final class CameraOnlyCaptureEngine {
         }
     }
 }
-
 
 private extension Collection {
     subscript(safe index: Index) -> Element? {
