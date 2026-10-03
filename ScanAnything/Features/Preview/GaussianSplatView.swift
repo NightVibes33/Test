@@ -35,7 +35,8 @@ struct GaussianSplatView: UIViewRepresentable {
     }
 }
 
-@MainActor\nfileprivate final class ScanAnythingSplatRenderer: NSObject, @preconcurrency MTKViewDelegate {
+@MainActor
+fileprivate final class ScanAnythingSplatRenderer: NSObject, @preconcurrency MTKViewDelegate {
     private let view: MTKView
     private let device: MTLDevice
     private let queue: MTLCommandQueue
