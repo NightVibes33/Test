@@ -19,7 +19,11 @@ struct RootView: View {
 }
 
 private struct ScanHomeView: View {
+    @Environment(ScanStorage.self) private var storage
+    @Environment(StoreManager.self) private var store
+
     @State private var isPresentingCapture = false
+    @State private var isPresentingPaywall = false
     @State private var permissionDenied = false
 
     private var usesEnhancedPipeline: Bool {
@@ -47,6 +51,11 @@ private struct ScanHomeView: View {
 
                 VStack(spacing: 12) {
                     Button {
+                        if !store.isPro && storage.scans.count >= 3 {
+                            isPresentingPaywall = true
+                            return
+                        }
+
                         Task {
                             guard await DeviceCapabilities.requestCameraAccess() else {
                                 permissionDenied = true
@@ -102,6 +111,9 @@ private struct ScanHomeView: View {
                 CameraOnlyCaptureView()
             }
         }
+        .sheet(isPresented: $isPresentingPaywall) {
+            ProPaywallView()
+        }
         .alert("Camera access is off", isPresented: $permissionDenied) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -127,12 +139,27 @@ private struct ScanHomeView: View {
 }
 
 private struct ScanAnythingSettingsView: View {
+    @Environment(StoreManager.self) private var store
+
     private var enhanced: Bool {
         DeviceCapabilities.supportsObjectCapture && DeviceCapabilities.supportsPhotogrammetry
     }
 
     var body: some View {
         List {
+            Section("ScanAnything Pro") {
+                NavigationLink {
+                    ProPaywallView()
+                } label: {
+                    HStack {
+                        Label("Pro", systemImage: "sparkles")
+                        Spacer()
+                        Text(store.isPro ? "Active" : "Free")
+                            .foregroundStyle(store.isPro ? .green : .secondary)
+                    }
+                }
+            }
+
             Section("This iPhone") {
                 LabeledContent("Object scanning", value: enhanced ? "Enhanced" : "Camera 3D")
                 capability("LiDAR scene mesh", DeviceCapabilities.supportsSceneReconstruction)
@@ -176,5 +203,6 @@ private struct ScanAnythingSettingsView: View {
 #Preview {
     RootView()
         .environment(ScanStorage())
+        .environment(StoreManager())
         .preferredColorScheme(.dark)
 }

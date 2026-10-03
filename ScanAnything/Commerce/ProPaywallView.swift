@@ -1,0 +1,138 @@
+import StoreKit
+import SwiftUI
+
+struct ProPaywallView: View {
+    @Environment(StoreManager.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 22) {
+                    VStack(spacing: 10) {
+                        Image(systemName: "cube.transparent")
+                            .font(.system(size: 58, weight: .light))
+                            .symbolRenderingMode(.hierarchical)
+                            .accessibilityHidden(true)
+
+                        Text("ScanAnything Pro")
+                            .font(.largeTitle.bold())
+
+                        Text("Unlimited saved scans and the full export toolkit.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        benefit("Unlimited saved scans", symbol: "infinity")
+                        benefit("Maximum reconstruction quality", symbol: "sparkles")
+                        benefit("Pro mesh and splat export tools", symbol: "square.and.arrow.up")
+                        benefit("Room and advanced scan workflows", symbol: "viewfinder")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(.quaternary.opacity(0.45), in: .rect(cornerRadius: 22))
+
+                    if store.isPro {
+                        Label("ScanAnything Pro is active", systemImage: "checkmark.seal.fill")
+                            .font(.headline)
+                            .foregroundStyle(.green)
+                    } else if store.isLoading && store.products.isEmpty {
+                        ProgressView("Loading App Store products…")
+                    } else if store.products.isEmpty {
+                        ContentUnavailableView(
+                            "Products unavailable",
+                            systemImage: "cart.badge.questionmark",
+                            description: Text("The App Store products have not been configured for this build yet.")
+                        )
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(store.products) { product in
+                                Button {
+                                    Task { await store.purchase(product) }
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(product.displayName)
+                                                .font(.headline)
+                                            Text(product.description)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .multilineTextAlignment(.leading)
+                                        }
+
+                                        Spacer()
+
+                                        Text(product.displayPrice)
+                                            .font(.headline.monospacedDigit())
+                                    }
+                                    .padding(.vertical, 5)
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                    }
+
+                    Button("Restore Purchases") {
+                        Task { await store.restore() }
+                    }
+                    .buttonStyle(.bordered)
+
+                    if let message = store.statusMessage {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    Text("Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current period. Manage or cancel in your App Store account.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    HStack(spacing: 18) {
+                        Link(
+                            "Privacy Policy",
+                            destination: URL(string: "https://nightvibes33.github.io/ScanAnything/privacy.html")!
+                        )
+                        Link(
+                            "Terms",
+                            destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
+                        )
+                    }
+                    .font(.footnote)
+                }
+                .padding()
+            }
+            .navigationTitle("Pro")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task {
+                if store.products.isEmpty {
+                    await store.prepare()
+                }
+            }
+        }
+    }
+
+    private func benefit(_ text: String, symbol: String) -> some View {
+        Label {
+            Text(text)
+                .font(.subheadline)
+        } icon: {
+            Image(systemName: symbol)
+                .frame(width: 26)
+                .foregroundStyle(.tint)
+        }
+    }
+}
+
+#Preview {
+    ProPaywallView()
+        .environment(StoreManager())
+}
