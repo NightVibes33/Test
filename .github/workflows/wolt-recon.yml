@@ -10,79 +10,61 @@ permissions:
   contents: read
 
 jobs:
-  route-map:
+  auth-config:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 3
     steps:
-      - name: Extract current public Wolt API routes
+      - name: Extract current Wolt auth configuration
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p evidence
           H1='X-HackerOne-Research: zyn33'
           UA='User-Agent: hackerone-zyn33'
+          APP='https://wolt-com-static-assets.wolt.com/app-6aff8a77c78cb00e.js'
 
-          curl --silent --show-error --location --max-redirs 2 --max-time 15             -H "$H1" -H "$UA"             -D evidence/wolt-home.headers.txt             'https://wolt.com/en' -o evidence/wolt-home.html
+          curl --silent --show-error --max-time 20             -H "$H1" -H "$UA" "$APP" -o evidence/app.js
 
           python3 - <<'PY'
-          from html.parser import HTMLParser
-          from urllib.parse import urljoin, urlparse
           from pathlib import Path
-
-          class P(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.scripts=[]
-              def handle_starttag(self, tag, attrs):
-                  if tag != "script":
-                      return
-                  src=dict(attrs).get("src")
-                  if src:
-                      self.scripts.append(urljoin("https://wolt.com/en", src))
-
-          p=P()
-          p.feed(Path("evidence/wolt-home.html").read_text(errors="replace"))
-          selected=[]
-          for u in p.scripts:
-              host=(urlparse(u).hostname or "").lower()
-              if host=="wolt.com" or host.endswith(".wolt.com"):
-                  if u not in selected:
-                      selected.append(u)
-              if len(selected)>=8:
-                  break
-          Path("evidence/script-urls.txt").write_text("\n".join(selected)+"\n")
-          PY
-
-          n=0
-          while IFS= read -r url; do
-            [[ -n "$url" ]] || continue
-            n=$((n+1))
-            curl --silent --show-error --max-time 15               -H "$H1" -H "$UA" "$url" -o "evidence/script-$n.js" || true
-          done < evidence/script-urls.txt
-
-          python3 - <<'PY'
           import re
-          from pathlib import Path
-          text="\n".join(p.read_text(errors="replace") for p in Path("evidence").glob("script-*.js"))
-          pats=[
-              r'https://(?:authentication|restaurant-api|consumer-api|corporate|merchant|drive|ops)\.wolt\.com[^"\'\s<>]+',
-              r'/v[0-9]+/wauth2/[A-Za-z0-9_/?=&.%-]+',
-              r'/(?:order-xp|order-tracking-api|v[0-9]+)/[A-Za-z0-9_/?=&.%-]+'
+          s=Path("evidence/app.js").read_text(errors="replace")
+          needles=[
+              "authentication.wolt.com",
+              "oauth2/authorize",
+              "oauth2/token",
+              "loginRedirectUri",
+              "logoutRedirectUri",
+              "clientId",
+              "userInfoServiceUrl",
+              "authService",
+              "711854"
           ]
-          vals=set()
-          for pat in pats:
-              vals.update(re.findall(pat,text))
-          Path("evidence/routes.txt").write_text("\n".join(sorted(vals))+"\n")
+          out=[]
+          for needle in needles:
+              pos=0
+              count=0
+              while True:
+                  i=s.find(needle,pos)
+                  if i<0:
+                      break
+                  count+=1
+                  out.append(f"===== {needle} #{count} @ {i} =====\n{s[max(0,i-1800):i+4200]}\n")
+                  pos=i+len(needle)
+                  if count>=12:
+                      break
+          Path("evidence/auth-config-context.txt").write_text("\n".join(out))
+          urls=sorted(set(re.findall(r"https://[A-Za-z0-9._-]*wolt\.com[^\"'\s<>]+",s)))
+          Path("evidence/wolt-urls.txt").write_text("\n".join(urls)+"\n")
           PY
 
-          echo '===== SCRIPT URLS ====='
-          cat evidence/script-urls.txt
-          echo '===== ROUTES ====='
-          sed -n '1,240p' evidence/routes.txt
+          sed -n '1,300p' evidence/auth-config-context.txt
+          echo '===== WOLT URLS ====='
+          sed -n '1,260p' evidence/wolt-urls.txt
 
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: wolt-route-map
+          name: wolt-auth-config
           path: evidence/
           if-no-files-found: error
