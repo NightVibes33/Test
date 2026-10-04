@@ -1,0 +1,43 @@
+name: Wolt scoped recon
+
+on:
+  push:
+    branches:
+      - h1/wolt-2026-10-04
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oidc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Fetch scoped public auth metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          header='X-HackerOne-Research: zyn33'
+          ua='User-Agent: hackerone-zyn33'
+          urls=(
+            'https://authentication.wolt.com/.well-known/openid-configuration'
+            'https://authentication.wolt.com/.well-known/oauth-authorization-server'
+          )
+          n=0
+          for url in "${urls[@]}"; do
+            n=$((n+1))
+            echo "===== REQUEST $n: $url ====="
+            curl --fail-with-body --silent --show-error --location --max-redirs 2 --max-time 15               -H "$header" -H "$ua"               -D "evidence/$n.headers.txt"               "$url" -o "evidence/$n.body.txt" || true
+            sed -n '1,80p' "evidence/$n.headers.txt"
+            echo "--- body (first 120 lines) ---"
+            sed -n '1,120p' "evidence/$n.body.txt"
+            echo
+          done
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wolt-oidc-evidence
+          path: evidence/
+          if-no-files-found: error
