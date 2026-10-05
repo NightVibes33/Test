@@ -71,5 +71,22 @@ The PoC deliberately uses a harmless marker under `/root`; it does not install a
 4. Timezone `NOPASSWD` shadowing did not match the passwordless sudo rule.
 5. The Oct 2 `/etc/pam.d/polkit-1` rewrite itself does not expose a practical ordinary-user symlink race because the live file and backup are under root-owned `/etc/pam.d`.
 
+## Validation result
+
+GitHub Actions run `37259514057` completed successfully on Ubuntu 24.04 against Omarchy commit `65c0f3306e9b4af676f32d3b9fa187b53d9ca155`.
+
+Observed proof:
+
+```text
+PASS: user-controlled bytes were installed at a root-only destination
+TARGET_REF=65c0f3306e9b4af676f32d3b9fa187b53d9ca155
+DEST=/root/omarchy-h1-poc-37259514057
+OWNER_GROUP_MODE=0:0:755
+BYTES=OMARCHY_H1_POC_PAYLOAD_v1
+```
+
 ## Status
-PoC committed. GitHub Actions is the reproducibility check. Do not submit until the runner passes and the impact boundary is reviewed against Omarchy's intentional update-hook trust model.
+
+**Validated root-write primitive on latest tested quattro.**
+
+Remaining triage question: Omarchy intentionally keeps sudo authorization alive through parts of the update and explicitly permits user post-update hooks before revocation. The report must distinguish this migration's environment-controlled privileged operands from that documented trust model before assigning final severity.
