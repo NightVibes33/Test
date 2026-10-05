@@ -72,16 +72,24 @@ jobs:
           if (!tokenMatch) throw new Error('Could not extract signed source token from public HTML');
           const token = tokenMatch[0];
 
+          function renderedText(html) {
+            return html
+              .replace(/<!--.*?-->/g, '')
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+          }
+
           const baselinePath = '/pricing';
           const baselineHtml = await get(baselinePath);
-          if (!baselineHtml.includes('discount=none')) {
-            throw new Error('Legitimate target token did not produce discount=none');
+          if (!renderedText(baselineHtml).includes('discount=none')) {
+            throw new Error('Normal pricing flow did not render discount=none');
           }
 
           const replayPath = '/' + token + '/pricing/' + token;
           const replayHtml = await get(replayPath);
-          if (!replayHtml.includes('discount=vip')) {
-            throw new Error('Replay production response did not contain discount=vip');
+          if (!renderedText(replayHtml).includes('discount=vip')) {
+            throw new Error('Replay production response did not render discount=vip');
           }
 
           const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
