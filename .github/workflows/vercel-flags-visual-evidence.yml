@@ -57,7 +57,6 @@ jobs:
           import { chromium } from 'playwright';
           import fs from 'node:fs';
           import crypto from 'node:crypto';
-          import { flag, serialize } from 'flags/next';
 
           const origin = 'http://127.0.0.1:3000';
 
@@ -73,19 +72,7 @@ jobs:
           if (!tokenMatch) throw new Error('Could not extract signed source token from public HTML');
           const token = tokenMatch[0];
 
-          const secret = process.env.FLAGS_SECRET;
-          const discountFlag = flag({
-            key: 'discount',
-            options: ['none', 'vip'],
-            decide: () => 'none',
-          });
-          const legitimatePricingToken = await serialize(
-            [discountFlag],
-            ['none'],
-            secret,
-          );
-
-          const baselinePath = '/' + token + '/pricing/' + legitimatePricingToken;
+          const baselinePath = '/pricing';
           const baselineHtml = await get(baselinePath);
           if (!baselineHtml.includes('discount=none')) {
             throw new Error('Legitimate target token did not produce discount=none');
@@ -144,7 +131,7 @@ jobs:
           await annotate('BASELINE — legitimate target token', [
             'Observed application result: discount=none',
             'Source token SHA-256: ' + tokenHash,
-            'Target token: legitimate pricing token',
+            'Baseline path: /pricing (normal documented flow)',
           ]);
           await page.screenshot({ path: 'evidence/01-baseline-real-production-response.png', fullPage: true });
           await page.waitForTimeout(2200);
