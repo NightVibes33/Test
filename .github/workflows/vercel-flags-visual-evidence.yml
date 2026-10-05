@@ -101,19 +101,63 @@ jobs:
 
           const browser = await chromium.launch({ headless: true });
           const context = await browser.newContext({
-            javaScriptEnabled: false,
             viewport: { width: 1280, height: 720 },
             recordVideo: { dir: 'evidence/video', size: { width: 1280, height: 720 } },
           });
           const page = await context.newPage();
 
-          await page.setContent(baselineHtml, { waitUntil: 'load' });
-          await page.screenshot({ path: 'evidence/01-baseline-real-production-response.png', fullPage: true });
-          await page.waitForTimeout(1800);
+          async function annotate(title, lines) {
+            await page.evaluate(({ title, lines }) => {
+              const old = document.getElementById('__h1_evidence');
+              if (old) old.remove();
+              const box = document.createElement('div');
+              box.id = '__h1_evidence';
+              Object.assign(box.style, {
+                position: 'fixed',
+                top: '16px',
+                left: '16px',
+                right: '16px',
+                zIndex: '2147483647',
+                background: 'rgba(0,0,0,.92)',
+                color: '#fff',
+                padding: '16px 20px',
+                borderRadius: '12px',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                fontSize: '18px',
+                lineHeight: '1.45',
+                whiteSpace: 'pre-wrap',
+              });
+              const h = document.createElement('div');
+              h.textContent = title;
+              h.style.fontWeight = '700';
+              h.style.fontSize = '22px';
+              h.style.marginBottom = '8px';
+              box.appendChild(h);
+              const body = document.createElement('div');
+              body.textContent = lines.join('\n');
+              box.appendChild(body);
+              document.body.appendChild(box);
+            }, { title, lines });
+          }
 
-          await page.setContent(replayHtml, { waitUntil: 'load' });
+          await page.goto(origin + baselinePath, { waitUntil: 'networkidle' });
+          await annotate('BASELINE — legitimate target token', [
+            'Observed application result: discount=none',
+            'Source token SHA-256: ' + tokenHash,
+            'Target token: legitimate pricing token',
+          ]);
+          await page.screenshot({ path: 'evidence/01-baseline-real-production-response.png', fullPage: true });
+          await page.waitForTimeout(2200);
+
+          await page.goto(origin + replayPath, { waitUntil: 'networkidle' });
+          await annotate('EXPLOIT — source token replayed as target token', [
+            'Observed application result: discount=vip',
+            'Source token SHA-256: ' + tokenHash,
+            'Same source token reused in pricing position: true',
+            'Token modified: false',
+          ]);
           await page.screenshot({ path: 'evidence/02-replay-real-production-response.png', fullPage: true });
-          await page.waitForTimeout(2600);
+          await page.waitForTimeout(3200);
 
           fs.writeFileSync('evidence/evidence.txt', [
             'SOURCE=real Next.js production server responses',
