@@ -195,11 +195,11 @@ jobs:
           kill "$FLUXBOX_PID" || true
           kill "$XVFB_PID" || true
 
-          test -s evidence-real/vercel-flags-real-terminal-browser-proof.mp4
+          test -s evidence-real/vercel-flags-replay-reproduction.mp4
           ffprobe -v error \
             -show_entries format=duration,size \
             -of default=noprint_wrappers=1 \
-            evidence-real/vercel-flags-real-terminal-browser-proof.mp4
+            evidence-real/vercel-flags-replay-reproduction.mp4
 
           printf 'SOURCE=continuous X11 desktop recording\n' > evidence-real/manifest.txt
           printf 'terminal=xterm executing real curl/hash commands\n' >> evidence-real/manifest.txt
