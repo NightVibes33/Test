@@ -1,0 +1,34 @@
+name: Omarchy HackerOne PoC
+
+on:
+  push:
+    branches:
+      - h1/omarchy-2026-10-04
+    paths:
+      - "hackerone/omarchy/**"
+      - ".github/workflows/omarchy-h1-poc.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PoC
+        uses: actions/checkout@v4
+
+      - name: Reproduce root-write primitive
+        shell: bash
+        run: |
+          set -o pipefail
+          bash hackerone/omarchy/poc.sh | tee hackerone/omarchy/poc-output.txt
+
+      - name: Upload PoC output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omarchy-h1-poc-output
+          path: hackerone/omarchy/poc-output.txt
+          if-no-files-found: ignore
