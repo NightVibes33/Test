@@ -86,7 +86,8 @@ describe("MCP HTTP resource availability across isolated clients", () => {
       expect(listed.resources.some(r => r.uri === handle.exportURI)).toBe(true);
 
       const read = await bob.readResource({ uri: handle.exportURI });
-      expect(read.contents.some(r => r.type === "text" && r.text.includes(marker))).toBe(true);
+      console.log("CI_HTTP_RESOURCE_RESPONSE", JSON.stringify(read));
+      expect(read.contents.some(r => r.type === "text" && typeof r.text === "string" && r.text.includes(marker))).toBe(true);
 
       console.log("CI_MCP_HTTP_RESOURCE_READ_PROVEN", {
         realUpstreamBuild:true,
