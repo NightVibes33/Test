@@ -1,0 +1,41 @@
+name: Upstream Runtime Regression
+on:
+  push:
+    branches:
+      - research/mongodb-runtime-validation-20261009
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin upstream source
+        shell: bash
+        run: |
+          git clone --filter=blob:none https://github.com/mongodb-js/mongodb-mcp-server.git upstream
+          cd upstream
+          git checkout --detach c0f436fd5dc598e871455abb5d7cd2a838011d41
+          test "$(git rev-parse HEAD)" = c0f436fd5dc598e871455abb5d7cd2a838011d41
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: upstream/pnpm-lock.yaml
+      - name: Install exact upstream dependencies
+        working-directory: upstream
+        run: pnpm install --frozen-lockfile
+      - name: Build real upstream implementation
+        working-directory: upstream
+        run: pnpm run build
+      - name: Execute isolated synthetic-data regression
+        shell: bash
+        run: |
+          cp ci/regression/resource-separation.test.ts upstream/packages/cli/src/resources/common/verify-boundaries.test.ts
+          cd upstream
+          pnpm exec vitest --project unit packages/cli/src/resources/common/verify-boundaries.test.ts --run --coverage.enabled=false
