@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SonicLab FLAC Studio — Verified FLAC v3</title></head><body style="background:#080c15;padding:16px;margin:0"><div id="slab">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SonicLab FLAC Studio — Verified FLAC v3.1</title></head><body style="background:#080c15;padding:16px;margin:0"><div id="slab">
 <style>
 #slab{--ink:#eef6ff;--mut:#97a5b9;--edge:#283449;--a:#60f2cf;--b:#8aa3ff;color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(ellipse at 85% 0%,#172a39 0%,transparent 44%),#0c121e;border:1px solid #27384a;border-radius:22px;max-width:960px;margin:auto;overflow:hidden;box-shadow:0 14px 40px #0003}
 #slab *{box-sizing:border-box}#slab button,#slab select,#slab input{font:inherit}#slab button:disabled{opacity:.42;cursor:not-allowed!important}#slab .top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:22px 24px 12px}#slab .brand{display:flex;align-items:center;gap:11px;font-size:15px;font-weight:850;letter-spacing:1.8px}#slab .brandicon{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:linear-gradient(125deg,#56edc6,#8ba4ff);color:#0c1622;font-weight:900;font-size:24px}
@@ -31,8 +31,8 @@
 <div class="actions"><button class="go" id="slgo" type="button" disabled>⚡ Convert to FLAC</button><button class="cancel" id="slcancel" type="button">Cancel</button></div>
 <div class="progress" id="slprogress"><div class="status"><span id="slstatus">Preparing audio…</span><span id="slpct">0%</span></div><div class="bar"><div class="fill" id="slfill"></div></div></div>
 <div id="slerror" class="error" role="alert" style="white-space:pre-wrap"></div><button type="button" id="slcopyerror" class="x" style="display:none;font-size:12px;border:1px solid #4d6578;border-radius:7px;padding:5px 10px;margin-top:7px">Copy error details</button>
-<div class="result" id="slresult"><div class="resulttop"><span class="success">✓</span><div><b>FLAC file ready</b><div class="micro" id="sloutinfo"></div></div></div><button class="dl" id="sldownload" type="button">↓ Download .flac</button><button class="dl" id="slshare" type="button" style="display:none;margin-top:8px;background:#304554;color:#e8f7ff;border:1px solid #607688">↗ Save / Share to Files</button><audio id="slafter" class="outputaudio" controls preload="none" aria-label="FLAC preview"></audio><div class="fine" id="slplaynote"></div></div>
-<div class="foot">🔒 No audio is uploaded. Every FLAC frame is checked before export, and the STREAMINFO MD5 records the exact encoded PCM. The preview is WAV for iPhone compatibility. Large tracks can consume significant memory.</div>
+<div class="result" id="slresult"><div class="resulttop"><span class="success">✓</span><div><b>FLAC file ready</b><div class="micro" id="sloutinfo"></div></div></div><button class="dl" id="sldownload" type="button">↓ Download .flac</button><button class="dl" id="slwavsave" type="button" style="margin-top:8px;background:#304554;color:#e8f7ff;border:1px solid #607688">↗ Save playable 16-bit WAV on iPhone</button><button class="dl" id="slshare" type="button" style="display:none;margin-top:8px;background:#304554;color:#e8f7ff;border:1px solid #607688">↗ Save / Share to Files</button><audio id="slafter" class="outputaudio" controls preload="none" aria-label="FLAC preview"></audio><div class="fine" id="slplaynote"></div></div>
+<div class="foot">🔒 No audio is uploaded. Every FLAC frame is checked before export, and the STREAMINFO MD5 records the exact encoded PCM. The preview is WAV for iPhone compatibility, with an optional full-length WAV file export. Large tracks can consume significant memory.</div>
 </div>
 <script>
 (()=>{
@@ -187,6 +187,22 @@
       $('slplaynote').textContent='20-second WAV preview of the processed audio (iPhone compatible). The download is genuine FLAC.';
       $('sloutinfo').textContent=`${human(outputBlob.size)} • ${(rate/1000).toFixed(rate%1000?2:0)} kHz • ${bps}-bit • ${channels===1?'mono':'stereo'}`;
       const filename=file.name.replace(/\.[^.]+$/,'').replace(/[\\/\0-\x1f]/g,'_')||'audio';const outname=filename+'.flac';els.download.onclick=()=>{const a=document.createElement('a');a.href=outputURL;a.download=outname;document.body.appendChild(a);a.click();a.remove();};
+      $('slwavsave').onclick=async()=>{
+        try{
+          // A full-length 16-bit PCM WAV is more widely playable in iPhone Files than FLAC.
+          // Keep it as an optional export to avoid additional memory use during FLAC encoding.
+          if(audio.length*channels*2+44>512*1024*1024)throw Error('WAV output is over 512 MB. Use the FLAC download.');
+          const wav=wavPreview(audio,gain,Infinity),wavName=filename+'-iphone-16bit.wav';
+          const f=new File([wav],wavName,{type:'audio/wav'});
+          if(typeof navigator.share==='function' && typeof navigator.canShare==='function' && navigator.canShare({files:[f]})){
+            await navigator.share({files:[f],title:wavName});
+          }else{
+            const url=URL.createObjectURL(wav),a=document.createElement('a');
+            a.href=url;a.download=wavName;document.body.appendChild(a);a.click();a.remove();
+            setTimeout(()=>URL.revokeObjectURL(url),60000);
+          }
+        }catch(e){if(e?.name!=='AbortError')err('WAV export: '+(e?.message||e));}
+      };
       const share=$('slshare');share.style.display=typeof navigator.share==='function'?'block':'none';share.onclick=async()=>{try{const f=new File([outputBlob],outname,{type:'audio/flac'});if(typeof navigator.canShare==='function'&&!navigator.canShare({files:[f]}))throw Error('Sharing this file is unsupported here. Use Download.');await navigator.share({files:[f],title:outname});}catch(e){if(e.name!=='AbortError')err('Share failed: '+(e.message||e));}};
       els.result.style.display='block';status('Verified FLAC • MD5 + frame CRC passed',100);
     }catch(e){if(ctx)try{await ctx.close();}catch(_e){} const at=els.status.textContent;clearOut();err('Stage: '+at+'\n'+(e&&e.name||'Error')+': '+(e&&e.message||'Conversion failed.'));els.progress.style.display='none';}
