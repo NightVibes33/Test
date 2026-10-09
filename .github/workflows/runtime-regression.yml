@@ -10,6 +10,17 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    services:
+      mongo:
+        image: mongo:8.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: fixture-root-password
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --username root --password fixture-root-password --authenticationDatabase admin --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - name: Pin upstream source
@@ -45,3 +56,9 @@ jobs:
           cp ci/regression/http-resource-boundaries.test.ts upstream/packages/integration-tests/src/transports/http-boundaries.test.ts
           cd upstream
           pnpm exec vitest --project integration packages/integration-tests/src/transports/http-boundaries.test.ts --run --coverage.enabled=false
+      - name: Verify distinct authenticated users with independent MongoDB access
+        shell: bash
+        run: |
+          cp ci/regression/authenticated-resource-separation.test.ts upstream/packages/integration-tests/src/transports/authenticated-resource-boundaries.test.ts
+          cd upstream
+          pnpm exec vitest --project integration packages/integration-tests/src/transports/authenticated-resource-boundaries.test.ts --run --coverage.enabled=false
