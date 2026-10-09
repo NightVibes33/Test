@@ -19,3 +19,11 @@ Open [Vercel New Project](https://vercel.com/new), import **NightVibes33/Test**,
 - `vercel.json`: static-site configuration
 
 **Audio quality:** Conversion to FLAC prevents *further* lossy encoding but cannot reconstruct information already discarded by MP3 compression.
+
+### iPhone 16 / iOS 27 export notes
+
+- The **Download .flac** button exports a complete 24-bit or 16-bit FLAC. Use a player that can open FLAC files; a missing thumbnail or Files preview does **not** establish that the file is silent.
+- The **Save playable 16-bit WAV on iPhone** button provides the full processed song as broadly compatible PCM WAV using the iOS share sheet when available.
+- SonicLab checks frame CRCs and writes the FLAC PCM MD5 fingerprint before enabling downloads. It uses a short WAV preview to avoid misleading playback errors from embedded audio players.
+- A real 93.53-second, 44.1-kHz stereo MP3 was converted in the browser; the exported 20 MB / 24-bit FLAC passed `flac -t`, and the 16-bit WAV export decoded successfully. Browser validation was performed in headless Chromium, **not** on an actual iPhone.
+- Processing and conversion run in-browser; user audio is not uploaded to this repository or server.
