@@ -39,3 +39,9 @@ jobs:
           cp ci/regression/resource-separation.test.ts upstream/packages/cli/src/resources/common/verify-boundaries.test.ts
           cd upstream
           pnpm exec vitest --project unit packages/cli/src/resources/common/verify-boundaries.test.ts --run --coverage.enabled=false
+      - name: Verify MCP resource handling through two real HTTP clients
+        shell: bash
+        run: |
+          cp ci/regression/http-resource-boundaries.test.ts upstream/packages/integration-tests/src/transports/http-boundaries.test.ts
+          cd upstream
+          pnpm exec vitest --project integration packages/integration-tests/src/transports/http-boundaries.test.ts --run --coverage.enabled=false
