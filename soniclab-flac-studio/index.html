@@ -7,7 +7,7 @@
 </style>
 <div class="top"><div class="brand"><span class="brandicon">≋</span> SONIC<span style="color:#68e9cd;margin-left:-10px">LAB</span></div><div class="loc">● LOCAL PROCESSING</div></div>
 <div class="main">
-<h2>MP3 to <span style="color:#79ebd2">Lossless FLAC</span></h2><p class="lead">Convert MP3 into a genuine FLAC audio file. Choose faithful preservation or optional audible enhancement.</p>
+<h2>MP3 to <span style="color:#79ebd2">Lossless FLAC</span></h2><p class="lead">Studio audio restoration and real 16-bit FLAC encoding — audio stays on your device.</p>
 <div class="wave" id="slwave" aria-hidden="true"></div>
 <div class="g">
  <div class="panel">
@@ -21,11 +21,11 @@
  </div>
  <div class="panel">
  <div class="step"><div class="heading"><span class="num">02</span> LOSSLESS OUTPUT</div><span class="fmt">.flac</span></div>
- <div class="ctrl" style="margin-bottom:12px"><label for="slmode">Conversion mode</label><select id="slmode" style="width:100%;margin-top:5px"><option value="preserve" selected>Faithful FLAC — preserve decoded sound</option><option value="enhance">Enhanced FLAC — optional clarity &amp; harmonics</option></select><div class="micro" id="slmodenote" style="margin-top:7px">No EQ, synthesized detail, loudness change, or sample-rate inflation by default.</div></div>
- <div class="cols"><div class="ctrl"><label for="slrate">Sample rate</label><select id="slrate"><option value="native">Original (recommended)</option><option value="48000">48 kHz</option><option value="96000">96 kHz</option></select></div><div class="ctrl"><label for="slbits">Bit depth</label><select id="slbits"><option value="16">16-bit</option><option value="24" selected>24-bit</option></select></div></div>
+ <div class="ctrl" style="margin-bottom:12px"><label for="slmode">Conversion mode</label><select id="slmode" style="width:100%;margin-top:5px"><option value="restore" selected>Studio Restore — clarity + harmonic reconstruction</option><option value="preserve">Faithful FLAC — unchanged decoded audio</option><option value="enhance">Custom Restore — tune enhancement manually</option></select><div class="micro" id="slmodenote" style="margin-top:7px">No EQ, synthesized detail, loudness change, or sample-rate inflation by default.</div></div>
+ <div class="cols"><div class="ctrl"><label for="slrate">Sample rate</label><select id="slrate"><option value="native">Original (recommended)</option><option value="48000">48 kHz</option><option value="96000">96 kHz</option></select></div><div class="ctrl"><label for="slbits">Bit depth</label><select id="slbits"><option value="16" selected>16-bit (matches reference)</option><option value="24">24-bit (larger file)</option></select></div></div>
  <div class="srdesc fine">Higher sample rates increase file size, not source fidelity.</div>
- <div id="sldsp"><div class="sliderbox"><div class="sliderrow"><span>Presence / clarity</span><span id="slprval">0%</span></div><input type="range" min="0" max="100" step="5" value="0" id="slpresence"/><div class="micro">High-frequency emphasis for clearer sound</div></div>
- <div class="sliderbox"><div class="sliderrow"><span>Harmonic detail</span><span id="sldeval">0%</span></div><input type="range" min="0" max="100" step="5" value="0" id="sldetail"/><div class="micro">Creates subtle new harmonics; not recovered originals</div></div>
+ <div id="sldsp"><div class="sliderbox"><div class="sliderrow"><span>Presence / clarity</span><span id="slprval">50%</span></div><input type="range" min="0" max="100" step="5" value="50" id="slpresence"/><div class="micro">Gentle high-shelf EQ, not a fake sample-rate increase</div></div>
+ <div class="sliderbox"><div class="sliderrow"><span>Harmonic detail</span><span id="sldeval">60%</span></div><input type="range" min="0" max="100" step="5" value="60" id="sldetail"/><div class="micro">Synthesizes new overtones from surviving MP3 frequencies</div></div>
  <label class="check"><input type="checkbox" id="slnorm"/><span>Normalize peak to −1 dBFS (changes loudness)</span></label></div>
  </div>
 </div>
@@ -33,7 +33,7 @@
 <div class="progress" id="slprogress"><div class="status"><span id="slstatus">Preparing audio…</span><span id="slpct">0%</span></div><div class="bar"><div class="fill" id="slfill"></div></div></div>
 <div id="slerror" class="error" role="alert" style="white-space:pre-wrap"></div><button type="button" id="slcopyerror" class="x" style="display:none;font-size:12px;border:1px solid #4d6578;border-radius:7px;padding:5px 10px;margin-top:7px">Copy error details</button>
 <div class="result" id="slresult"><div class="resulttop"><span class="success">✓</span><div><b>Genuine lossless FLAC ready</b><div class="micro" id="sloutinfo"></div></div></div><button class="dl" id="sldownload" type="button">↓ Download real .flac</button><button class="dl" id="slwavsave" type="button" style="margin-top:8px;background:#304554;color:#e8f7ff;border:1px solid #607688">↗ Save playable 16-bit WAV on iPhone</button><button class="dl" id="slshare" type="button" style="display:none;margin-top:8px;background:#304554;color:#e8f7ff;border:1px solid #607688">↗ Save / Share to Files</button><audio id="slafter" class="outputaudio" controls preload="none" aria-label="FLAC preview"></audio><div class="fine" id="slplaynote"></div></div>
-<div class="foot">🔒 Everything runs locally on your device. FLAC contains losslessly coded PCM audio, with frame CRCs and an MD5 fingerprint. The audio preview attempts to play the actual exported FLAC; if your browser rejects it, a labeled WAV preview is used. Files app may require a compatible FLAC player. Sample-rate or bit-depth changes cannot improve the original MP3 fidelity.</div>
+<div class="foot">🔒 Everything runs locally on your device. FLAC contains losslessly coded PCM audio, with frame CRCs and an MD5 fingerprint. The audio preview attempts actual FLAC playback, falling back to a labeled WAV excerpt only when necessary. This is DSP restoration, not trained AI. Files app may require a compatible FLAC player. Sample-rate or bit-depth changes cannot improve the original MP3 fidelity.</div>
 </div>
 <script>
 (()=>{
@@ -41,7 +41,7 @@
   const $=id=>document.getElementById(id);
   const els={file:$('slfile'),drop:$('sldrop'),go:$('slgo'),cancel:$('slcancel'),progress:$('slprogress'),status:$('slstatus'),pct:$('slpct'),fill:$('slfill'),fileview:$('slfileview'),filename:$('slfilename'),filemeta:$('slfilemeta'),before:$('slbefore'),after:$('slafter'),result:$('slresult'),error:$('slerror'),outinfo:$('sloutinfo'),download:$('sldownload')};
   let selected=null,sourceURL=null,outputURL=null,previewURL=null,outputBlob=null,job=null;
-  function updateMode(){const enhanced=$('slmode').value==='enhance';$('sldsp').style.opacity=enhanced?'1':'.45';for(const id of ['slpresence','sldetail','slnorm'])$(id).disabled=!enhanced;$('slmodenote').textContent=enhanced?'Optional DSP adjusts timbre; synthesized harmonics are not original recovered frequencies.':'No EQ, synthesized detail, loudness change, or sample-rate inflation by default.';}
+  function updateMode(){const mode=$('slmode').value, enhanced=mode!=='preserve';$('sldsp').style.opacity=enhanced?'1':'.45';for(const id of ['slpresence','sldetail','slnorm'])$(id).disabled=!enhanced;$('slmodenote').textContent=mode==='restore'?'Reference-style output: 16-bit / original sample rate, high-shelf EQ and restrained harmonic reconstruction; no cloud processing.':mode==='enhance'?'Custom DSP synthesis and EQ; reconstructed overtones are new audio, not the original studio master.':'No EQ or synthesized frequencies. Peaks are scaled safely to prevent clipping.';}
   $('slmode').addEventListener('change',updateMode);updateMode();
   function human(bytes){if(bytes<1024*1024)return (bytes/1024).toFixed(0)+' KB';return (bytes/1048576).toFixed(1)+' MB';}
   function status(t,p){els.progress.style.display='block';els.status.textContent=t;els.pct.textContent=Math.round(p)+'%';els.fill.style.width=Math.max(0,Math.min(100,p))+'%';}
@@ -157,7 +157,46 @@
     throw Error('MP3 decoder rejected the input on all '+tries.length+' attempts. '+errors.join(' | ')+'. The audio file may be corrupted, unsupported, or blocked by the ChatGPT embedded WebView. Try the standalone converter in Safari.');
   }
   $('slcopyerror').addEventListener('click',async()=>{const v=els.error.textContent;try{await navigator.clipboard.writeText(v);$('slcopyerror').textContent='Copied';}catch(_){const t=document.createElement('textarea');t.value=v;document.body.appendChild(t);t.select();try{document.execCommand('copy');$('slcopyerror').textContent='Copied';}catch(_){}t.remove();}});
-  function processAudio(buffer,pres,detail,j){let max=0;const sr=buffer.sampleRate,lpcoef=Math.exp(-2*Math.PI*3200/sr),gencoef=Math.exp(-2*Math.PI*7000/sr);for(let c=0;c<buffer.numberOfChannels;c++){const a=buffer.getChannelData(c);let lp=0,glp=0;for(let i=0;i<a.length;i++){if((i&262143)===0)check(j);const x=a[i];lp=lpcoef*lp+(1-lpcoef)*x;const high=x-lp;const harmonic=Math.tanh(3.4*high)-3.4*high;glp=gencoef*glp+(1-gencoef)*harmonic;let z=x+pres*.42*high+detail*.25*(harmonic-glp);if(!Number.isFinite(z))z=0;a[i]=z;const abs=Math.abs(z);if(abs>max)max=abs;}}return max;}
+  // RBJ biquad: stable 2-pole high-pass and gentle high-frequency shelf.
+  // The restoration branch performs actual DSP, but does not claim neural source recovery.
+  function biquad(kind,freq,sr,gainDb=0){
+    const w=2*Math.PI*Math.min(freq,sr*.43)/sr,c=Math.cos(w),si=Math.sin(w),A=Math.pow(10,gainDb/40);
+    let b0,b1,b2,a0,a1,a2;
+    if(kind==='highpass'){
+      const alpha=si/(2*Math.SQRT1_2);
+      b0=(1+c)/2;b1=-(1+c);b2=(1+c)/2;
+      a0=1+alpha;a1=-2*c;a2=1-alpha;
+    }else{
+      const alpha=si/Math.SQRT2,beta=2*Math.sqrt(A)*alpha;
+      b0=A*((A+1)+(A-1)*c+beta);b1=-2*A*((A-1)+(A+1)*c);b2=A*((A+1)+(A-1)*c-beta);
+      a0=(A+1)-(A-1)*c+beta;a1=2*((A-1)-(A+1)*c);a2=(A+1)-(A-1)*c-beta;
+    }
+    const inv=1/a0; b0*=inv;b1*=inv;b2*=inv;a1*=inv;a2*=inv;
+    let x1=0,x2=0,y1=0,y2=0;
+    return x=>{const y=b0*x+b1*x1+b2*x2-a1*y1-a2*y2;x2=x1;x1=x;y2=y1;y1=y;return y;};
+  }
+  function processAudio(buffer,pres,detail,j){
+    let max=0;const sr=buffer.sampleRate,doRestore=pres>0||detail>0;
+    for(let c=0;c<buffer.numberOfChannels;c++){
+      const a=buffer.getChannelData(c),shelf=biquad('shelf',6000,sr,3.5*pres),mid=biquad('highpass',3500,sr),air=biquad('highpass',11000,sr);
+      let env=0;
+      for(let i=0;i<a.length;i++){
+        if((i&131071)===0)check(j);
+        const x=a[i];let z=x;
+        if(doRestore){
+          const band=mid(x);
+          const harmonics=Math.tanh(4*band)*.25-band;
+          const reconstructed=air(harmonics);
+          env=.995*env+.005*Math.abs(band);
+          const gate=Math.min(1,env/.012);
+          z=shelf(x)+(1.05*detail)*gate*reconstructed;
+        }
+        if(!Number.isFinite(z))throw Error('Restoration produced invalid audio at sample '+i);
+        a[i]=z;const amp=Math.abs(z);if(amp>max)max=amp;
+      }
+    }
+    return max;
+  }
   function drawWave(b){const d=$('slwave');d.innerHTML='';const arr=b.getChannelData(0),length=48;for(let i=0;i<length;i++){let st=Math.floor(i*arr.length/length),end=Math.min(arr.length,Math.floor((i+1)*arr.length/length)),peak=0,inc=Math.max(1,Math.floor((end-st)/80));for(let p=st;p<end;p+=inc)peak=Math.max(peak,Math.abs(arr[p]));const s=document.createElement('span');s.style.height=(Math.max(7,Math.min(95,peak*100)))+'%';d.appendChild(s);}}
   function animationFrame(){return new Promise(r=>setTimeout(r,0));}
   async function convert(){if(!selected||job)return;const j={cancelled:false};job=j;clearOut();els.go.disabled=true;els.cancel.style.display='inline-block';let ctx;
@@ -165,11 +204,11 @@
       if(audio.numberOfChannels<1||audio.numberOfChannels>2)throw Error('This version supports mono or stereo audio only.');
       drawWave(audio);const sourceRate=audio.sampleRate;const rate=$('slrate').value==='native'?sourceRate:Number($('slrate').value),bps=Number($('slbits').value);
       if(rate!==sourceRate){status('High-quality resampling…',14);await animationFrame();const OC=window.OfflineAudioContext||window.webkitOfflineAudioContext;if(!OC)throw Error('Offline resampling is unavailable in this browser.');const offline=new OC(audio.numberOfChannels,Math.ceil(audio.duration*rate),rate);let src=offline.createBufferSource();src.buffer=audio;src.connect(offline.destination);src.start(0);audio=await offline.startRendering();check(j);}
-      status('Applying audio processing…',23);await animationFrame();const enhance=$('slmode').value==='enhance';const pres=enhance?Number($('slpresence').value)/100:0,detail=enhance?Number($('sldetail').value)/100:0;const peak=processAudio(audio,pres,detail,j);check(j);
+      status('Applying audio processing…',23);await animationFrame();const mode=$('slmode').value,enhance=mode!=='preserve';const pres=enhance?Number($('slpresence').value)/100:0,detail=enhance?Number($('sldetail').value)/100:0;const peak=processAudio(audio,pres,detail,j);check(j);
       // Safari can sometimes return a valid-length but silent AudioBuffer for unsupported input.
       // Never offer a blank FLAC for download in that case.
       if(!audio.length||!Number.isFinite(peak)||peak<=1e-10)throw Error('The browser decoded this file as silence. No FLAC was created. Verify that the MP3 plays in the original preview or try Safari.');
-      const norm=enhance&&$('slnorm').checked,goal=10**(-1/20),gain=norm?Math.min(4,goal/peak):(enhance?Math.min(1,0.999/peak):1);
+      const norm=enhance&&$('slnorm').checked,goal=10**(-1/20),gain=norm?Math.min(4,goal/peak):Math.min(1,0.98/peak); // always prevent clipping from MP3 decode peaks above 1.0
       const channels=audio.numberOfChannels,arrays=Array.from({length:channels},(_,i)=>audio.getChannelData(i));const total=audio.length,limit=2**(bps-1)-1;let rng=0x59a771ca;function random(){rng^=rng<<13;rng^=rng>>>17;rng^=rng<<5;return(rng>>>0)/4294967296;}
       const readers=arrays.map(a=>(start,len)=>{const x=new Int32Array(len);for(let i=0;i<len;i++){let v=a[start+i]*gain;if(!Number.isFinite(v))v=0;v=Math.max(-1,Math.min(1,v));const dither=bps===16?(random()-random()):0;x[i]=Math.max(-limit-1,Math.min(limit,Math.round(v*limit+dither)));}return x;});
       status('Encoding lossless FLAC + PCM fingerprint…',30);await animationFrame();const parts=[streaminfo(rate,channels,bps,total)],block=4096;const count=Math.ceil(total/block),md5=new PCMMD5();
@@ -188,7 +227,7 @@
       outputBlob=readyBlob;outputURL=URL.createObjectURL(outputBlob);els.after.src=outputURL;els.after.style.display='block';
       $('slplaynote').textContent='Playing the actual exported FLAC. The .flac download contains the same audio.';
       els.after.onerror=()=>{if(!outputBlob||previewURL)return;try{const wav=wavPreview(audio,gain);previewURL=URL.createObjectURL(wav);els.after.src=previewURL;$('slplaynote').textContent='Your browser cannot preview this FLAC; using a labeled 20-second WAV preview. The download is still genuine FLAC.';}catch(e){$('slplaynote').textContent='This browser cannot preview FLAC. Save the file and open it in a compatible FLAC player.';}};
-      $('sloutinfo').textContent=`${human(outputBlob.size)} • ${(rate/1000).toFixed(rate%1000?2:0)} kHz • ${bps}-bit • ${channels===1?'mono':'stereo'} • ${enhance?'enhanced':'faithful'} FLAC`; 
+      $('sloutinfo').textContent=`${human(outputBlob.size)} • ${(rate/1000).toFixed(rate%1000?2:0)} kHz • ${bps}-bit • ${channels===1?'mono':'stereo'} • ${mode==='restore'?'studio restored':enhance?'custom restored':'faithful'} FLAC`; 
       const filename=file.name.replace(/\.[^.]+$/,'').replace(/[\\/\0-\x1f]/g,'_')||'audio';const outname=filename+'.flac';els.download.onclick=()=>{const a=document.createElement('a');a.href=outputURL;a.download=outname;document.body.appendChild(a);a.click();a.remove();};
       $('slwavsave').onclick=async()=>{
         try{
