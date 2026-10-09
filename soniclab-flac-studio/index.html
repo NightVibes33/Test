@@ -1,0 +1,141 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SonicLab FLAC Studio — Fixed</title></head><body style="background:#080c15;padding:16px;margin:0"><div id="slab">
+<style>
+#slab{--ink:#eef6ff;--mut:#97a5b9;--edge:#283449;--a:#60f2cf;--b:#8aa3ff;color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(ellipse at 85% 0%,#172a39 0%,transparent 44%),#0c121e;border:1px solid #27384a;border-radius:22px;max-width:960px;margin:auto;overflow:hidden;box-shadow:0 14px 40px #0003}
+#slab *{box-sizing:border-box}#slab button,#slab select,#slab input{font:inherit}#slab button:disabled{opacity:.42;cursor:not-allowed!important}#slab .top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:22px 24px 12px}#slab .brand{display:flex;align-items:center;gap:11px;font-size:15px;font-weight:850;letter-spacing:1.8px}#slab .brandicon{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:linear-gradient(125deg,#56edc6,#8ba4ff);color:#0c1622;font-weight:900;font-size:24px}
+#slab .loc{border:1px solid #345848;color:#8de5c3;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.8px;padding:6px 10px;white-space:nowrap}#slab .main{padding:6px 24px 24px}#slab h2{font-size:clamp(23px,4vw,35px);line-height:1.14;margin:9px 0 7px;letter-spacing:-1.1px}#slab .lead{color:var(--mut);font-size:13px;margin:0 0 20px}#slab .g{display:grid;grid-template-columns:1.08fr .92fr;gap:17px}#slab .panel{background:#141f2c;border:1px solid var(--edge);border-radius:17px;padding:18px}#slab .heading{font-size:11px;letter-spacing:1.4px;color:#a8b7c8;text-transform:uppercase;font-weight:800;margin-bottom:13px;display:flex;align-items:center;gap:9px}#slab .heading .num{color:#76e8d2;background:#173e3c;border-radius:6px;padding:2px 6px;font-size:10px}#slab .drop{border:1.5px dashed #436074;border-radius:13px;background:#121d2a;text-align:center;padding:23px 12px;cursor:pointer;transition:.15s}#slab .drop:hover,#slab .drop.over{background:#1a2b3b;border-color:#72e3d1}#slab .dropicon{font-size:28px;display:block;margin-bottom:6px}#slab .droptitle{font-size:14px;font-weight:800}#slab .sub{font-size:11px;color:var(--mut);margin-top:4px}#slab .browse{color:var(--a);text-decoration:underline;text-underline-offset:3px}#slab .file{display:none;align-items:center;gap:10px;background:#1b3040;border:1px solid #30566a;border-radius:12px;padding:11px;margin-top:12px}#slab .file.show{display:flex}#slab .fileicon{background:#214e52;color:#8dffe0;border-radius:10px;padding:9px;font-size:17px}#slab .filetext{flex:1;min-width:0}#slab .filename{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#slab .filemeta{font-size:11px;color:var(--mut)}#slab .x{background:none;border:none;color:#b3c7d5;font-size:19px;cursor:pointer}#slab audio{width:100%;height:35px;margin-top:13px}#slab .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}#slab .ctrl{display:flex;flex-direction:column;gap:6px}#slab .ctrl label{font-size:11px;font-weight:700;color:#b9c6d5}#slab select{width:100%;background:#0e1723;border:1px solid #334154;color:#eef6ff;border-radius:10px;padding:11px 9px;outline:none}#slab .sliderbox{padding:12px 0 4px}#slab .sliderrow{display:flex;justify-content:space-between;font-weight:700;font-size:12px}#slab .sliderrow span:last-child{color:var(--a);font-variant-numeric:tabular-nums}#slab input[type=range]{width:100%;accent-color:#6bf2d0;margin:12px 0 2px;cursor:pointer}#slab .micro{font-size:11px;color:var(--mut)}#slab .check{display:flex;gap:10px;align-items:center;padding-top:12px;border-top:1px solid #293649;margin-top:9px;font-size:12px}#slab .check input{accent-color:#64e9c8;width:16px;height:16px;flex-shrink:0}#slab .tagrow{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 5px}#slab .tag{background:#233347;color:#b9c8d5;border:1px solid #2c4358;border-radius:7px;padding:4px 7px;font-size:10px}#slab .actions{margin-top:17px;display:flex;gap:9px;flex-wrap:wrap}#slab .go{flex:1;background:linear-gradient(110deg,#65eccb,#80d5f1);border:0;border-radius:12px;padding:14px 12px;font-weight:850;color:#0c1a27;cursor:pointer;white-space:nowrap}#slab .go:hover:not(:disabled){filter:brightness(1.07)}#slab .cancel{border:1px solid #4b566c;background:transparent;color:#c6d6e8;border-radius:12px;padding:10px 15px;cursor:pointer;display:none}#slab .progress{display:none;margin-top:15px}#slab .status{font-size:12px;color:#bdd9e9;display:flex;justify-content:space-between;gap:5px;margin-bottom:7px}#slab .bar{height:8px;border-radius:99px;background:#263648;overflow:hidden}#slab .fill{background:linear-gradient(90deg,#53dcc5,#879bff);height:100%;width:0;transition:width .13s}#slab .result{display:none;margin-top:15px;border:1px solid #2e705f;background:#183329;border-radius:12px;padding:13px}#slab .resulttop{display:flex;align-items:flex-start;gap:9px}#slab .success{font-size:21px;color:#87ffd6;line-height:1}#slab .result b{color:#c8ffe8}#slab .dl{background:#74efce;border-radius:9px;border:0;padding:11px 13px;font-weight:800;color:#10302b;cursor:pointer;margin-top:11px;width:100%}#slab .outputaudio{display:none}#slab .error{display:none;color:#ffb5b5;background:#4a2427;border-radius:9px;padding:10px;font-size:12px;margin-top:12px}#slab .foot{margin-top:16px;color:#95acbd;font-size:11px;line-height:1.5;border-top:1px solid #24354a;padding-top:13px}#slab .note{font-size:11px;color:#9dadc2;margin:11px 0 0}#slab .truth{border-left:3px solid #719eff;padding-left:10px;margin-top:14px;color:#c4ccdc;font-size:11px}#slab .wave{height:53px;display:flex;align-items:center;gap:2px;margin:0 0 13px;overflow:hidden;border-radius:8px;background:#0b1725;padding:5px 7px}#slab .wave span{flex:1;min-width:2px;border-radius:3px;background:linear-gradient(180deg,#8d9fff,#5aeaca);opacity:.65}#slab .step{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}#slab .step .heading{margin:0}#slab .fmt{font-size:10px;color:#6de1c3}#slab .panel:nth-child(2){position:relative}#slab .srdesc{margin-top:8px}#slab .fine{font-size:10px;color:#8b9bab}#slab a{text-decoration:none}
+@media(max-width:640px){#slab{border-radius:16px}#slab .top{padding:17px 14px 9px}#slab .main{padding:5px 14px 16px}#slab .g{grid-template-columns:1fr;gap:12px}#slab .panel{padding:15px}#slab .brand{font-size:13px;letter-spacing:1px}#slab .loc{font-size:9px;padding:5px 7px}#slab h2{font-size:27px}}
+</style>
+<div class="top"><div class="brand"><span class="brandicon">≋</span> SONIC<span style="color:#68e9cd;margin-left:-10px">LAB</span></div><div class="loc">● LOCAL PROCESSING</div></div>
+<div class="main">
+<h2>MP3 to <span style="color:#79ebd2">FLAC Studio</span></h2><p class="lead">Convert your music into genuine lossless FLAC files. Optional processing enhances the sound before encoding.</p>
+<div class="wave" id="slwave" aria-hidden="true"></div>
+<div class="g">
+ <div class="panel">
+ <div class="step"><div class="heading"><span class="num">01</span> SOURCE AUDIO</div><span class="fmt">MP3 • M4A • WAV • more</span></div>
+ <div class="drop" id="sldrop" role="button" tabindex="0"><span class="dropicon">♫</span><div class="droptitle">Drop an audio file here</div><div class="sub">or <span class="browse">browse your files</span> on this device</div></div>
+ <input id="slfile" type="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac" style="display:none"/>
+ <div class="file" id="slfileview"><div class="fileicon">♫</div><div class="filetext"><div class="filename" id="slfilename"></div><div class="filemeta" id="slfilemeta"></div></div><button type="button" class="x" id="slremove" title="Remove file">×</button></div>
+ <audio id="slbefore" controls preload="metadata" style="display:none" aria-label="Original audio preview"></audio>
+ <div class="tagrow"><span class="tag">Real FLAC codec</span><span class="tag">No uploads</span><span class="tag">Mono / Stereo</span></div>
+ <div class="truth"><b>Important:</b> MP3 permanently discards audio information. FLAC stores the decoded or enhanced result losslessly; it cannot restore the exact original recording.</div>
+ </div>
+ <div class="panel">
+ <div class="step"><div class="heading"><span class="num">02</span> OUTPUT QUALITY</div><span class="fmt">FLAC</span></div>
+ <div class="cols"><div class="ctrl"><label for="slrate">Sample rate</label><select id="slrate"><option value="native">Original (recommended)</option><option value="48000">48 kHz</option><option value="96000">96 kHz</option></select></div><div class="ctrl"><label for="slbits">Bit depth</label><select id="slbits"><option value="16">16-bit</option><option value="24" selected>24-bit</option></select></div></div>
+ <div class="srdesc fine">Higher sample rates increase file size, not source fidelity.</div>
+ <div class="sliderbox"><div class="sliderrow"><span>Presence / clarity</span><span id="slprval">0%</span></div><input type="range" min="0" max="100" step="5" value="0" id="slpresence"/><div class="micro">High-frequency emphasis for clearer sound</div></div>
+ <div class="sliderbox"><div class="sliderrow"><span>Harmonic detail</span><span id="sldeval">0%</span></div><input type="range" min="0" max="100" step="5" value="0" id="sldetail"/><div class="micro">Creates subtle new harmonics; not recovered originals</div></div>
+ <label class="check"><input type="checkbox" id="slnorm"/><span>Normalize peak to −1 dBFS (avoid clipping)</span></label>
+ </div>
+</div>
+<div class="actions"><button class="go" id="slgo" type="button" disabled>⚡ Convert to FLAC</button><button class="cancel" id="slcancel" type="button">Cancel</button></div>
+<div class="progress" id="slprogress"><div class="status"><span id="slstatus">Preparing audio…</span><span id="slpct">0%</span></div><div class="bar"><div class="fill" id="slfill"></div></div></div>
+<div id="slerror" class="error" role="alert" style="white-space:pre-wrap"></div><button type="button" id="slcopyerror" class="x" style="display:none;font-size:12px;border:1px solid #4d6578;border-radius:7px;padding:5px 10px;margin-top:7px">Copy error details</button>
+<div class="result" id="slresult"><div class="resulttop"><span class="success">✓</span><div><b>FLAC file ready</b><div class="micro" id="sloutinfo"></div></div></div><button class="dl" id="sldownload" type="button">↓ Download .flac</button><button class="dl" id="slshare" type="button" style="display:none;margin-top:8px;background:#304554;color:#e8f7ff;border:1px solid #607688">↗ Save / Share to Files</button><audio id="slafter" class="outputaudio" controls preload="none" aria-label="FLAC preview"></audio><div class="fine" id="slplaynote"></div></div>
+<div class="foot">🔒 Your audio remains on your device. MP3 decoding, enhancement, resampling and FLAC encoding run entirely in this app. Processing a large track at 96 kHz may use substantial memory on mobile devices.</div>
+</div>
+<script>
+(()=>{
+  const root=document.getElementById('slab');if(root.dataset.booted)return;root.dataset.booted='1';
+  const $=id=>document.getElementById(id);
+  const els={file:$('slfile'),drop:$('sldrop'),go:$('slgo'),cancel:$('slcancel'),progress:$('slprogress'),status:$('slstatus'),pct:$('slpct'),fill:$('slfill'),fileview:$('slfileview'),filename:$('slfilename'),filemeta:$('slfilemeta'),before:$('slbefore'),after:$('slafter'),result:$('slresult'),error:$('slerror'),outinfo:$('sloutinfo'),download:$('sldownload')};
+  let selected=null,sourceURL=null,outputURL=null,outputBlob=null,job=null;
+  function human(bytes){if(bytes<1024*1024)return (bytes/1024).toFixed(0)+' KB';return (bytes/1048576).toFixed(1)+' MB';}
+  function status(t,p){els.progress.style.display='block';els.status.textContent=t;els.pct.textContent=Math.round(p)+'%';els.fill.style.width=Math.max(0,Math.min(100,p))+'%';}
+  function err(message){els.error.textContent=message;els.error.style.display='block';$('slcopyerror').style.display='inline-block';}
+  function clearOut(){$('slcopyerror').style.display='none';els.error.style.display='none';els.result.style.display='none';els.after.removeAttribute('src');els.after.load();if(outputURL)URL.revokeObjectURL(outputURL);outputURL=null;outputBlob=null;}
+  function setFile(file){if(!file)return; if(job)return;clearOut();if(!file.size){err('Selected file is empty. Choose a valid MP3.');return;}selected=file;
+    if(sourceURL)URL.revokeObjectURL(sourceURL);sourceURL=URL.createObjectURL(file);
+    els.before.src=sourceURL;els.before.style.display='block';els.fileview.classList.add('show');els.filename.textContent=file.name;els.filemeta.textContent=human(file.size)+' • local file';els.go.disabled=false;
+  }
+  $('slremove').addEventListener('click',()=>{if(job)return;selected=null;els.file.value='';els.fileview.classList.remove('show');els.before.pause();els.before.removeAttribute('src');els.before.load();els.before.style.display='none';els.go.disabled=true;clearOut();if(sourceURL)URL.revokeObjectURL(sourceURL);sourceURL=null;});
+  els.drop.addEventListener('click',()=>els.file.click());els.drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();els.file.click();}});
+  els.file.addEventListener('change',e=>setFile(e.target.files&&e.target.files[0]));
+  for (let ev of ['dragenter','dragover'])els.drop.addEventListener(ev,e=>{e.preventDefault();els.drop.classList.add('over');});
+  for (let ev of ['dragleave','drop'])els.drop.addEventListener(ev,e=>{e.preventDefault();els.drop.classList.remove('over');});
+  els.drop.addEventListener('drop',e=>setFile(e.dataTransfer.files&&e.dataTransfer.files[0]));
+  for(let [id,label] of [['slpresence','slprval'],['sldetail','sldeval']])$(id).addEventListener('input',e=>{$(label).textContent=e.target.value+'%';});
+  els.cancel.addEventListener('click',()=>{if(job){job.cancelled=true;status('Cancelling…',Number(els.fill.style.width.replace('%',''))||0);}});
+  function check(j){if(j.cancelled)throw new Error('Conversion cancelled.');}
+  function crc8(a){let c=0;for(const b of a){c^=b;for(let i=0;i<8;i++)c=((c&128)?(c<<1)^7:c<<1)&255;}return c;}
+  function crc16(a){let c=0;for(const b of a){c^=b<<8;for(let i=0;i<8;i++)c=((c&0x8000)?(c<<1)^0x8005:c<<1)&65535;}return c;}
+  class BW{constructor(size){this.d=new Uint8Array(size);this.p=0;this.bit=0;}grow(n=1){if(this.p+n>=this.d.length){let x=new Uint8Array(Math.max(this.d.length*2,this.p+n+32));x.set(this.d);this.d=x;}}bits(v,n){if(!n)return;this.grow((n>>3)+2);for(let i=n-1;i>=0;i--){if(Math.floor(v/2**i)%2>=1)this.d[this.p]|=1<<(7-this.bit);if(++this.bit===8){this.p++;this.bit=0;}}}zeros(n){if(n<=0)return;if(this.bit){const k=Math.min(n,8-this.bit);n-=k;this.bit+=k;if(this.bit===8){this.p++;this.bit=0;}}if(n>=8){let b=Math.floor(n/8);this.grow(b+1);this.p+=b;n-=8*b;}if(n){this.bit+=n;if(this.bit===8){this.p++;this.bit=0;}}}align(){if(this.bit){this.p++;this.bit=0;}}bytes(){return this.d.subarray(0,this.p+(this.bit?1:0));}}
+  function utf8num(v){v=BigInt(v);if(v<128n)return[Number(v)];for(let len=2;len<=7;len++){const width=BigInt(7-len+6*(len-1));if(v<(1n<<width)){const a=new Array(len);const f=BigInt(7-len);a[0]=((255<<(8-len))&255)|Number((v>>BigInt(6*(len-1)))&((1n<<f)-1n));for(let i=1;i<len;i++)a[i]=128|Number((v>>BigInt(6*(len-i-1)))&63n);return a;}}throw Error('FLAC sample index is too large');}
+  function streaminfo(rate,ch,bps,total,block=4096){if(!Number.isInteger(rate)||rate<1||rate>655350||!Number.isSafeInteger(total)||total<0)throw Error('Invalid output audio configuration');const a=new Uint8Array(42);a.set([102,76,97,67,128,0,0,34]);a[8]=0;a[9]=16;a[10]=block>>8;a[11]=block&255;const v=(BigInt(rate)<<44n)|(BigInt(ch-1)<<41n)|(BigInt(bps-1)<<36n)|BigInt(total);for(let i=0;i<8;i++)a[18+i]=Number((v>>BigInt(56-i*8))&255n);return a;}
+  function residual(a,i,o){const x=a[i];switch(o){case 0:return x;case 1:return x-a[i-1];case 2:return x-2*a[i-1]+a[i-2];case 3:return x-3*a[i-1]+3*a[i-2]-a[i-3];case 4:return x-4*a[i-1]+6*a[i-2]-4*a[i-3]+a[i-4];}}
+  function bestSubframe(a,bps){let best={order:-1,cost:a.length*bps+8};for(let o=0;o<=4&&o<a.length;o++){let sum=0,n=a.length-o;for(let i=o;i<a.length;i++)sum+=Math.abs(residual(a,i,o));const k=Math.min(30,Math.max(0,Math.floor(Math.log2(sum/n+1)))),base=2**k;let size=8+o*bps+11;for(let i=o;i<a.length;i++){let r=residual(a,i,o),u=r>=0?2*r:-2*r-1;size+=Math.floor(u/base)+1+k;}if(size<best.cost)best={order:o,k,cost:size};}return best;}
+  function frame(readers,start,count,ch,bps){const hdr=[255,249,112,(ch-1)<<4,...utf8num(start),(count-1)>>8,(count-1)&255];hdr.push(crc8(hdr));const w=new BW(Math.ceil(count*ch*bps/8)+100);for(let b of hdr)w.bits(b,8);for(let c=0;c<ch;c++){const a=readers[c](start,count),p=bestSubframe(a,bps);if(p.order===-1){w.bits(2,8);for(let s of a)w.bits(s<0?s+2**bps:s,bps);}else{w.bits((8+p.order)*2,8);for(let i=0;i<p.order;i++)w.bits(a[i]<0?a[i]+2**bps:a[i],bps);w.bits(1,2);w.bits(0,4);w.bits(p.k,5);const base=2**p.k;for(let i=p.order;i<count;i++){const r=residual(a,i,p.order),u=r>=0?2*r:-2*r-1,q=Math.floor(u/base);w.zeros(q);w.bits(1,1);w.bits(u-q*base,p.k);}}}w.align();const bytes=w.bytes(),crc=crc16(bytes),out=new Uint8Array(bytes.length+2);out.set(bytes);out[bytes.length]=crc>>8;out[bytes.length+1]=crc&255;return out;}
+  function detectSourceRate(data,name){
+    const a=new Uint8Array(data),ext=(name.split('.').pop()||'').toLowerCase();
+    if(ext==='wav'&&a.length>=28&&String.fromCharCode(...a.slice(0,4))==='RIFF'&&String.fromCharCode(...a.slice(8,12))==='WAVE'){
+      const n=new DataView(data).getUint32(24,true);return n>=8000&&n<=192000?n:null;
+    }
+    if(ext!=='mp3'&&ext!=='mpeg')return null;
+    let start=0;
+    if(a.length>=10&&a[0]===73&&a[1]===68&&a[2]===51){
+      start=10+((a[6]&127)*2097152)+((a[7]&127)*16384)+((a[8]&127)*128)+(a[9]&127)+((a[5]&16)?10:0);
+    }
+    for(let i=start;i+4<a.length&&i<start+65536;i++){
+      if(a[i]!==255||(a[i+1]&224)!==224)continue;
+      const version=(a[i+1]>>3)&3,layer=(a[i+1]>>1)&3,idx=(a[i+2]>>2)&3;
+      if(version===1||layer!==1||idx===3||((a[i+2]>>4)&15)===15)continue;
+      let base=[44100,48000,32000][idx];return version===3?base:version===2?base/2:base/4;
+    }
+    return null;
+  }
+  // Safari and embedded WebViews can require different AudioContext configurations.
+  function readData(f){
+    if(typeof f.arrayBuffer==='function')return f.arrayBuffer();
+    return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error||Error('File could not be read'));r.readAsArrayBuffer(f);});
+  }
+  function getId3Skip(data){const a=new Uint8Array(data);if(a.length<10||a[0]!==73||a[1]!==68||a[2]!==51)return 0;const v=10+((a[6]&127)*2097152)+((a[7]&127)*16384)+((a[8]&127)*128)+(a[9]&127)+((a[5]&16)?10:0);return v>0&&v<a.length-8?v:0;}
+  async function robustDecode(data,name,j){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)throw Error('This embedded browser has no AudioContext. Open the standalone file in Safari instead.');
+    const r=detectSourceRate(data,name);
+    const tries=[{rate:r,buffer:data}, {rate:null,buffer:data}];
+    const skip=getId3Skip(data);
+    if(skip>0 && /\.(mp3|mpeg)$/i.test(name))tries.push({rate:null,buffer:data.slice(skip)});
+    let errors=[];
+    for(let t=0;t<tries.length;t++){
+      check(j);let ctx;
+      try{
+        ctx=tries[t].rate?new AC({sampleRate:tries[t].rate}):new AC();
+        const audio=await ctx.decodeAudioData(tries[t].buffer.slice(0));
+        if(ctx.state!=='closed')await ctx.close();
+        if(!audio||!audio.length)throw Error('No decoded audio samples returned');
+        return audio;
+      }catch(e){errors.push((e.name||'Error')+': '+(e.message||'MP3 decode failed'));if(ctx)try{if(ctx.state!=='closed')await ctx.close();}catch(_){}}
+    }
+    throw Error('MP3 decoder rejected the input on all '+tries.length+' attempts. '+errors.join(' | ')+'. The audio file may be corrupted, unsupported, or blocked by the ChatGPT embedded WebView. Try the standalone converter in Safari.');
+  }
+  $('slcopyerror').addEventListener('click',async()=>{const v=els.error.textContent;try{await navigator.clipboard.writeText(v);$('slcopyerror').textContent='Copied';}catch(_){const t=document.createElement('textarea');t.value=v;document.body.appendChild(t);t.select();try{document.execCommand('copy');$('slcopyerror').textContent='Copied';}catch(_){}t.remove();}});
+  function processAudio(buffer,pres,detail,j){let max=0;const sr=buffer.sampleRate,lpcoef=Math.exp(-2*Math.PI*3200/sr),gencoef=Math.exp(-2*Math.PI*7000/sr);for(let c=0;c<buffer.numberOfChannels;c++){const a=buffer.getChannelData(c);let lp=0,glp=0;for(let i=0;i<a.length;i++){if((i&262143)===0)check(j);const x=a[i];lp=lpcoef*lp+(1-lpcoef)*x;const high=x-lp;const harmonic=Math.tanh(3.4*high)-3.4*high;glp=gencoef*glp+(1-gencoef)*harmonic;let z=x+pres*.42*high+detail*.25*(harmonic-glp);if(!Number.isFinite(z))z=0;a[i]=z;const abs=Math.abs(z);if(abs>max)max=abs;}}return max;}
+  function drawWave(b){const d=$('slwave');d.innerHTML='';const arr=b.getChannelData(0),length=48;for(let i=0;i<length;i++){let st=Math.floor(i*arr.length/length),end=Math.min(arr.length,Math.floor((i+1)*arr.length/length)),peak=0,inc=Math.max(1,Math.floor((end-st)/80));for(let p=st;p<end;p+=inc)peak=Math.max(peak,Math.abs(arr[p]));const s=document.createElement('span');s.style.height=(Math.max(7,Math.min(95,peak*100)))+'%';d.appendChild(s);}}
+  function animationFrame(){return new Promise(r=>setTimeout(r,0));}
+  async function convert(){if(!selected||job)return;const j={cancelled:false};job=j;clearOut();els.go.disabled=true;els.cancel.style.display='inline-block';let ctx;
+    try{status('Reading audio…',1);await animationFrame();const file=selected;const encoded=await readData(file);check(j);status('Decoding MP3 (automatic fallback enabled)…',7);let audio=await robustDecode(encoded,file.name,j);check(j);
+      if(audio.numberOfChannels<1||audio.numberOfChannels>2)throw Error('This version supports mono or stereo audio only.');
+      drawWave(audio);const sourceRate=audio.sampleRate;const rate=$('slrate').value==='native'?sourceRate:Number($('slrate').value),bps=Number($('slbits').value);
+      if(rate!==sourceRate){status('High-quality resampling…',14);await animationFrame();const OC=window.OfflineAudioContext||window.webkitOfflineAudioContext;if(!OC)throw Error('Offline resampling is unavailable in this browser.');const offline=new OC(audio.numberOfChannels,Math.ceil(audio.duration*rate),rate);let src=offline.createBufferSource();src.buffer=audio;src.connect(offline.destination);src.start(0);audio=await offline.startRendering();check(j);}
+      status('Applying audio processing…',23);await animationFrame();const pres=Number($('slpresence').value)/100,detail=Number($('sldetail').value)/100;const peak=processAudio(audio,pres,detail,j);check(j);
+      const norm=$('slnorm').checked,goal=10**(-1/20),gain=peak===0?1:norm?Math.min(4,goal/peak):Math.min(1,0.999/peak);
+      const channels=audio.numberOfChannels,arrays=Array.from({length:channels},(_,i)=>audio.getChannelData(i));const total=audio.length,limit=2**(bps-1)-1;let rng=0x59a771ca;function random(){rng^=rng<<13;rng^=rng>>>17;rng^=rng<<5;return(rng>>>0)/4294967296;}
+      const readers=arrays.map(a=>(start,len)=>{const x=new Int32Array(len);for(let i=0;i<len;i++){let v=a[start+i]*gain;if(!Number.isFinite(v))v=0;v=Math.max(-1,Math.min(1,v));const dither=bps===16?(random()-random()):0;x[i]=Math.max(-limit-1,Math.min(limit,Math.round(v*limit+dither)));}return x;});
+      status('Encoding true lossless FLAC…',30);await animationFrame();const parts=[streaminfo(rate,channels,bps,total)],block=4096;const count=Math.ceil(total/block);
+      for(let n=0;n<count;n++){check(j);const offset=n*block;parts.push(frame(readers,offset,Math.min(block,total-offset),channels,bps));if(n%6===0||n===count-1){status('Encoding FLAC frames…',30+(n+1)/count*67);await animationFrame();}}
+      check(j);status('Finalizing output…',99);outputBlob=new Blob(parts,{type:'audio/flac'});outputURL=URL.createObjectURL(outputBlob);els.after.src=outputURL;els.after.style.display='block';
+      const playable=els.after.canPlayType('audio/flac')||els.after.canPlayType('audio/x-flac');$('slplaynote').textContent=playable?'Preview the converted FLAC above.':'Your FLAC file is ready; this browser may not support inline FLAC playback.';
+      $('sloutinfo').textContent=`${human(outputBlob.size)} • ${(rate/1000).toFixed(rate%1000?2:0)} kHz • ${bps}-bit • ${channels===1?'mono':'stereo'}`;
+      const filename=file.name.replace(/\.[^.]+$/,'').replace(/[\\/\0-\x1f]/g,'_')||'audio';const outname=filename+'.flac';els.download.onclick=()=>{const a=document.createElement('a');a.href=outputURL;a.download=outname;document.body.appendChild(a);a.click();a.remove();};
+      const share=$('slshare');share.style.display=typeof navigator.share==='function'?'block':'none';share.onclick=async()=>{try{const f=new File([outputBlob],outname,{type:'audio/flac'});if(typeof navigator.canShare==='function'&&!navigator.canShare({files:[f]}))throw Error('Sharing this file is unsupported here. Use Download.');await navigator.share({files:[f],title:outname});}catch(e){if(e.name!=='AbortError')err('Share failed: '+(e.message||e));}};
+      els.result.style.display='block';status('Completed successfully',100);
+    }catch(e){if(ctx)try{await ctx.close();}catch(_e){} const at=els.status.textContent;err('Stage: '+at+'\n'+(e&&e.name||'Error')+': '+(e&&e.message||'Conversion failed.'));els.progress.style.display='none';}
+    finally{job=null;els.go.disabled=!selected;els.cancel.style.display='none';}
+  }
+  els.go.addEventListener('click',convert);
+  const wave=$('slwave');for(let i=0;i<48;i++){const s=document.createElement('span');s.style.height=(12+((i*31+19)%57))+'%';wave.appendChild(s);}
+})();
+</script>
+</div>
+</body></html>
