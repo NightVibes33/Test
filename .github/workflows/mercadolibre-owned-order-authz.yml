@@ -1,0 +1,55 @@
+name: MercadoLibre owned-order authz probe (manual only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      controlled_order_id:
+        description: "Order ID created between your own developer test buyer and seller"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      ML_TEST_SELLER_TOKEN: ${{ secrets.ML_TEST_SELLER_TOKEN }}
+      ML_TEST_BUYER_TOKEN: ${{ secrets.ML_TEST_BUYER_TOKEN }}
+      ML_TEST_OUTSIDER_TOKEN: ${{ secrets.ML_TEST_OUTSIDER_TOKEN }}
+      ML_OWN_TEST_ORDER_ID: ${{ inputs.controlled_order_id }}
+      ML_EVIDENCE: evidence/mercadolibre-order-authz-evidence.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Python source; this is NOT an exploit result
+        run: python3 -m py_compile mercadolibre-authz/owned_order_probe.py
+      - name: Run real test only with 3 developer test-user secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          if [[ -z "${ML_TEST_SELLER_TOKEN:-}" || -z "${ML_TEST_BUYER_TOKEN:-}" || -z "${ML_TEST_OUTSIDER_TOKEN:-}" ]]; then
+            echo "Missing at least one secure test-user token: no live probe was run" >&2
+            exit 2
+          fi
+          python3 mercadolibre-authz/owned_order_probe.py
+      - name: Explain CI result
+        if: always()
+        run: |
+          {
+            echo '### Controlled Mercado Libre authorization test'
+            echo 'This probe checks **one existing order owned by three verified developer test-user identities**.'
+            echo 'A successful workflow is **not** proof of a security finding.'
+            echo 'If evidence indicates a candidate unauthorized read, manual triage is required.'
+            test -f evidence/mercadolibre-order-authz-evidence.json || echo 'No live HTTP evidence was obtained.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlled-test-users-orders-authz
+          path: evidence/*.json
+          if-no-files-found: warn
+          retention-days: 7
