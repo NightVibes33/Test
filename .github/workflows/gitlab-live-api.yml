@@ -58,12 +58,12 @@ jobs:
       - name: Wait for API with bounded startup and evidence
         run: |
           set -euo pipefail
-          echo "Checking GitLab health and server processes"
+          echo "Checking GitLab Rails HTTP /help and server processes"
           for i in $(seq 1 90); do
             code="$(curl -sS -o evidence/last-health-response.txt -w '%{http_code}' \
-              --connect-timeout 2 --max-time 5 http://127.0.0.1:8929/-/health || true)"
+              --connect-timeout 2 --max-time 5 http://127.0.0.1:8929/help || true)"
             if [ "$code" = 200 ]; then
-              echo "GitLab HTTP health is 200"
+              echo "GitLab HTTP Rails /help is 200"
               printf '%s\n' "$code" > evidence/last-health-code.txt
               curl -sS -o evidence/last-readiness-response.txt -w '%{http_code}\n' \
                 --connect-timeout 2 --max-time 10 \
