@@ -155,16 +155,27 @@ try:
                   [200], "anonymous listing before ban")
     must(record_http("POST", f"/users/{authorid}/ban", "root"),
          [201, 200], "admin bans target author")
-    after = must(record_http("GET", f"/groups/{gid}/related_epic_links"),
-                 [200], "anonymous listing after ban")
-    target_direct_status, _ = record_http(
-        "GET", f"/groups/{gid}/epics/{target1['iid']}")
+    # Ban transitions can be asynchronous. Establish the target denial before
+    # querying its links, or the listing could merely contain public content.
+    target_direct_status = None
+    for check in range(18):
+        target_direct_status, _ = record_http(
+            "GET", f"/groups/{gid}/epics/{target1['iid']}")
+        if target_direct_status in (403, 404):
+            break
+        if target_direct_status not in (200,):
+            raise RuntimeError(
+                f"Target negative control failed unexpectedly: HTTP {target_direct_status}"
+            )
+        time.sleep(5)
     print("POST_BAN_ANONYMOUS_DIRECT_TARGET_STATUS:", target_direct_status, flush=True)
     if target_direct_status not in (403, 404):
         raise RuntimeError(
-            "Negative control failed: target remains directly readable "
+            "Negative control failed after polling: target remained readable "
             f"anonymously (HTTP {target_direct_status}); no proven hidden-data exposure"
         )
+    after = must(record_http("GET", f"/groups/{gid}/related_epic_links"),
+                 [200], "anonymous listing after ban")
     attempt = relate(target2)
     print("POST-BAN linking result:", attempt[0], flush=True)
     leaked = marker + "-SECRET-DESCRIPTION-ONE" in json.dumps(after)
