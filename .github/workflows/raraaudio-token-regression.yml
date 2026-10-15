@@ -1,0 +1,42 @@
+name: RaraAudio synthetic token regression
+on:
+  push:
+    paths:
+      - '.github/workflows/raraaudio-token-regression.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect live script and reproduce synthetic token propagation (offline)
+        shell: bash
+        run: |
+          cat > /tmp/check.cjs <<'JS'
+          const https = require('https');
+          const vm = require('vm');
+          const assert = require('assert');
+          const marker = 'RARA_SYNTHETIC_REGRESSION_TOKEN_DO_NOT_USE';
+          https.get('https://raraaudio.com/api/version?bootstrap=analytics', res => {
+            if (res.statusCode !== 200) throw new Error('Analytics script HTTP ' + res.statusCode);
+            let js = '';
+            res.on('data', x => js += x);
+            res.on('end', () => {
+              let calls = [];
+              let store = {};
+              const location = {origin:'https://raraaudio.com', protocol:'https:', pathname:'/resetpassword', search:'?token='+marker, href:'https://raraaudio.com/resetpassword?token='+marker};
+              const document = {cookie:'', referrer:'', addEventListener() {}};
+              const sandbox = {
+                window:{location,localStorage:{getItem(k){return store[k]||null},setItem(k,v){store[k]=v}}, crypto:require('crypto').webcrypto},
+                document, URLSearchParams, URL, Date, Math,
+                fetch(url,options){calls.push({url,options});return Promise.resolve({})},
+                console
+              };
+              vm.runInNewContext(js, sandbox, {timeout:1500});
+              const leaked = calls.filter(x=>x.url.includes(marker));
+              console.log(JSON.stringify({retrieved:'live analytics JavaScript', tested_page:'/resetpassword', synthetic_token_copied:leaked.length>0, request_count:calls.length, affected_fields: leaked.length ? [...new URL('https://raraaudio.com'+leaked[0].url).searchParams.keys()].filter(x=>['path','url'].includes(x)) : [], actual_customer_data_accessed:false, existing_credentials_changed:false},null,2));
+              assert.equal(leaked.length,0,'SECURITY REGRESSION: full synthetic reset URL copied into analytics request');
+            });
+          }).on('error',e=>{console.error(e);process.exitCode=1});
+          JS
+          node /tmp/check.cjs
