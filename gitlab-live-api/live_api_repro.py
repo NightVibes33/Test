@@ -57,7 +57,8 @@ def record_http(method, path, role="anonymous", payload=None):
             "method": method,
             "url": url,
             "auth": role + (" (PRIVATE-TOKEN: [REDACTED])" if role != "anonymous" else " (no token)"),
-            "form": payload,
+            "form": ({k: ("[REDACTED]" if k.lower() in {"password", "token", "secret", "private_token", "access_token"} else v)
+                      for k, v in payload.items()} if payload is not None else None),
         },
         "response": {"status": status, "body": decoded},
     }
