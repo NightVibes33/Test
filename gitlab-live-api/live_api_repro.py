@@ -66,7 +66,10 @@ def record_http(method, path, role="anonymous", payload=None):
             "form": ({k: ("[REDACTED]" if k.lower() in {"password", "token", "secret", "private_token", "access_token"} else v)
                       for k, v in payload.items()} if payload is not None else None),
         },
-        "response": {"status": status, "body": decoded},
+        "response": {
+            "status": status,
+            "body": ("[LICENSE METADATA REDACTED]" if path == "/license" else decoded),
+        },
     }
     records.append(item)
     print(method, path, role, "->", status, flush=True)
