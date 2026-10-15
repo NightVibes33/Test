@@ -14,7 +14,7 @@ permissions:
 jobs:
   live-http:
     runs-on: ubuntu-latest
-    timeout-minutes: 85
+    timeout-minutes: 45
     env:
       GITLAB_URL: http://127.0.0.1:8929
       EVIDENCE_DIR: evidence
@@ -55,21 +55,42 @@ jobs:
           docker inspect gitlab --format '{{.Image}}' > evidence/docker-image-id.txt
           printf 'installation=Docker Omnibus\nimage=gitlab/gitlab-ee:19.4.1-ee.0\nbase=http://127.0.0.1:8929\n' > evidence/environment.txt
 
-      - name: Wait for running HTTP API
+      - name: Wait for API with bounded startup and evidence
         run: |
           set -euo pipefail
-          for i in $(seq 1 180); do
-            if curl -fsS --connect-timeout 3 --max-time 8 "http://127.0.0.1:8929/-/readiness" >/dev/null; then
-              echo "GitLab HTTP ready"
+          echo "Checking GitLab health and server processes"
+          for i in $(seq 1 90); do
+            code="$(curl -sS -o evidence/last-health-response.txt -w '%{http_code}' \
+              --connect-timeout 2 --max-time 5 http://127.0.0.1:8929/-/health || true)"
+            if [ "$code" = 200 ]; then
+              echo "GitLab HTTP health is 200"
+              printf '%s\n' "$code" > evidence/last-health-code.txt
+              curl -sS -o evidence/last-readiness-response.txt -w '%{http_code}\n' \
+                --connect-timeout 2 --max-time 10 \
+                http://127.0.0.1:8929/-/readiness | tee evidence/last-readiness-code.txt || true
               exit 0
             fi
+            if (( i % 6 == 1 )); then
+              echo "GitLab startup: iteration=$i health_code=$code ..."
+              date --iso-8601=seconds
+              docker inspect gitlab --format 'running={{.State.Running}} oom={{.State.OOMKilled}} memory={{.HostConfig.Memory}}' \
+                | tee evidence/docker-runtime-state.txt || true
+              docker exec gitlab gitlab-ctl status \
+                > evidence/gitlab-service-status.txt 2>&1 || true
+              cat evidence/gitlab-service-status.txt | head -45
+              docker stats --no-stream gitlab > evidence/docker-stats.txt || true
+              docker logs gitlab --tail 100 > evidence/gitlab-startup-progress.log 2>&1 || true
+              df -h . | tee evidence/host-disk.txt
+              free -h | tee evidence/host-memory.txt
+            fi
             if [ "$(docker inspect -f '{{.State.Running}}' gitlab)" != true ]; then
-              docker logs gitlab --tail 80
+              echo "GitLab container stopped during startup"
               exit 1
             fi
             sleep 10
           done
-          docker logs gitlab --tail 150
+          echo "FAIL: GitLab did not become HTTP-ready in ~15 minutes"
+          cat evidence/gitlab-startup-progress.log || true
           exit 1
 
       - name: Prepare local administrator HTTP API authentication
