@@ -1,11 +1,8 @@
 name: GitLab 19.4.1 live HTTP evidence probe
 
+# Diagnostic runner only. Ephemeral GitHub runners have no GitLab Ultimate trial.
+# Do not launch a full GitLab container for every small source change.
 on:
-  push:
-    branches: [h1-gitlab-live-api]
-    paths:
-      - 'gitlab-live-api/**'
-      - '.github/workflows/gitlab-live-api.yml'
   workflow_dispatch:
 
 permissions:
