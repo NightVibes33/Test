@@ -1,0 +1,7 @@
+.env
+.env.*
+*.token
+*.pat
+*evidence*.json
+__pycache__/
+*.pyc
