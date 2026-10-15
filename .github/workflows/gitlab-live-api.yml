@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           umask 077
           docker exec gitlab gitlab-rails runner \
-            "u=User.find_by_username('root'); p=u.personal_access_tokens.create!(name: 'H1 disposable HTTP repro', scopes: [:api, :sudo], expires_at: Date.today + 1); puts p.token" \
+            "u=User.find_by_username('root'); p=u.personal_access_tokens.create(name: 'H1 disposable HTTP repro', scopes: [:api, :sudo], expires_at: Date.today + 1); secret='glpat-' + SecureRandom.hex(20); p.set_token(secret); p.save!; puts secret" \
             > /tmp/h1-gitlab-live-tokens/root.pat
           test -s /tmp/h1-gitlab-live-tokens/root.pat
 
