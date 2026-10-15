@@ -1,0 +1,115 @@
+name: GitLab 19.4.1 live HTTP Epic authorization check
+
+on:
+  push:
+    branches: [h1-gitlab-live-api]
+    paths:
+      - 'gitlab-live-api/**'
+      - '.github/workflows/gitlab-live-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    env:
+      GITLAB_URL: http://127.0.0.1:8929
+      EVIDENCE_DIR: evidence
+      TOKEN_DIR: /tmp/h1-gitlab-live-tokens
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host diagnostics
+        run: |
+          df -h .
+          free -h
+          docker version
+          mkdir -p evidence /tmp/h1-gitlab-live-tokens
+          chmod 700 /tmp/h1-gitlab-live-tokens
+
+      - name: Start disposable upstream GitLab 19.4.1-ee HTTP service
+        env:
+          GITLAB_OMNIBUS_CONFIG: |
+            external_url 'http://127.0.0.1:8929'
+            nginx['listen_port'] = 80
+            puma['worker_processes'] = 1
+            sidekiq['concurrency'] = 4
+            prometheus_monitoring['enable'] = false
+            gitlab_exporter['enable'] = false
+            node_exporter['enable'] = false
+            redis_exporter['enable'] = false
+            postgres_exporter['enable'] = false
+            gitlab_rails['usage_ping_enabled'] = false
+        run: |
+          set -euo pipefail
+          docker pull gitlab/gitlab-ee:19.4.1-ee.0
+          docker run -d --name gitlab --hostname gitlab.local \
+            --publish 127.0.0.1:8929:80 \
+            --shm-size=512m \
+            --env GITLAB_OMNIBUS_CONFIG \
+            gitlab/gitlab-ee:19.4.1-ee.0
+          docker inspect gitlab --format '{{.Image}}' > evidence/docker-image-id.txt
+          printf 'installation=Docker Omnibus\nimage=gitlab/gitlab-ee:19.4.1-ee.0\nbase=http://127.0.0.1:8929\n' > evidence/environment.txt
+
+      - name: Wait for running HTTP API
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 180); do
+            if curl -fsS --connect-timeout 3 --max-time 8 "http://127.0.0.1:8929/-/readiness" >/dev/null; then
+              echo "GitLab HTTP ready"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' gitlab)" != true ]; then
+              docker logs gitlab --tail 80
+              exit 1
+            fi
+            sleep 10
+          done
+          docker logs gitlab --tail 150
+          exit 1
+
+      - name: Prepare local administrator HTTP API authentication
+        run: |
+          set -euo pipefail
+          umask 077
+          docker exec gitlab gitlab-rails runner \
+            "u=User.find_by_username('root'); p=u.personal_access_tokens.create!(name: 'H1 disposable HTTP repro', scopes: [:api, :sudo], expires_at: Date.today + 1); puts p.token" \
+            > /tmp/h1-gitlab-live-tokens/root.pat
+          test -s /tmp/h1-gitlab-live-tokens/root.pat
+
+      - name: Exercise REST create-link-before-ban and post-ban anonymous GET
+        run: |
+          set -euo pipefail
+          python3 gitlab-live-api/live_api_repro.py
+
+      - name: Inspect actual hidden-target authorization state
+        if: always()
+        run: |
+          if test -f evidence/identifiers.json && docker ps --format '{{.Names}}' | grep -qx gitlab; then
+            TARGET="$(python3 -c 'import json;print(json.load(open("evidence/identifiers.json"))["target_one_id"])')"
+            docker exec gitlab gitlab-rails runner \
+              "require 'json'; e=Epic.find_by_id($TARGET); w=e&.work_item; puts JSON.generate({epic_exists: !!e, hidden: w&.hidden?, anonymously_readable: w ? Ability.allowed?(nil, :read_work_item, w) : nil})" \
+              > evidence/hidden-authorization.json || true
+          fi
+
+      - name: Preserve diagnostic logs from the disposable server
+        if: always()
+        run: |
+          if docker ps -a --format '{{.Names}}' | grep -qx gitlab; then
+            docker logs gitlab --tail 350 > evidence/gitlab-container.log 2>&1 || true
+            docker inspect gitlab --format '{{.State.Status}} {{.State.OOMKilled}}' \
+              > evidence/container-status.txt || true
+          fi
+
+      - name: Upload actual HTTP evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-19_4_1-live-http-evidence
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
