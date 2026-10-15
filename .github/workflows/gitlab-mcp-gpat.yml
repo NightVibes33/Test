@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - h1-gitlab-mcp-granular-token-bypass
+      - h1-gitlab-mcp-cross-user-boundary
 
 jobs:
   reproduce:
