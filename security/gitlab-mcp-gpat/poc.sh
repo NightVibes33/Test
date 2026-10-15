@@ -260,6 +260,103 @@ NOTES="$(api "$ROOT_TOKEN" GET "/projects/$PROJECT_ID/issues/$ISSUE_IID/notes")"
 printf '%s\n' "$NOTES" >"$OUT/notes-after.json"
 WRITE_COUNT="$(jq --arg body "$NOTE_BODY" '[.[] | select(.body == $body)] | length' <<<"$NOTES")"
 
+
+echo "===== CROSS-USER BOUNDARY: separate user with zero project membership ====="
+OUTSIDER_NAME="h1outsider$STAMP"
+OUTSIDER_USER="$(api "$ROOT_TOKEN" POST /users \
+  --data-urlencode "username=$OUTSIDER_NAME" \
+  --data-urlencode "name=H1 Outside Controlled Account" \
+  --data-urlencode "email=$OUTSIDER_NAME@example.test" \
+  --data-urlencode "password=H1!Outsider_Test_$STAMP" \
+  --data-urlencode "skip_confirmation=true")"
+OUTSIDER_ID="$(jq -r '.id' <<<"$OUTSIDER_USER")"
+test -n "$OUTSIDER_ID" && test "$OUTSIDER_ID" != null
+printf '%s\n' "$OUTSIDER_USER" > "$OUT/outsider-user.json"
+
+# The same local GPAT setup, now for a different controlled user who
+# has no membership or permission on this private project.
+OUTSIDER_SETUP="$(timeout 180s docker exec -e H1_USER_ID="$OUTSIDER_ID" "$CONTAINER" \
+  gitlab-rails runner /tmp/h1-create-mcp-gpat.rb)"
+OUTSIDER_GPAT="$(printf '%s\n' "$OUTSIDER_SETUP" | sed -n 's/^H1_GPAT=//p' | tail -1)"
+test -n "$OUTSIDER_GPAT"
+printf '%s\n' "$OUTSIDER_SETUP" | sed -E 's/(H1_GPAT=).*/\1[REDACTED]/' \
+  > "$OUT/outsider-gpat-scope.txt"
+
+OUTSIDER_DIRECT_STATUS="$(curl -sS -o "$OUT/outsider-direct-project.json" -w '%{http_code}' \
+  -H "PRIVATE-TOKEN: $OUTSIDER_GPAT" \
+  "$BASE/api/v4/projects/$PROJECT_ID")"
+printf '%s\n' "$OUTSIDER_DIRECT_STATUS" > "$OUT/outsider-direct-project-status.txt"
+
+OUTSIDER_MCP_PROJECT_BODY="$(jq -cn --arg p "$PROJECT_PATH" '{
+  jsonrpc:"2.0",id:"outsider-project",method:"tools/call",
+  params:{name:"get_project",arguments:{project_id:$p}}
+}')"
+OUTSIDER_MCP_PROJECT="$(curl -sS --max-time 60 -H "PRIVATE-TOKEN: $OUTSIDER_GPAT" \
+  -H 'Content-Type: application/json' --data-binary "$OUTSIDER_MCP_PROJECT_BODY" \
+  "$BASE/api/v4/mcp")"
+printf '%s\n' "$OUTSIDER_MCP_PROJECT" > "$OUT/outsider-mcp-get-project.json"
+OUTSIDER_PATH="$(jq -r '.result.structuredContent.path_with_namespace // empty' \
+  <<<"$OUTSIDER_MCP_PROJECT" 2>/dev/null || true)"
+if [[ -z "$OUTSIDER_PATH" ]]; then
+  OUTSIDER_PATH="$(jq -r '.result.content[0].text // empty' <<<"$OUTSIDER_MCP_PROJECT" \
+    2>/dev/null | jq -r '.path_with_namespace // empty' 2>/dev/null || true)"
+fi
+OUTSIDER_PROJECT_BYPASS=false
+if [[ "$OUTSIDER_PATH" == "$PROJECT_PATH" && "$OUTSIDER_DIRECT_STATUS" != 200 ]]; then
+  OUTSIDER_PROJECT_BYPASS=true
+fi
+
+OUTSIDER_MCP_FILE_BODY="$(jq -cn --arg p "$PROJECT_PATH" '{
+  jsonrpc:"2.0",id:"outsider-file",method:"tools/call",
+  params:{name:"get_repository_file",arguments:{
+    project_id:$p,file_path:"h1-private-fixture.txt",ref:"main"}}
+}')"
+OUTSIDER_MCP_FILE="$(curl -sS --max-time 60 -H "PRIVATE-TOKEN: $OUTSIDER_GPAT" \
+  -H 'Content-Type: application/json' --data-binary "$OUTSIDER_MCP_FILE_BODY" \
+  "$BASE/api/v4/mcp")"
+printf '%s\n' "$OUTSIDER_MCP_FILE" > "$OUT/outsider-mcp-get-file.json"
+OUTSIDER_FILE_BYPASS=false
+if grep -Fq "$FIXTURE_VALUE" <<<"$OUTSIDER_MCP_FILE"; then
+  OUTSIDER_FILE_BYPASS=true
+fi
+
+# Attempt one non-destructive write using a unique file in our own sandbox.
+OUTSIDER_WRITE_VALUE="H1_OUTSIDER_WRITE_$STAMP"
+OUTSIDER_MCP_COMMIT_BODY="$(jq -cn --arg p "$PROJECT_PATH" \
+  --arg b "$WRITE_BRANCH" --arg c "$OUTSIDER_WRITE_VALUE" '{
+  jsonrpc:"2.0",id:"outsider-commit",method:"tools/call",
+  params:{name:"add_commit",arguments:{
+    project_id:$p,branch:$b,
+    commit_message:"Owned lab unauthorized outsider control",
+    actions:[{action:"create",file_path:"h1-outsider-write-proof.txt",content:$c}]
+  }}
+}')"
+OUTSIDER_MCP_COMMIT="$(curl -sS --max-time 60 \
+  -H "PRIVATE-TOKEN: $OUTSIDER_GPAT" -H 'Content-Type: application/json' \
+  --data-binary "$OUTSIDER_MCP_COMMIT_BODY" "$BASE/api/v4/mcp")"
+printf '%s\n' "$OUTSIDER_MCP_COMMIT" > "$OUT/outsider-mcp-add-commit.json"
+OUTSIDER_WRITE_HTTP="$(curl -sS -o "$OUT/outsider-write-verify.txt" -w '%{http_code}' \
+  -H "PRIVATE-TOKEN: $ROOT_TOKEN" \
+  "$BASE/api/v4/projects/$PROJECT_ID/repository/files/h1-outsider-write-proof.txt/raw?ref=$WRITE_BRANCH")"
+OUTSIDER_WRITE_BYPASS=false
+if [[ "$OUTSIDER_WRITE_HTTP" == 200 ]] \
+  && grep -Fqx "$OUTSIDER_WRITE_VALUE" "$OUT/outsider-write-verify.txt"; then
+  OUTSIDER_WRITE_BYPASS=true
+fi
+
+printf 'outsider_direct_project_http=%s\noutsider_project_read=%s\noutsider_private_file_read=%s\noutsider_private_repo_write=%s\n' \
+  "$OUTSIDER_DIRECT_STATUS" "$OUTSIDER_PROJECT_BYPASS" \
+  "$OUTSIDER_FILE_BYPASS" "$OUTSIDER_WRITE_BYPASS" \
+  | tee "$OUT/cross-user-boundary-summary.txt"
+
+if [[ "$OUTSIDER_PROJECT_BYPASS" == true || "$OUTSIDER_FILE_BYPASS" == true || "$OUTSIDER_WRITE_BYPASS" == true ]]; then
+  echo "H1_CROSS_USER_RESULT=PRIVATE_PROJECT_CROSS_USER_BOUNDARY_BROKEN" \
+    | tee -a "$OUT/cross-user-boundary-summary.txt"
+else
+  echo "H1_CROSS_USER_RESULT=NO_CROSS_USER_BYPASS_OBSERVED" \
+    | tee -a "$OUT/cross-user-boundary-summary.txt"
+fi
+
 {
   echo "GitLab: 19.4.1-ee.0"
   echo "Project: $PROJECT_PATH"
