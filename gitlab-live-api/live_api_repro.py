@@ -34,7 +34,10 @@ def record_http(method, path, role="anonymous", payload=None):
     if body is not None:
         headers["Content-Type"] = "application/x-www-form-urlencoded"
     if role != "anonymous":
-        headers["PRIVATE-TOKEN"] = token(role)
+        headers["PRIVATE-TOKEN"] = token("root")
+        if role != "root":
+            with open(os.path.join(TOKENS, role + ".uid"), encoding="utf-8") as fh:
+                headers["Sudo"] = fh.read().strip()
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
@@ -92,16 +95,6 @@ try:
         }), [201], "create " + who + " user")
         with open(os.path.join(TOKENS, who + ".uid"), "w") as fh:
             fh.write(str(result["id"]))
-        # Tokens are provisioned via an actual GitLab Rails runner command
-        # in the workflow, without exposing token values in artifact/logs.
-        os.system("true")
-
-    # A GitLab Rails runner prepares the owner/author tokens in the prior
-    # shell orchestration step. They must exist before hitting the REST API.
-    for who in ("owner", "author"):
-        if not os.path.exists(os.path.join(TOKENS, who + ".pat")):
-            raise RuntimeError("Missing " + who + ".pat; provision account token before continuing")
-
     group = must(record_http("POST", "/groups", "owner", {
         "name": "H1 Repro " + marker, "path": "h1-" + marker.lower(),
         "visibility": "public",
