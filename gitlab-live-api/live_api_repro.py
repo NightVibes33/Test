@@ -136,6 +136,14 @@ try:
          [201, 200], "admin bans target author")
     after = must(record_http("GET", f"/groups/{gid}/related_epic_links"),
                  [200], "anonymous listing after ban")
+    target_direct_status, _ = record_http(
+        "GET", f"/groups/{gid}/epics/{target1['iid']}")
+    print("POST_BAN_ANONYMOUS_DIRECT_TARGET_STATUS:", target_direct_status, flush=True)
+    if target_direct_status not in (403, 404):
+        raise RuntimeError(
+            "Negative control failed: target remains directly readable "
+            f"anonymously (HTTP {target_direct_status}); no proven hidden-data exposure"
+        )
     attempt = relate(target2)
     print("POST-BAN linking result:", attempt[0], flush=True)
     leaked = marker + "-SECRET-DESCRIPTION-ONE" in json.dumps(after)
