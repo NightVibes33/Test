@@ -1,0 +1,29 @@
+services:
+  gitlab:
+    image: gitlab/gitlab-ee:19.4.1-ee.0
+    container_name: gitlab
+    restart: unless-stopped
+    hostname: gitlab.local
+    ports:
+      - "127.0.0.1:8929:80"
+    shm_size: 512m
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://127.0.0.1:8929'
+        nginx['listen_port'] = 80
+        puma['worker_processes'] = 2
+        sidekiq['concurrency'] = 8
+        prometheus_monitoring['enable'] = false
+        gitlab_exporter['enable'] = false
+        node_exporter['enable'] = false
+        redis_exporter['enable'] = false
+        postgres_exporter['enable'] = false
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+
+volumes:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
