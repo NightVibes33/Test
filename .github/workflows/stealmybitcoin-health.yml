@@ -28,7 +28,12 @@ jobs:
             https://raw.githubusercontent.com/KillaBoi/StealMyBitcoin-PoC/3244dd00ffc35ae23cb0aba2ee8536061e7ea516/stealmybitcoin_poc.py \
             -o stealmybitcoin_poc.py
           python3 -m py_compile stealmybitcoin_poc.py
-          printf '%s\n' '<?php' "header('Content-Type: text/plain');" 'echo "PHP ", PHP_VERSION, "\\n";' 'echo "PID: ", getmypid(), "\\n";' > public/php-version.php
+          cat > public/php-version.php <<'PHP'
+          <?php
+          header('Content-Type: text/plain');
+          echo 'PHP ', PHP_VERSION, "\n";
+          echo 'PID: ', getmypid(), "\n";
+          PHP
           printf '#!/bin/sh\nprintf "%s\\n" LOCAL_DUMMY_WIF_NEVER_USE\n' > print-flag
           chmod +x print-flag
           cat > nginx.conf <<'EOF'
