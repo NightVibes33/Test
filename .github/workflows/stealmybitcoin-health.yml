@@ -1,0 +1,25 @@
+name: CTF public endpoint smoke test
+on:
+  push:
+    branches: [ctf/stealmybitcoin-health-20261025]
+permissions:
+  contents: read
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check public challenge entry point (GET only)
+        shell: bash
+        run: |
+          set +e
+          curl --silent --show-error --max-time 20 \
+            --dump-header headers.txt --output body.txt \
+            https://stealmybitcoin.com/php-version.php
+          status=$?
+          echo "curl_exit=$status"
+          if [ "$status" -eq 0 ]; then
+            grep -iE '^(HTTP/|server:|x-powered-by:)' headers.txt || true
+            if grep -q -x 'PHP 8.4.26' body.txt; then echo 'verified_expected_version=true'; else echo 'verified_expected_version=false'; fi
+          fi
+          exit 0
