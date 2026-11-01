@@ -8,6 +8,7 @@ import os
 import pathlib
 import re
 import subprocess
+from boot_evidence import classify
 import sys
 
 def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest):
@@ -38,6 +39,9 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         answer["qemu_timed_out"] = True
     serial.write_text(output[-250000:], encoding="utf-8")
     answer["serial_bytes"] = len(output.encode("utf-8"))
+    # Native Apple bootstrapper logs use com.apple.xpc.launchd|, not launchd[PID].
+    # Preserve restore/userspace evidence without claiming regular HomeView ran.
+    answer.update(classify(output))
     answer["bootloader_banner_seen"] = "iBoot version: qemu-sptm" in output
     answer["image4_initialized"] = "Darwin Image4 Extension Version" in output
     answer["iokit_started"] = "IOService" in output or "AppleARMBacklight" in output
@@ -45,9 +49,10 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     answer["first_panic"] = next((line.strip() for line in output.splitlines()
                                  if line.startswith("panic(cpu ")), None)
     answer["dock_driver_started"] = "AppleDockConnectAIC::start()" in output
-    answer["launchd_seen"] = bool(re.search(r"(?:launchd\[\d+\]|launchd:)", output, re.I))
+    answer["launchd_seen"] = answer["apple_launchd_pid1_started"]
+    # This success gate is for REGULAR HomeView, not the OTA restore ramdisk.
     answer["boot_reached_userspace"] = bool(
-        answer["xnu_executed"] and answer["launchd_seen"] and not answer["first_panic"]
+        answer["normal_homeview_os_booted"] and not answer["first_panic"]
     )
     answer["serial_path"] = serial.name
     answer["debug_log"] = debug.name
@@ -84,6 +89,17 @@ def main():
         "native_breadboard_rendered": False, "native_setup_rendered": False,
         "boot_reached_userspace": any(x["boot_reached_userspace"] for x in attempts),
         "attempts": attempts, "best_evidence_variant": preferred["variant"],
+        "genuine_apple_restore_userspace_observed": any(
+            x["apple_restore_userspace_started"] for x in attempts
+        ),
+        "apple_nand_service_blocker_observed": any(
+            x["nand_service_wait_count"] > 0 for x in attempts
+        ),
+        "apple_framebuffer_blocker_observed": any(
+            x["framebuffer_missing_count"] > 0 for x in attempts
+        ),
+        "native_homeview_hello_verified": False,
+        "native_homeview_breadboard_verified": False,
     }
     (output_dir / "native-homeview-kernel-result.json").write_text(json.dumps(result, indent=2) + "\n")
     if not result["boot_reached_userspace"]:

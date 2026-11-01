@@ -106,3 +106,7 @@ The separate Linux EFI visual smoke test remains valid for its limited scope.
 GitHub Actions publishes the real x86 EFI framebuffer screenshot separately
 as `homeview-efi-vga-visual-proof`, so it can be inspected without downloading
 the multi-gigabyte USB image.
+
+## Genuine Apple restore userspace milestone (2026-11-01)
+
+Verified original HomeView 27.2 XNU, APFS root, Apple's launchd PID 1, patchd and ramrod under software QEMU ARM64 emulation. The normal Apple HomeView device is **NOT** booted: restore is waiting for NAND service and no framebuffer exists. See [original serial evidence](evidence/2026-11-01-restore-boot.md). CI tracks these as distinct stages with `scripts/boot_evidence.py`.

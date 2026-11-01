@@ -59,6 +59,8 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/dhinakg/aeota.git aeota
           make -C aeota -j2
+      - name: Validate evidence classifier before expensive firmware work
+        run: python3 -m unittest discover -s homeview-legacy/tests -p 'test_boot_evidence.py' -v
       - name: Resolve official HomeView OTA and key without logging the key
         run: |
           python3 - <<'PY'
