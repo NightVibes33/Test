@@ -1,0 +1,91 @@
+name: HomeView Legacy Boot - EFI and ARM TCG research
+
+on:
+  push:
+    branches:
+      - temp/homeview-legacy-boot
+    paths:
+      - '.github/workflows/homeview-legacy-boot.yml'
+      - 'homeview-legacy/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware-metadata:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        run: python3 -m unittest discover -s homeview-legacy/tests -v
+      - name: Verify real HomeView OTA metadata without downloading firmware
+        run: |
+          mkdir -p reports
+          python3 homeview-legacy/scripts/firmware_probe.py --output reports/firmware-preflight.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: homeview-firmware-preflight
+          path: reports/
+          if-no-files-found: ignore
+
+  intel-macos:
+    runs-on: macos-26-intel
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm Intel Mac host compatibility
+        run: |
+          uname -m
+          test "$(uname -m)" = x86_64
+          python3 -m unittest discover -s homeview-legacy/tests -v
+          echo "The Apple-Silicon-only vphone VM does not run on this runner."
+
+  arm-uefi-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM emulator and ARM UEFI
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-arm qemu-efi-aarch64
+      - name: Execute ARM64 UEFI in QEMU TCG
+        run: bash homeview-legacy/scripts/test-arm-uefi.sh arm64-uefi.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arm64-uefi-serial
+          path: arm64-uefi.log
+          if-no-files-found: ignore
+
+  usb-build-and-boot:
+    needs: firmware-metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install image builder and x86 UEFI emulation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap parted dosfstools e2fsprogs \
+            grub-efi-amd64-bin grub2-common qemu-system-x86 ovmf zstd
+      - name: Build real x86 EFI Linux USB image (not Apple firmware)
+        run: |
+          mkdir -p out
+          bash homeview-legacy/scripts/build-image.sh out/homeview-legacy.raw
+      - name: Boot entire USB under emulated Intel PC and check launcher
+        run: bash homeview-legacy/scripts/test-uefi.sh out/homeview-legacy.raw out/x86-uefi-serial.log
+      - name: Compress validated disk image
+        run: |
+          sha256sum out/homeview-legacy.raw > out/homeview-legacy.raw.sha256
+          zstd -T2 -5 --rm out/homeview-legacy.raw -o out/homeview-legacy.raw.zst
+      - uses: actions/upload-artifact@v4
+        name: Upload boot image and test logs
+        if: always()
+        with:
+          name: homeview-legacy-research-usb
+          path: out/
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 7
