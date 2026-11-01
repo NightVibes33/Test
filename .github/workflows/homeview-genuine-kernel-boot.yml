@@ -3,14 +3,31 @@ name: HomeView 27.2 - Experimental genuine Darwin kernel boot
 on:
   push:
     branches: [temp/homeview-legacy-boot]
-    paths: ['.github/workflows/homeview-genuine-kernel-boot.yml']
+    paths:
+      - '.github/workflows/homeview-genuine-kernel-boot.yml'
+      - 'homeview-legacy/scripts/probe_homeview_boot.py'
+      - 'homeview-legacy/scripts/boot_evidence.py'
+      - 'homeview-legacy/scripts/patch_homeview_dtree.py'
+      - 'homeview-legacy/tests/test_boot_evidence.py'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  fast-evidence-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate genuine HomeView boot evidence stages
+        run: |
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_boot_evidence.py' -v
+          python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
+          python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
+
   original-apple-kernel:
+    needs: fast-evidence-validation
     runs-on: xcode-27
     timeout-minutes: 85
     steps:
