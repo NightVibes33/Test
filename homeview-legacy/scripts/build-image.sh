@@ -68,6 +68,19 @@ sudo ln -sf /usr/lib/systemd/system/systemd-networkd.service "$ROOT/etc/systemd/
 sudo ln -sf /usr/lib/systemd/system/systemd-resolved.service "$ROOT/etc/systemd/system/multi-user.target.wants/systemd-resolved.service"
 sudo ln -sf /run/systemd/resolve/stub-resolv.conf "$ROOT/etc/resolv.conf"
 sudo install -m 0755 "$SCRIPT_DIR/launch-homeview.sh" "$ROOT/usr/local/bin/homeview-launch"
+sudo install -m 0755 "$SCRIPT_DIR/run-darwin.sh" "$ROOT/usr/local/bin/homeview-darwin"
+if [[ -n "${QEMU_SPTM_BIN:-}" ]]; then
+  [[ -x "$QEMU_SPTM_BIN" ]] || { echo "QEMU_SPTM_BIN not executable: $QEMU_SPTM_BIN" >&2; exit 1; }
+  sudo mkdir -p "$ROOT/opt/homeview/bin"
+  sudo install -m 0755 "$QEMU_SPTM_BIN" "$ROOT/opt/homeview/bin/qemu-system-aarch64-sptm"
+  sudo chroot "$ROOT" /opt/homeview/bin/qemu-system-aarch64-sptm -M help | grep -Eq '(^|[[:space:]])darwin([[:space:]]|$)' || {
+    echo "QEMU SPTM Darwin machine missing/binary dependency broken inside USB image" >&2
+    exit 1
+  }
+  echo "QEMU_SPTM_INSTALLED: Apple-specific Darwin emulator verified in USB rootfs"
+else
+  echo "QEMU_SPTM_NOT_BUNDLED: image is EFI Linux research boot only"
+fi
 cat <<'EOF' | sudo tee "$ROOT/etc/systemd/system/homeview-legacy.service" >/dev/null
 [Unit]
 Description=HomeView Legacy Research Launcher (no Apple firmware included)

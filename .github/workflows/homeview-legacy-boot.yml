@@ -61,23 +61,43 @@ jobs:
           path: arm64-uefi.log
           if-no-files-found: ignore
 
+  apple-emulator:
+    uses: ./.github/workflows/homeview-apple-emulator.yml
+
   usb-build-and-boot:
-    needs: firmware-metadata
+    needs: [firmware-metadata, apple-emulator]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Install image builder and x86 UEFI emulation tools
+      - name: Download compiled Apple-specific Darwin QEMU (same workflow)
+        uses: actions/download-artifact@v4
+        with:
+          name: apple-sptm-qemu-ubuntu2404-amd64
+          path: emulator
+      - name: Install image builder, video capture and x86 UEFI emulation tools
         run: |
           sudo apt-get update
           sudo apt-get install -y debootstrap parted dosfstools e2fsprogs \
-            grub-efi-amd64-bin grub2-common qemu-system-x86 ovmf zstd
+            grub-efi-amd64-bin grub2-common qemu-system-x86 ovmf zstd socat
       - name: Build real x86 EFI Linux USB image (not Apple firmware)
         run: |
           mkdir -p out
-          bash homeview-legacy/scripts/build-image.sh out/homeview-legacy.raw
+          QEMU_SPTM_BIN="$PWD/emulator/qemu-system-aarch64-sptm" \
+            bash homeview-legacy/scripts/build-image.sh out/homeview-legacy.raw
       - name: Boot entire USB under emulated Intel PC and check launcher
-        run: bash homeview-legacy/scripts/test-uefi.sh out/homeview-legacy.raw out/x86-uefi-serial.log
+        run: bash homeview-legacy/scripts/test-uefi.sh out/homeview-legacy.raw out/x86-uefi-serial.log out/x86-uefi-console.png
+      - name: Verify booted image has SPTM-capable Darwin emulator and visual evidence
+        run: |
+          test -s out/x86-uefi-console.png
+          python3 - <<'PY'
+          import json
+          report = json.load(open('out/x86-uefi-console.json'))
+          assert report['screen_is_synthetic'] is False
+          assert report['genuine_apple_homeview_breadboard'] is False
+          assert report['width'] > 0 and report['height'] > 0
+          print('QEMU host boot screenshot captured; genuine HomeView still unsupported')
+          PY
       - name: Compress validated disk image
         run: |
           sha256sum out/homeview-legacy.raw > out/homeview-legacy.raw.sha256
@@ -91,6 +111,8 @@ jobs:
             out/*.zst
             out/*.sha256
             out/*log
+            out/*.png
+            out/*.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -99,5 +121,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: homeview-legacy-failure-logs
-          path: out/*log
+          path: |
+            out/*log
+            out/*.png
+            out/*.json
           if-no-files-found: ignore

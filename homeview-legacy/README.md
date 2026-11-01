@@ -7,15 +7,26 @@ Goal: eventual boot of the GENUINE Apple HomeView 27.2 operating system
 ## What the branch actually implements
 
 A standalone x86_64 UEFI Linux host image with GRUB, kernel, ARM64
-QEMU TCG emulator, ARM UEFI, and explicit diagnostics. It is a real USB
+QEMU TCG emulator, ARM UEFI, the **actual compiled Apple-specific QEMU-SPTM**
+backend, and explicit diagnostics. The backend is installed into the USB
+root filesystem and its `darwin` machine is validated before release. It is a real USB
 disk image builder and CI boot harness, NOT yet a HomeView installer.
 
 Four CI stages:
 1. Check genuine Apple HomeView metadata and upstream BreadBoard bringup.
 2. Run tests on a real Intel macOS hosted runner.
 3. Start generic ARM64 UEFI in QEMU software emulation.
-4. Build a 5 GiB UEFI Linux disk, boot with QEMU x86 TCG, and assert
-   that the launcher service actually ran.
+4. Compile and bundle QEMU-SPTM with Apple Darwin emulation and test it
+   from inside the USB filesystem.
+5. Build a 5 GiB UEFI Linux disk, boot with QEMU x86 TCG, assert
+   that the launcher service actually ran, then capture an unmodified
+   screenshot from QEMU's **actual virtual VGA framebuffer**.
+
+The screenshot is named `x86-uefi-console.png`. It depicts the **Linux
+research-host console, not the genuine HomeView interface**. An adjacent
+JSON evidence report explicitly marks HomeView visual validation false.
+The current Apple Darwin machine only has serial output: it cannot supply
+BreadBoard framebuffer screenshots.
 
 Every stage states exactly what was tested. A successful workflow does
 not prove a genuine HomeView boot on an Intel host.
@@ -54,7 +65,9 @@ Select the temp/homeview-legacy-boot branch, then Run workflow.
 
 The resulting artifact, if the EFI smoke test passes, is named
 homeview-legacy-research-usb. It contains a compressed raw disk image,
-SHA-256 hash, and serial log. The firmware and ARM-UEFI jobs have separate
+SHA-256 hash, serial log, and a QEMU VGA screenshot PNG plus JSON origin
+metadata. The Apple-specific emulator is compiled separately and bundled
+*inside* the raw disk before boot tests. The firmware and ARM-UEFI jobs have separate
 reports. Artifact retention is 7 days.
 
 Manual Ubuntu 24.04 build (requires sudo, internet, and loop block devices):

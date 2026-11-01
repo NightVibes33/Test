@@ -1,12 +1,7 @@
 name: HomeView Research - Apple Silicon QEMU SPTM build
 
 on:
-  push:
-    branches:
-      - temp/homeview-legacy-boot
-    paths:
-      - '.github/workflows/homeview-apple-emulator.yml'
-      - 'homeview-legacy/scripts/run-darwin.sh'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
