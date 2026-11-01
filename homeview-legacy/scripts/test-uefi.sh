@@ -35,7 +35,7 @@ for ((i=0; i<240; i++)); do
     PPM="$TMP/console.ppm"
     # QEMU's own simulated VGA framebuffer, not a constructed dashboard.
     printf 'screendump %s\n' "$PPM" | timeout 8s socat - "UNIX-CONNECT:$MONITOR" >/dev/null 2>&1 || true
-    for ((j=0; j<20 && ! -s "$PPM"; j++)); do sleep 0.2; done
+    for ((j=0; j<30; j++)); do [[ -s "$PPM" ]] && break; sleep 0.2; done
     if [[ ! -s "$PPM" ]]; then
       echo "FAIL: QEMU could not supply a real VGA framebuffer screenshot" >&2
       exit 1
