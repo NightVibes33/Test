@@ -54,6 +54,17 @@ for ((i=0; i<240; i++)); do
       echo "FAIL: no guest memory evidence" >&2
       exit 1
     }
+    for evidence in \
+      SIMULATED_HDA_AUDIO_ENUMERATED=yes \
+      SIMULATED_USB_KEYBOARD_ENUMERATED=yes \
+      SIMULATED_USB_MOUSE_ENUMERATED=yes; do
+      if ! grep -Fq "$evidence" "$LOG"; then
+        echo "FAIL: simulated guest device missing: $evidence" >&2
+        tail -100 "$LOG" >&2
+        exit 1
+      fi
+    done
+    echo "PASS: guest enumerated real QEMU USB keyboard, USB mouse and HDA audio"
     echo "HOST_HARDWARE_AUDIT_CAPTURED: real guest device list saved in serial log"
     echo "SCREENSHOT_CAPTURED: $PNG (real QEMU x86 VGA, NOT HomeView)"
     echo "HomeView/BreadBoard on Intel remains UNVERIFIED."

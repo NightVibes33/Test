@@ -37,12 +37,12 @@ mkdir -p "$(dirname "$OUT")"
   else
     echo "SIMULATED_HDA_AUDIO_ENUMERATED=no"
   fi
-  if lsusb 2>/dev/null | grep -qi 'QEMU.*Keyboard'; then
+  if grep -sqi 'QEMU.*USB Keyboard' /sys/class/input/event*/device/name; then
     echo "SIMULATED_USB_KEYBOARD_ENUMERATED=yes"
   else
     echo "SIMULATED_USB_KEYBOARD_ENUMERATED=no"
   fi
-  if lsusb 2>/dev/null | grep -qi 'QEMU.*Mouse'; then
+  if grep -sqi 'QEMU.*USB Mouse' /sys/class/input/event*/device/name; then
     echo "SIMULATED_USB_MOUSE_ENUMERATED=yes"
   else
     echo "SIMULATED_USB_MOUSE_ENUMERATED=no"
