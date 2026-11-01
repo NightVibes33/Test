@@ -8,6 +8,8 @@ import os
 import pathlib
 import re
 import subprocess
+import select
+import time
 from boot_evidence import classify
 import sys
 
@@ -30,13 +32,52 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         "breadboard_gui_rendered": False,
         "homeview_setup_gui_rendered": False
     }
+    # Preserve real guest serial output; stop when repeated missing NAND and
+    # framebuffer messages make further waiting non-informative.
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    chunks = bytearray()
+    stop_reason = None
+    deadline = time.monotonic() + 150
     try:
-        proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=150)
-        output = proc.stdout.decode("utf-8", "replace")
-        answer["qemu_exit_status"] = proc.returncode
-    except subprocess.TimeoutExpired as exc:
-        output = (exc.stdout or b"").decode("utf-8", "replace")
-        answer["qemu_timed_out"] = True
+        os.set_blocking(proc.stdout.fileno(), False)
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([proc.stdout], [], [], 0.35)
+            if ready:
+                try:
+                    chunk = os.read(proc.stdout.fileno(), 65536)
+                except BlockingIOError:
+                    chunk = b""
+                if chunk:
+                    chunks.extend(chunk)
+            if proc.poll() is not None:
+                stop_reason = "emulator exited"
+                break
+            recent = bytes(chunks[-120000:]).decode("utf-8", "replace")
+            snapshot = classify(recent)
+            if (snapshot["apple_restore_userspace_started"]
+                and snapshot["nand_service_wait_count"] >= 3
+                and snapshot["framebuffer_missing_count"] >= 3):
+                stop_reason = "Apple restore userspace blocked: no NAND or framebuffer"
+                break
+            if (snapshot["first_kernel_panic"]
+                and "Nested panic count exceeds limit" in recent):
+                stop_reason = "XNU nested kernel panic"
+                break
+        else:
+            stop_reason = "150-second observation limit"
+            answer["qemu_timed_out"] = True
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+        try:
+            rest, _ = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            rest, _ = proc.communicate(timeout=5)
+        chunks.extend(rest or b"")
+    output = bytes(chunks).decode("utf-8", "replace")
+    answer["qemu_exit_status"] = proc.returncode
+    answer["observation_stop_reason"] = stop_reason
     serial.write_text(output[-250000:], encoding="utf-8")
     answer["serial_bytes"] = len(output.encode("utf-8"))
     # Native Apple bootstrapper logs use com.apple.xpc.launchd|, not launchd[PID].
