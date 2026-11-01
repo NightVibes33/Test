@@ -85,6 +85,41 @@ jobs:
           pathlib.Path('out/archive-inventory-summary.json').write_text(json.dumps(evidence,indent=2)+'\n')
           print(json.dumps(evidence,indent=2))
           PY
+      - name: Extract genuine HomeView boot payloads selectively for inspection
+        run: |
+          set +x
+          KEY="$(cat "$RUNNER_TEMP/homeview-key.txt")"
+          mkdir -p "$RUNNER_TEMP/homeview-boot"
+          ./aeota/aastuff_standalone -i "$RUNNER_TEMP/HomeView_27.2_24V514.aea" \
+            -o "$RUNNER_TEMP/homeview-boot" \
+            -r '(?i)^AssetData/boot/.*(kernelcache|deviceTree|sptm|txm|trustcache|systemVersion).*' \
+            -k "$KEY" > out/boot-extract.log 2>&1
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          base=pathlib.Path('out')
+          root=pathlib.Path(__import__('os').environ['RUNNER_TEMP'])/'homeview-boot'
+          files=[]
+          for path in root.rglob('*'):
+              if not path.is_file(): continue
+              h=hashlib.sha256()
+              with open(path,'rb') as source:
+                  while chunk:=source.read(4*1024*1024): h.update(chunk)
+              rel=str(path.relative_to(root))
+              files.append({'path':rel,'size':path.stat().st_size,'sha256':h.hexdigest(),
+                            'first_8_hex':path.read_bytes()[:8].hex()})
+          files.sort(key=lambda item:item['path'])
+          names=' '.join(x['path'].lower() for x in files)
+          result={'firmware':'HomeView 27.2 (24V514)', 'real_apple_archive_decrypted':True,
+             'boot_files_extracted':files,
+             'has_homeview_kernelcache':any('kernelcache.release.homeaccessory17' in x['path'].lower() for x in files),
+             'bootable_darwin_rootfs_available':False,
+             'apple_hello_and_breadboard_verified':False,
+             'copied_apple_payloads_to_artifacts':False}
+          (base/'boot-payloads-summary.json').write_text(json.dumps(result,indent=2)+'\n')
+          assert result['has_homeview_kernelcache'], 'HomeView kernelcache not actually extracted'
+          print(json.dumps({'extracted_paths':[i['path'] for i in files],
+                            'kernelcache_extracted':result['has_homeview_kernelcache']},indent=2))
+          PY
       - name: Remove copyrighted firmware and decryption key before publication
         if: always()
         run: |
@@ -96,6 +131,9 @@ jobs:
           name: homeview-genuine-ota-archive-inventory
           path: |
             out/archive-inventory-summary.json
+            out/archive-inventory.txt
+            out/boot-payloads-summary.json
+            out/boot-extract.log
             out/homeview-relevant-members.txt
             out/extractor-help.txt
           if-no-files-found: ignore
