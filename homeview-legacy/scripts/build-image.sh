@@ -104,7 +104,7 @@ EOF
 sudo mkdir -p "$ROOT/boot/efi/EFI/BOOT"
 sudo grub-mkstandalone --format=x86_64-efi \
   --output="$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI" \
-  --modules="part_gpt ext2 fat normal linux search search_fs_label serial" \
+  --modules="part_gpt ext2 fat normal linux search search_label serial" \
   "boot/grub/grub.cfg=$ROOT/boot/grub/grub.cfg"
 test -f "$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI"
 echo "EFI_STAGING_OK: bootloader, kernel, rootfs and service present"
