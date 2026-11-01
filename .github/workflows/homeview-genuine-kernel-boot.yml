@@ -94,7 +94,9 @@ jobs:
             "$DEST/dtree" "$DEST/dtree.qemu"
           test -s "$DEST/dtree.qemu"
           mv "$DEST/dtree.qemu" "$DEST/dtree"
-          echo "Applied upstream qemu-sptm device-tree fixups to the original HomeView J490 ADT."
+          python3 homeview-legacy/scripts/patch_homeview_dtree.py "$DEST/dtree" \
+            --upstream darwin-tools/dt_fixup.py --report out/homeview-dtree-dock-fixup.json
+          echo "Applied upstream and HomeView-specific J490 device-tree fixups."
           for f in bootkc dtree sptm txm ramdisk.tc ramdisk.dmg; do test -s "$DEST/$f"; done
           python3 - <<'PY'
           import hashlib,json,os,pathlib
@@ -116,8 +118,8 @@ jobs:
           args=[str(machine),'-M','darwin','-bootkc',str(root/'bootkc'),
             '-dtree',str(root/'dtree'),'-sptm',str(root/'sptm'),'-txm',str(root/'txm'),
             '-tc',str(root/'ramdisk.tc'),'-ramdisk',str(root/'ramdisk.dmg'),
-            '-args','rd=md0 serial=3 -v -noprogress wdt=-1',
-            '-m','2G','-nographic','-serial','mon:stdio']
+            '-args','rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1',
+            '-m','8G','-nographic','-serial','mon:stdio']
           result={'build':'HomeView 27.2 / 24V514', 'target':'HomeAccessory17,1 / J490',
              'boot_uses_actual_apple_homeview_firmware':True,'kernel_running':False,
              'breadboard_gui_rendered':False,'device_startup_gui_rendered':False}
@@ -130,13 +132,21 @@ jobs:
               result['qemu_timed_out']=True
           pathlib.Path('out/native-homeview-kernel-serial.log').write_text(output[-250000:])
           result['kernel_version_banner_seen']='Darwin Kernel Version' in output
+          result['xnu_kernel_executed']=(
+              'Darwin Image4 Extension Version' in output and
+              ('AppleARM' in output or 'IOService' in output))
+          result['kernel_panic_seen']='panic(cpu ' in output
+          result['kernel_panic_first_line']=next(
+              (line for line in output.splitlines() if line.startswith('panic(cpu ')), None)
+          result['apple_dock_connect_started']='AppleDockConnectAIC::start()' in output
           result['launchd_seen']='launchd' in output.lower()
-          result['kernel_running']=result['kernel_version_banner_seen']
+          result['boot_reached_userspace']=bool(result['launchd_seen'] and not result['kernel_panic_seen'])
+          result['kernel_running']=bool(result['xnu_kernel_executed'] and not result['kernel_panic_seen'])
           result['serial_excerpt']=output[-5000:]
           pathlib.Path('out/native-homeview-kernel-result.json').write_text(json.dumps(result,indent=2)+'\n')
           print(json.dumps({k:v for k,v in result.items() if k!='serial_excerpt'},indent=2))
-          if not result['kernel_version_banner_seen']:
-              raise SystemExit('Genuine HomeView kernel boot not confirmed. See serial log.')
+          if not result['boot_reached_userspace']:
+              raise SystemExit('HomeView XNU reached: %s; userspace launch remains blocked. See panic report.' % result['xnu_kernel_executed'])
           PY
       - name: Delete Apple system binaries and key from ephemeral runner
         if: always()
@@ -149,6 +159,7 @@ jobs:
           name: genuine-homeview-j490-darwin-boot-evidence
           path: |
             out/genuine-darwin-boot-inputs.json
+            out/homeview-dtree-dock-fixup.json
             out/native-homeview-kernel-result.json
             out/native-homeview-kernel-serial.log
             out/selective-extraction.log
