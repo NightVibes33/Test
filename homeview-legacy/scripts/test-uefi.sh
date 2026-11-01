@@ -19,6 +19,9 @@ MONITOR="$TMP/hmp.sock"
 timeout -s TERM 240s qemu-system-x86_64 -accel tcg,thread=multi \
   -machine q35 -cpu qemu64 -smp 2 -m 2048 \
   -vga std -display none -monitor "unix:$MONITOR,server=on,wait=off" -no-reboot \
+  -device qemu-xhci,id=usbhost -device usb-kbd,bus=usbhost.0 -device usb-mouse,bus=usbhost.0 \
+  -audiodev none,id=silent -device ich9-intel-hda -device hda-duplex,audiodev=silent \
+  -netdev user,id=nic0 -device virtio-net-pci,netdev=nic0 \
   -drive if=pflash,format=raw,readonly=on,file="$CODE" \
   -drive if=pflash,format=raw,file="$TMP/vars.fd" \
   -drive if=virtio,format=raw,file="$IMG" \
@@ -38,6 +41,20 @@ for ((i=0; i<240; i++)); do
       exit 1
     fi
     python3 homeview-legacy/scripts/ppm_to_png.py "$PPM" "$PNG"
+    # Require the guest OS's actual device enumeration, not a fake hardware report.
+    grep -Fq 'HOMEVIEW_HOST_HARDWARE_AUDIT_V1' "$LOG" || {
+      echo "FAIL: actual guest hardware audit never ran" >&2
+      exit 1
+    }
+    grep -Fq 'CPUArchitecture=x86_64' "$LOG" || {
+      echo "FAIL: no guest CPU architecture evidence" >&2
+      exit 1
+    }
+    grep -Fq 'RAMKiB=' "$LOG" || {
+      echo "FAIL: no guest memory evidence" >&2
+      exit 1
+    }
+    echo "HOST_HARDWARE_AUDIT_CAPTURED: real guest device list saved in serial log"
     echo "SCREENSHOT_CAPTURED: $PNG (real QEMU x86 VGA, NOT HomeView)"
     echo "HomeView/BreadBoard on Intel remains UNVERIFIED."
     exit 0

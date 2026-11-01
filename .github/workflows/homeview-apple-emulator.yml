@@ -13,7 +13,14 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+      - name: Restore pinned Darwin QEMU build cache
+        id: qemu-cache
+        uses: actions/cache@v4
+        with:
+          path: out
+          key: homeview-qemu-sptm-ubuntu24-bad6336f-v1
       - name: Install QEMU build prerequisites
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y git gcc g++ make ninja-build meson pkg-config \
@@ -21,11 +28,13 @@ jobs:
             libglib2.0-dev libpixman-1-dev libfdt-dev libslirp-dev \
             libcapstone-dev libgnutls28-dev libzstd-dev zlib1g-dev
       - name: Checkout pinned Apple Silicon emulation fork
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 https://github.com/jprx/qemu-sptm.git upstream-qemu
           git -C upstream-qemu checkout --detach bad6336fb24211f8c4e8e946c259bd5b12417340
           git -C upstream-qemu rev-parse HEAD
       - name: Compile ARM64 Apple machine backend without unsupported PVG
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
         run: |
           mkdir upstream-qemu/build
           cd upstream-qemu/build
@@ -34,6 +43,7 @@ jobs:
             --disable-gtk --disable-sdl
           make -j 4
       - name: Verify actual Darwin machine support and package license
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p out
           upstream-qemu/build/qemu-system-aarch64 -M help > out/available-machines.txt
@@ -44,6 +54,12 @@ jobs:
           ldd out/qemu-system-aarch64-sptm > out/dynamic-libraries.txt
           sha256sum out/qemu-system-aarch64-sptm > out/qemu-system-aarch64-sptm.sha256
           echo "Apple Darwin machine compiler check only: NO Apple firmware boot and NO GUI." > out/README.txt
+      - name: Confirm built or cached Apple machine
+        run: |
+          test -s out/qemu-system-aarch64-sptm
+          test -s out/dynamic-libraries.txt
+          sha256sum -c out/qemu-system-aarch64-sptm.sha256
+          grep -E '(^|[[:space:]])darwin([[:space:]]|$)' out/available-machines.txt
       - name: Upload Apple-hardware emulation binary (not Apple HomeView)
         if: success()
         uses: actions/upload-artifact@v4

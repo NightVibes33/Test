@@ -13,6 +13,8 @@ mkdir -p "$(dirname "$OUT")"
   echo "RAMKiB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
   echo "Kernel=$(uname -r)"
   if [[ -d /sys/firmware/efi ]]; then echo "EFI=yes"; else echo "EFI=no"; fi
+  udevadm settle --timeout=12 2>/dev/null || true
+  modprobe snd_hda_intel 2>/dev/null || true
   echo "GraphicsPCI:"
   lspci -nnk 2>/dev/null | grep -E -A3 'VGA compatible|3D controller|Display controller' || true
   echo "DRM:"
@@ -30,6 +32,21 @@ mkdir -p "$(dirname "$OUT")"
   aplay -l 2>&1 || true
   echo "SoundCards:"
   cat /proc/asound/cards 2>/dev/null || true
+  if aplay -l 2>/dev/null | grep -Eqi 'HDA|ICH|Intel'; then
+    echo "SIMULATED_HDA_AUDIO_ENUMERATED=yes"
+  else
+    echo "SIMULATED_HDA_AUDIO_ENUMERATED=no"
+  fi
+  if lsusb 2>/dev/null | grep -qi 'QEMU.*Keyboard'; then
+    echo "SIMULATED_USB_KEYBOARD_ENUMERATED=yes"
+  else
+    echo "SIMULATED_USB_KEYBOARD_ENUMERATED=no"
+  fi
+  if lsusb 2>/dev/null | grep -qi 'QEMU.*Mouse'; then
+    echo "SIMULATED_USB_MOUSE_ENUMERATED=yes"
+  else
+    echo "SIMULATED_USB_MOUSE_ENUMERATED=no"
+  fi
   echo "AudioOutputTest=not_performed_by_CI"
   echo "NetworkDevices:"
   ip -br link 2>/dev/null || true
