@@ -1,0 +1,102 @@
+name: HomeView 27.2 - Genuine AEA archive inventory
+
+on:
+  push:
+    branches: [temp/homeview-legacy-boot]
+    paths:
+      - '.github/workflows/homeview-ota-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-homeview-archive:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check macOS 27 ARM host and disk
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          df -h "$RUNNER_TEMP"
+          mkdir -p out
+      - name: Compile open source AppleArchive selective extractor
+        run: |
+          git clone --depth=1 https://github.com/dhinakg/aeota.git aeota
+          make -C aeota -j2
+          test -x aeota/aastuff_standalone
+          ./aeota/aastuff_standalone -h > out/extractor-help.txt 2>&1
+      - name: Read exact HomeView OTA source and decryption key from pinned upstream catalog
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, os, urllib.request, urllib.parse
+          source = 'https://raw.githubusercontent.com/Lakr233/vphone-cli/main/VPhoneKit/VPhoneCoreKit/Firmware/VPhoneFirmwareCatalog.swift'
+          with urllib.request.urlopen(source, timeout=30) as r:
+              catalog = r.read(1_000_000).decode()
+          m = re.search(r'productType:\s*"HomeAccessory17,1",\s*version:\s*"27\.2",\s*build:\s*"24V514",\s*url:\s*"([^"]+)",\s*size:\s*([\d_]+),\s*key:\s*"([^"]+)"', catalog)
+          assert m, 'Authentic pinned HomeView OTA not found'
+          url, size, key = m.group(1), int(m.group(2).replace('_','')), m.group(3)
+          assert urllib.parse.urlsplit(url).hostname == 'updates.cdn-apple.com'
+          assert size == 6509559808
+          import base64
+          assert len(base64.b64decode(key, validate=True)) == 32
+          pathlib.Path(os.environ['RUNNER_TEMP'],'homeview-url.txt').write_text(url)
+          pathlib.Path(os.environ['RUNNER_TEMP'],'homeview-key.txt').write_text(key)
+          print('HomeAccessory17,1 / HomeView 27.2 / 24V514: official OTA source and 32-byte key ready')
+          PY
+      - name: Check disk budget for actual 6.5 GB archive download
+        run: |
+          FREE_KB=$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')
+          echo "Available disk KiB: $FREE_KB"
+          if [ "$FREE_KB" -lt 8500000 ]; then
+            echo "ERROR: Not enough free disk for official 6.5 GB AEA and indexing; runner is too small"
+            exit 1
+          fi
+      - name: Download entire genuine HomeView encrypted OTA from Apple
+        run: |
+          URL="$(cat "$RUNNER_TEMP/homeview-url.txt")"
+          curl --fail --location --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 2400 \
+            --output "$RUNNER_TEMP/HomeView_27.2_24V514.aea" "$URL"
+          ACTUAL="$(stat -f %z "$RUNNER_TEMP/HomeView_27.2_24V514.aea")"
+          test "$ACTUAL" = 6509559808
+          echo "Downloaded authentic 6,509,559,808-byte Apple encrypted OTA to temporary workspace"
+      - name: Decrypt and enumerate original Apple HomeView archive members (no extraction)
+        run: |
+          set +x
+          KEY="$(cat "$RUNNER_TEMP/homeview-key.txt")"
+          ./aeota/aastuff_standalone -i "$RUNNER_TEMP/HomeView_27.2_24V514.aea" \
+            -l -k "$KEY" > out/archive-inventory.txt 2>&1
+          echo "Original archive inventory line count: $(wc -l < out/archive-inventory.txt)"
+          grep -E 'HomeView|BreadBoard|Setup|KernelCache|kernelcache|SystemVersion' \
+            out/archive-inventory.txt | head -100 > out/homeview-relevant-members.txt || true
+          test -s out/archive-inventory.txt
+          sha256sum "$RUNNER_TEMP/HomeView_27.2_24V514.aea" > out/original-ota-sha256-local.txt
+          python3 - <<'PY'
+          import json, pathlib
+          items=pathlib.Path('out/archive-inventory.txt').read_text(errors='replace').splitlines()
+          needles=['HomeView','BreadBoard','Setup','kernelcache']
+          evidence={'firmware':'HomeAccessory17,1 / 27.2 / 24V514', 'archive_members_listed':len(items),
+           'matches': {needle:sum(needle.lower() in x.lower() for x in items) for needle in needles},
+           'genuine_homeview_userland_boot_verified':False,
+           'genuine_homeview_graphics_verified':False,
+           'firmware_uploaded':False}
+          pathlib.Path('out/archive-inventory-summary.json').write_text(json.dumps(evidence,indent=2)+'\n')
+          print(json.dumps(evidence,indent=2))
+          PY
+      - name: Remove copyrighted firmware and decryption key before publication
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/HomeView_27.2_24V514.aea" "$RUNNER_TEMP/homeview-key.txt" "$RUNNER_TEMP/homeview-url.txt"
+      - name: Upload text evidence only (no Apple binaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-genuine-ota-archive-inventory
+          path: |
+            out/archive-inventory-summary.json
+            out/homeview-relevant-members.txt
+            out/extractor-help.txt
+          if-no-files-found: ignore
+          retention-days: 7
