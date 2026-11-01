@@ -27,7 +27,7 @@ jobs:
         run: |
           brew install blacktop/tap/ipsw || brew install ipsw
           brew install glib pixman capstone dtc libslirp gnutls pkg-config ninja meson
-          ipsw --version
+          ipsw --help >/dev/null
       - name: Build Apple-specific QEMU TCG Darwin backend on macOS
         run: |
           git clone --depth 1 https://github.com/jprx/qemu-sptm.git emulator
