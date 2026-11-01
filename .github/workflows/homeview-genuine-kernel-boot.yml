@@ -1,0 +1,149 @@
+name: HomeView 27.2 - Experimental genuine Darwin kernel boot
+
+on:
+  push:
+    branches: [temp/homeview-legacy-boot]
+    paths: ['.github/workflows/homeview-genuine-kernel-boot.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-apple-kernel:
+    runs-on: xcode-27
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm Apple Silicon macOS 27 host and space
+        run: |
+          uname -m
+          sw_vers
+          test "$(uname -m)" = arm64
+          test "$(sw_vers -productVersion | cut -d. -f1)" = 27
+          df -h "$RUNNER_TEMP"
+          mkdir -p out
+      - name: Install Apple IMG4 and QEMU build prerequisites
+        run: |
+          brew install blacktop/tap/ipsw || brew install ipsw
+          brew install glib pixman capstone dtc libslirp gnutls pkg-config ninja meson
+          ipsw --version
+      - name: Build Apple-specific QEMU TCG Darwin backend on macOS
+        run: |
+          git clone --depth 1 https://github.com/jprx/qemu-sptm.git emulator
+          git -C emulator checkout --detach bad6336fb24211f8c4e8e946c259bd5b12417340
+          mkdir emulator/build
+          cd emulator/build
+          ../configure --target-list=aarch64-softmmu --disable-pvg --disable-werror \
+            --disable-docs --disable-gtk --disable-sdl
+          make -j 3
+          ./qemu-system-aarch64 -M help | grep -E '(^|[[:space:]])darwin([[:space:]]|$)'
+      - name: Build selective Apple AEA extractor
+        run: |
+          git clone --depth 1 https://github.com/dhinakg/aeota.git aeota
+          make -C aeota -j2
+      - name: Resolve official HomeView OTA and key without logging the key
+        run: |
+          python3 - <<'PY'
+          import base64,os,pathlib,re,urllib.request,urllib.parse
+          with urllib.request.urlopen('https://raw.githubusercontent.com/Lakr233/vphone-cli/main/VPhoneKit/VPhoneCoreKit/Firmware/VPhoneFirmwareCatalog.swift',timeout=30) as f:
+              text=f.read(1000000).decode()
+          match=re.search(r'productType:\s*"HomeAccessory17,1",\s*version:\s*"27\.2",\s*build:\s*"24V514",\s*url:\s*"([^"]+)",\s*size:\s*([\d_]+),\s*key:\s*"([^"]+)"',text)
+          assert match,'Official HomeView OTA missing'
+          url,size,key=match.group(1),int(match.group(2).replace('_','')),match.group(3)
+          assert size==6509559808 and urllib.parse.urlsplit(url).hostname=='updates.cdn-apple.com'
+          assert len(base64.b64decode(key,validate=True))==32
+          tmp=pathlib.Path(os.environ['RUNNER_TEMP'])
+          (tmp/'hv-url').write_text(url)
+          (tmp/'hv-key').write_text(key)
+          print('Verified HomeView 27.2/24V514 source and official AEA key')
+          PY
+      - name: Check capacity and fetch actual 6.5GB Apple signed HomeView firmware
+        run: |
+          FREE_KB="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          test "$FREE_KB" -ge 8500000
+          curl -fL --retry 3 --connect-timeout 30 --max-time 2400 \
+            -o "$RUNNER_TEMP/HomeView.aea" "$(cat "$RUNNER_TEMP/hv-url")"
+          test "$(stat -f %z "$RUNNER_TEMP/HomeView.aea")" = 6509559808
+      - name: Extract authentic J490 kernel, device tree, trustcache, SPTM and TXM
+        run: |
+          set +x
+          KEY="$(cat "$RUNNER_TEMP/hv-key")"
+          mkdir -p "$RUNNER_TEMP/hv-extracted" "$RUNNER_TEMP/hv-firmware"
+          ./aeota/aastuff_standalone -i "$RUNNER_TEMP/HomeView.aea" \
+            -o "$RUNNER_TEMP/hv-extracted" \
+            -r '^AssetData/boot/(kernelcache.release.homeaccessory17|Firmware/all_flash/DeviceTree.j490ap.im4p|Firmware/sptm.t8140.release.im4p|Firmware/txm.appletvos.release.im4p|141-21782-189.dmg|Firmware/141-21782-189.dmg.trustcache)$' \
+            -k "$KEY" > out/selective-extraction.log 2>&1
+          BASE="$RUNNER_TEMP/hv-extracted/AssetData/boot"
+          DEST="$RUNNER_TEMP/hv-firmware"
+          test -s "$BASE/kernelcache.release.homeaccessory17"
+          test -s "$BASE/Firmware/all_flash/DeviceTree.j490ap.im4p"
+          test -s "$BASE/Firmware/sptm.t8140.release.im4p"
+          test -s "$BASE/Firmware/txm.appletvos.release.im4p"
+          test -s "$BASE/141-21782-189.dmg"
+          test -s "$BASE/Firmware/141-21782-189.dmg.trustcache"
+          ipsw img4 im4p extract "$BASE/kernelcache.release.homeaccessory17" -o "$DEST/bootkc"
+          ipsw img4 im4p extract "$BASE/Firmware/all_flash/DeviceTree.j490ap.im4p" -o "$DEST/dtree"
+          ipsw img4 im4p extract "$BASE/Firmware/sptm.t8140.release.im4p" -o "$DEST/sptm"
+          ipsw img4 im4p extract "$BASE/Firmware/txm.appletvos.release.im4p" -o "$DEST/txm"
+          ipsw img4 im4p extract "$BASE/Firmware/141-21782-189.dmg.trustcache" -o "$DEST/ramdisk.tc"
+          cp "$BASE/141-21782-189.dmg" "$DEST/ramdisk.dmg"
+          for f in bootkc dtree sptm txm ramdisk.tc ramdisk.dmg; do test -s "$DEST/$f"; done
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'hv-firmware'
+          files={}
+          for path in root.iterdir():
+              if path.is_file():
+                  with path.open('rb') as f: prefix=f.read(16)
+                  files[path.name]={'bytes':path.stat().st_size,'first16':prefix.hex()}
+          pathlib.Path('out/genuine-darwin-boot-inputs.json').write_text(json.dumps(files,indent=2)+'\n')
+          print(json.dumps(files,indent=2))
+          PY
+      - name: Attempt boot of actual HomeView kernel using Apple-hardware QEMU (serial only)
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib,subprocess
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'hv-firmware'
+          machine=pathlib.Path('emulator/build/qemu-system-aarch64').resolve()
+          args=[str(machine),'-M','darwin','-bootkc',str(root/'bootkc'),
+            '-dtree',str(root/'dtree'),'-sptm',str(root/'sptm'),'-txm',str(root/'txm'),
+            '-tc',str(root/'ramdisk.tc'),'-ramdisk',str(root/'ramdisk.dmg'),
+            '-args','rd=md0 serial=3 -v -noprogress wdt=-1',
+            '-m','2G','-nographic','-serial','mon:stdio']
+          result={'build':'HomeView 27.2 / 24V514', 'target':'HomeAccessory17,1 / J490',
+             'boot_uses_actual_apple_homeview_firmware':True,'kernel_running':False,
+             'breadboard_gui_rendered':False,'device_startup_gui_rendered':False}
+          try:
+              run=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=150)
+              output=run.stdout.decode('utf-8','replace')
+              result['qemu_return_code']=run.returncode
+          except subprocess.TimeoutExpired as e:
+              output=(e.stdout or b'').decode('utf-8','replace')
+              result['qemu_timed_out']=True
+          pathlib.Path('out/native-homeview-kernel-serial.log').write_text(output[-250000:])
+          result['kernel_version_banner_seen']='Darwin Kernel Version' in output
+          result['launchd_seen']='launchd' in output.lower()
+          result['kernel_running']=result['kernel_version_banner_seen']
+          result['serial_excerpt']=output[-5000:]
+          pathlib.Path('out/native-homeview-kernel-result.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in result.items() if k!='serial_excerpt'},indent=2))
+          if not result['kernel_version_banner_seen']:
+              raise SystemExit('Genuine HomeView kernel boot not confirmed. See serial log.')
+          PY
+      - name: Delete Apple system binaries and key from ephemeral runner
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/HomeView.aea" "$RUNNER_TEMP/hv-extracted" "$RUNNER_TEMP/hv-firmware" "$RUNNER_TEMP/hv-key" "$RUNNER_TEMP/hv-url"
+      - name: Publish diagnostic logs and metadata only, never Apple binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genuine-homeview-j490-darwin-boot-evidence
+          path: |
+            out/genuine-darwin-boot-inputs.json
+            out/native-homeview-kernel-result.json
+            out/native-homeview-kernel-serial.log
+            out/selective-extraction.log
+          if-no-files-found: ignore
+          retention-days: 7
