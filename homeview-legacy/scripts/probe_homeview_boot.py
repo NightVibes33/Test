@@ -38,7 +38,12 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     }
     # Preserve real guest serial output; stop when repeated missing NAND and
     # framebuffer messages make further waiting non-informative.
-    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    env = os.environ.copy()
+    # Only the first J490 boot uses the new MMIO diagnostics; control cases
+    # retain the original upstream QEMU hardware behavior.
+    if name == "software-update-dock-removed":
+        env["HOMEVIEW_MMIO_TRACE"] = "1"
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     chunks = bytearray()
     screen_result = None
     stop_reason = None
@@ -86,6 +91,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     output = bytes(chunks).decode("utf-8", "replace")
     answer["qemu_exit_status"] = proc.returncode
     answer["observation_stop_reason"] = stop_reason
+    answer["experimental_ans_dcp_mmio_trace"] = name == "software-update-dock-removed"
     answer["qemu_real_framebuffer_probe"] = screen_result or {
         "guest_framebuffer_captured": False,
         "apple_setup_or_breadboard_verified": False,

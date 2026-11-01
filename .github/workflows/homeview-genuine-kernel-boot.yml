@@ -25,6 +25,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_boot_evidence.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_adt_hardware.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_real_guest_screen.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_mmio_trace_patch.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -58,6 +59,7 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/jprx/qemu-sptm.git emulator
           git -C emulator checkout --detach bad6336fb24211f8c4e8e946c259bd5b12417340
+          python3 homeview-legacy/scripts/patch_qemu_mmio_trace.py emulator/hw/arm/darwin.c
           mkdir emulator/build
           cd emulator/build
           ../configure --target-list=aarch64-softmmu --disable-pvg --disable-werror \
