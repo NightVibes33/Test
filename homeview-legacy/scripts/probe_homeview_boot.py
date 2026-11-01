@@ -30,7 +30,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         "homeview_setup_gui_rendered": False
     }
     try:
-        proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=75)
+        proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=150)
         output = proc.stdout.decode("utf-8", "replace")
         answer["qemu_exit_status"] = proc.returncode
     except subprocess.TimeoutExpired as exc:
@@ -38,6 +38,8 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         answer["qemu_timed_out"] = True
     serial.write_text(output[-250000:], encoding="utf-8")
     answer["serial_bytes"] = len(output.encode("utf-8"))
+    answer["bootloader_banner_seen"] = "iBoot version: qemu-sptm" in output
+    answer["image4_initialized"] = "Darwin Image4 Extension Version" in output
     answer["iokit_started"] = "IOService" in output or "AppleARMBacklight" in output
     answer["xnu_executed"] = ("Darwin Image4 Extension Version" in output and answer["iokit_started"])
     answer["first_panic"] = next((line.strip() for line in output.splitlines()
@@ -60,9 +62,10 @@ def main():
     machine = pathlib.Path("emulator/build/qemu-system-aarch64").resolve()
     attempts = []
     for name, path, ramdisk, trustcache in [
-        ("su-ramdisk-dock-removed", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
-        ("su-ramdisk-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
-        ("restore-ramdisk-control", root / "dtree", root / "ramdisk.dmg", root / "ramdisk.tc"),
+        ("baseline-restore", root / "dtree.baseline", root / "ramdisk.dmg", root / "ramdisk.tc"),
+        ("baseline-software-update", root / "dtree.baseline", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("software-update-dock-removed", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("software-update-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
     ]:
         if not path.exists() or not path.stat().st_size:
             raise SystemExit("Missing real device-tree variant " + str(path))
