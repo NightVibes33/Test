@@ -56,7 +56,7 @@ sudo mount --bind /dev/pts "$ROOT/dev/pts"
 sudo mount -t proc proc "$ROOT/proc"
 sudo mount -t sysfs sysfs "$ROOT/sys"
 sudo env DEBIAN_FRONTEND=noninteractive chroot "$ROOT" /bin/bash -c \
-  'apt-get update && apt-get install -y --no-install-recommends systemd-sysv systemd-resolved initramfs-tools linux-image-generic qemu-system-arm qemu-efi-aarch64 qemu-system-gui qemu-utils iproute2 kmod ca-certificates dbus udev pciutils xserver-xorg-core xinit xauth xserver-xorg-video-all xserver-xorg-input-all'
+  'apt-get update && apt-get install -y --no-install-recommends systemd-sysv systemd-resolved initramfs-tools linux-image-generic qemu-system-arm qemu-efi-aarch64 qemu-system-gui qemu-utils iproute2 kmod ca-certificates dbus udev pciutils xserver-xorg-core xinit xauth xserver-xorg-video-all xserver-xorg-input-all linux-firmware alsa-utils usbutils libinput-tools network-manager mesa-utils'
 sudo mkdir -p "$ROOT/etc/systemd/network" "$ROOT/etc/systemd/system/multi-user.target.wants" "$ROOT/opt/homeview" "$ROOT/var/log/homeview"
 cat <<'EOF' | sudo tee "$ROOT/etc/systemd/network/20-wired.network" >/dev/null
 [Match]
@@ -69,6 +69,7 @@ sudo ln -sf /usr/lib/systemd/system/systemd-resolved.service "$ROOT/etc/systemd/
 sudo ln -sf /run/systemd/resolve/stub-resolv.conf "$ROOT/etc/resolv.conf"
 sudo install -m 0755 "$SCRIPT_DIR/launch-homeview.sh" "$ROOT/usr/local/bin/homeview-launch"
 sudo install -m 0755 "$SCRIPT_DIR/run-darwin.sh" "$ROOT/usr/local/bin/homeview-darwin"
+sudo install -m 0755 "$SCRIPT_DIR/hardware-audit.sh" "$ROOT/usr/local/bin/homeview-hardware-audit"
 if [[ -n "${QEMU_SPTM_BIN:-}" ]]; then
   [[ -x "$QEMU_SPTM_BIN" ]] || { echo "QEMU_SPTM_BIN not executable: $QEMU_SPTM_BIN" >&2; exit 1; }
   sudo mkdir -p "$ROOT/opt/homeview/bin"
@@ -84,7 +85,7 @@ fi
 cat <<'EOF' | sudo tee "$ROOT/etc/systemd/system/homeview-legacy.service" >/dev/null
 [Unit]
 Description=HomeView Legacy Research Launcher (no Apple firmware included)
-After=local-fs.target systemd-udevd.service
+After=local-fs.target systemd-udevd.service homeview-hardware-audit.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
@@ -95,6 +96,20 @@ TimeoutStartSec=0
 [Install]
 WantedBy=multi-user.target
 EOF
+cat <<'EOF' | sudo tee "$ROOT/etc/systemd/system/homeview-hardware-audit.service" >/dev/null
+[Unit]
+Description=Discover actual Intel iMac CPU GPU USB HID sound network and memory
+After=systemd-udevd.service
+Before=homeview-legacy.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/homeview-hardware-audit /var/log/homeview/hardware-audit.txt
+StandardOutput=journal+console
+StandardError=journal+console
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo ln -sf /etc/systemd/system/homeview-hardware-audit.service "$ROOT/etc/systemd/system/multi-user.target.wants/homeview-hardware-audit.service"
 sudo ln -sf /etc/systemd/system/homeview-legacy.service "$ROOT/etc/systemd/system/multi-user.target.wants/homeview-legacy.service"
 sudo mkdir -p "$ROOT/boot/grub"
 KERNEL=$(find "$ROOT/boot" -maxdepth 1 -type f -name 'vmlinuz-*' | sort -V | tail -1)
@@ -120,5 +135,5 @@ sudo grub-mkstandalone --format=x86_64-efi \
   --modules="part_gpt ext2 fat normal linux search search_label serial" \
   "boot/grub/grub.cfg=$ROOT/boot/grub/grub.cfg"
 test -f "$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI"
-echo "EFI_STAGING_OK: bootloader, kernel, rootfs and service present"
+echo "EFI_STAGING_OK: bootloader, kernel, input/audio/USB drivers, hardware audit and Darwin emulator present"
 sync

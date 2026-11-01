@@ -91,3 +91,18 @@ not a usable HomeView operating system.
 - Measure performance on the dual-core 2010 Intel processor.
 
 None of these milestones is claimed complete by this branch.
+
+## Strict genuine HomeView startup validation
+
+The `native_startup_gate.py` script requires original native Apple screenshots
+of boot logo, Hello, Hold iPhone Nearby, and the BreadBoard dashboard, plus
+guest identity/build, verified genuine Apple processes and physical hardware
+checks for USB, speakers, keyboard, mouse, GPU, CPU, RAM, Wi-Fi and Bluetooth.
+
+This gate currently generates `BLOCKED`, not a false green. It will stay
+blocked until an actual Apple HomeView guest can render those phases on Intel.
+The separate Linux EFI visual smoke test remains valid for its limited scope.
+
+GitHub Actions publishes the real x86 EFI framebuffer screenshot separately
+as `homeview-efi-vga-visual-proof`, so it can be inspected without downloading
+the multi-gigabyte USB image.

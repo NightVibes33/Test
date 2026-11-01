@@ -61,6 +61,27 @@ jobs:
           path: arm64-uefi.log
           if-no-files-found: ignore
 
+  native-homeview-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for original Apple SetupAssistant + BreadBoard screenshots
+        run: |
+          python3 homeview-legacy/scripts/native_startup_gate.py \
+            --evidence native-evidence --output native-homeview-gate.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open('native-homeview-gate.json'))
+          print('Native HomeView status:', data['result'])
+          assert data['native_homeview_verified'] is False, 'Unexpected unreviewed assertion: HomeView native'
+          PY
+      - name: Publish explicit blocked/pass report
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-native-acceptance-status
+          path: native-homeview-gate.json
+
   apple-emulator:
     uses: ./.github/workflows/homeview-apple-emulator.yml
 
@@ -98,6 +119,16 @@ jobs:
           assert report['width'] > 0 and report['height'] > 0
           print('QEMU host boot screenshot captured; genuine HomeView still unsupported')
           PY
+      - name: Upload real QEMU VGA screenshot separately for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-efi-vga-visual-proof
+          path: |
+            out/x86-uefi-console.png
+            out/x86-uefi-console.json
+            out/x86-uefi-serial.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Compress validated disk image
         run: |
           sha256sum out/homeview-legacy.raw > out/homeview-legacy.raw.sha256
