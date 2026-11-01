@@ -56,7 +56,7 @@ sudo mount --bind /dev/pts "$ROOT/dev/pts"
 sudo mount -t proc proc "$ROOT/proc"
 sudo mount -t sysfs sysfs "$ROOT/sys"
 sudo env DEBIAN_FRONTEND=noninteractive chroot "$ROOT" /bin/bash -c \
-  'apt-get update && apt-get install -y --no-install-recommends systemd-sysv systemd-resolved initramfs-tools linux-image-generic qemu-system-arm qemu-efi-aarch64 qemu-system-gui qemu-utils iproute2 kmod ca-certificates dbus udev pciutils xserver-xorg-core xinit xauth xserver-xorg-video-all xserver-xorg-input-all linux-firmware alsa-utils usbutils libinput-tools network-manager mesa-utils'
+  'apt-get update && apt-get install -y --no-install-recommends systemd-sysv systemd-resolved initramfs-tools linux-image-generic qemu-system-arm qemu-efi-aarch64 qemu-system-gui qemu-utils iproute2 kmod ca-certificates dbus udev pciutils xserver-xorg-core xinit xauth xserver-xorg-video-all xserver-xorg-input-all linux-firmware alsa-utils usbutils libinput-tools network-manager mesa-utils libcapstone4 libslirp0 libfdt1 libpixman-1-0 libgnutls30t64'
 sudo mkdir -p "$ROOT/etc/systemd/network" "$ROOT/etc/systemd/system/multi-user.target.wants" "$ROOT/opt/homeview" "$ROOT/var/log/homeview"
 cat <<'EOF' | sudo tee "$ROOT/etc/systemd/network/20-wired.network" >/dev/null
 [Match]

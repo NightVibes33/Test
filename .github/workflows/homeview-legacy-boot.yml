@@ -98,10 +98,17 @@ jobs:
         with:
           name: apple-sptm-qemu-ubuntu2404-amd64
           path: emulator
-      - name: Restore executable bit stripped by artifact ZIP
+      - name: Restore permission, install runtime libraries, and check Darwin QEMU
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libcapstone4 libslirp0 libfdt1 libpixman-1-0 libgnutls30t64
           test -s emulator/qemu-system-aarch64-sptm
           chmod 755 emulator/qemu-system-aarch64-sptm
+          ldd emulator/qemu-system-aarch64-sptm | tee emulator/ldd-on-builder.txt
+          if grep -q 'not found' emulator/ldd-on-builder.txt; then
+            echo "Unresolved QEMU ELF dependency on builder"
+            exit 1
+          fi
           ./emulator/qemu-system-aarch64-sptm -M help | grep -Eq '(^|[[:space:]])darwin([[:space:]]|$)'
       - name: Install image builder, video capture and x86 UEFI emulation tools
         run: |
