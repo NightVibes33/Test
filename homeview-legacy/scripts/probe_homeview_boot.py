@@ -10,15 +10,15 @@ import re
 import subprocess
 import sys
 
-def run_variant(machine, firmware, name, device_tree, dest):
+def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest):
     dest.mkdir(parents=True, exist_ok=True)
     debug = dest / ("qemu-" + name + ".log")
     serial = dest / ("native-homeview-" + name + "-serial.log")
     argv = [
         str(machine), "-M", "darwin", "-bootkc", str(firmware / "bootkc"),
         "-dtree", str(device_tree), "-sptm", str(firmware / "sptm"),
-        "-txm", str(firmware / "txm"), "-tc", str(firmware / "ramdisk.tc"),
-        "-ramdisk", str(firmware / "ramdisk.dmg"),
+        "-txm", str(firmware / "txm"), "-tc", str(trustcache),
+        "-ramdisk", str(ramdisk),
         "-args", "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1",
         "-m", "2G", "-nographic", "-serial", "mon:stdio",
         "-d", "guest_errors,unimp", "-D", str(debug)
@@ -59,14 +59,17 @@ def main():
     output_dir = pathlib.Path("out")
     machine = pathlib.Path("emulator/build/qemu-system-aarch64").resolve()
     attempts = []
-    for name, path in [
-        ("dock-removed", root / "dtree"),
-        ("dock-neutralized", root / "dtree.neutralized"),
-        ("baseline-control", root / "dtree.baseline")
+    for name, path, ramdisk, trustcache in [
+        ("su-ramdisk-dock-removed", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("su-ramdisk-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("restore-ramdisk-control", root / "dtree", root / "ramdisk.dmg", root / "ramdisk.tc"),
     ]:
         if not path.exists() or not path.stat().st_size:
             raise SystemExit("Missing real device-tree variant " + str(path))
-        attempts.append(run_variant(machine, root, name, path, output_dir))
+        for required in (ramdisk, trustcache):
+            if not required.exists() or not required.stat().st_size:
+                raise SystemExit("Missing original Apple software-update or restore image " + str(required))
+        attempts.append(run_variant(machine, root, name, path, ramdisk, trustcache, output_dir))
         if attempts[-1]["boot_reached_userspace"]:
             break
     preferred = max(attempts, key=lambda x:(
