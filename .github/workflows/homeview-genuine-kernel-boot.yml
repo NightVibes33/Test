@@ -23,6 +23,7 @@ jobs:
       - name: Validate genuine HomeView boot evidence stages
         run: |
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_boot_evidence.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_adt_hardware.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -159,6 +160,9 @@ jobs:
           python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
             "$DEST/dtree.raw" "$DEST/dtree.baseline"
           for tree in dtree dtree.neutralized dtree.baseline; do test -s "$DEST/$tree"; done
+          python3 homeview-legacy/scripts/inspect_adt_hardware.py "$DEST/dtree.raw" \
+            --upstream darwin-tools/dt_fixup.py \
+            --output out/homeview-j490-hardware-inventory.json
           echo "Generated one-pass J490 trees plus unmodified qemu-sptm baseline."
           for f in bootkc dtree sptm txm ramdisk.tc ramdisk.dmg ramdisk-su.tc ramdisk-su.dmg; do test -s "$DEST/$f"; done
           python3 - <<'PY'
@@ -185,6 +189,7 @@ jobs:
           name: genuine-homeview-j490-darwin-boot-evidence
           path: |
             out/genuine-darwin-boot-inputs.json
+            out/homeview-j490-hardware-inventory.json
             out/homeview-dtree-dock-fixup.json
             out/homeview-dtree-dock-neutralized.json
             out/native-homeview-*-serial.log
