@@ -69,14 +69,16 @@ jobs:
       - name: Check for original Apple SetupAssistant + BreadBoard screenshots
         run: |
           python3 homeview-legacy/scripts/native_startup_gate.py \
-            --evidence native-evidence --output native-homeview-gate.json
+            --evidence native-evidence --output native-homeview-gate.json --require-pass
           python3 - <<'PY'
           import json
           data = json.load(open('native-homeview-gate.json'))
           print('Native HomeView status:', data['result'])
-          assert data['native_homeview_verified'] is False, 'Unexpected unreviewed assertion: HomeView native'
+          if not data['native_homeview_verified']:
+              print('Native HomeView startup not verified; gate correctly remains red.')
           PY
       - name: Publish explicit blocked/pass report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: homeview-native-acceptance-status
@@ -96,6 +98,11 @@ jobs:
         with:
           name: apple-sptm-qemu-ubuntu2404-amd64
           path: emulator
+      - name: Restore executable bit stripped by artifact ZIP
+        run: |
+          test -s emulator/qemu-system-aarch64-sptm
+          chmod 755 emulator/qemu-system-aarch64-sptm
+          ./emulator/qemu-system-aarch64-sptm -M help | grep -Eq '(^|[[:space:]])darwin([[:space:]]|$)'
       - name: Install image builder, video capture and x86 UEFI emulation tools
         run: |
           sudo apt-get update
