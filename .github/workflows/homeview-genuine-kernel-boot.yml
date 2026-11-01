@@ -108,8 +108,20 @@ jobs:
           ipsw img4 im4p extract "$BASE/Firmware/141-21782-189.dmg.trustcache" -o "$DEST/ramdisk.tc"
           cp "$BASE/141-21782-189.dmg" "$DEST/ramdisk.dmg"
           ipsw img4 im4p extract "$BASE/Firmware/arm64eSURamDisk.dmg.trustcache" -o "$DEST/ramdisk-su.tc"
-          cp "$RUNNER_TEMP/hv-extracted/AssetData/payload/replace/usr/standalone/update/ramdisk/arm64eSURamDisk.dmg" "$DEST/ramdisk-su.dmg"
+          # The .dmg extension is misleading here: Apple Archive contains an IM4P.
+          # QEMU rejects IM4P wrappers and requires the unwrapped payload bytes.
+          ipsw img4 im4p extract \
+            "$RUNNER_TEMP/hv-extracted/AssetData/payload/replace/usr/standalone/update/ramdisk/arm64eSURamDisk.dmg" \
+            -o "$DEST/ramdisk-su.dmg"
           file "$DEST/ramdisk-su.dmg"
+          python3 - <<'PY'
+          import os,pathlib
+          path=pathlib.Path(os.environ['RUNNER_TEMP'])/'hv-firmware'/'ramdisk-su.dmg'
+          blob=path.read_bytes()[:32]
+          assert not blob.startswith(b'IM4P'), 'SU ramdisk still wrapped in IM4P'
+          assert len(blob)==32 and path.stat().st_size > 4096, 'SU ramdisk payload missing'
+          print('SU payload extracted from IM4P; bytes:',path.stat().st_size, 'prefix:',blob[:8].hex())
+          PY
           hdiutil imageinfo "$DEST/ramdisk-su.dmg" > out/su-ramdisk-imageinfo.txt 2>&1 || true
           test -s "$DEST/ramdisk-su.dmg"
           test -s "$DEST/ramdisk-su.tc"

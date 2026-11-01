@@ -62,10 +62,10 @@ def main():
     machine = pathlib.Path("emulator/build/qemu-system-aarch64").resolve()
     attempts = []
     for name, path, ramdisk, trustcache in [
-        ("baseline-restore", root / "dtree.baseline", root / "ramdisk.dmg", root / "ramdisk.tc"),
-        ("baseline-software-update", root / "dtree.baseline", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("software-update-dock-removed", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("software-update-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("baseline-software-update", root / "dtree.baseline", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("baseline-restore", root / "dtree.baseline", root / "ramdisk.dmg", root / "ramdisk.tc"),
     ]:
         if not path.exists() or not path.stat().st_size:
             raise SystemExit("Missing real device-tree variant " + str(path))
