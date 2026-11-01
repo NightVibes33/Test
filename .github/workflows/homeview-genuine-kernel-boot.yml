@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: emulator/build/qemu-system-aarch64
-          key: homeview-macos27-qemu-sptm-bad6336fb24-v2
+          key: homeview-macos27-qemu-sptm-bad6336fb24-trace-${{ hashFiles('homeview-legacy/scripts/patch_qemu_mmio_trace.py') }}
       - name: Build Apple-specific QEMU TCG Darwin backend on macOS
         if: steps.darwin-qemu-cache.outputs.cache-hit != 'true'
         run: |
@@ -71,11 +71,13 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: emulator/build/qemu-system-aarch64
-          key: homeview-macos27-qemu-sptm-bad6336fb24-v2
+          key: homeview-macos27-qemu-sptm-bad6336fb24-trace-${{ hashFiles('homeview-legacy/scripts/patch_qemu_mmio_trace.py') }}
       - name: Validate built or restored Apple-specific QEMU
         run: |
           test -x emulator/build/qemu-system-aarch64
           emulator/build/qemu-system-aarch64 -M help | grep -E '(^|[[:space:]])darwin([[:space:]]|$)'
+          test "$(strings emulator/build/qemu-system-aarch64 | grep -F -c 'HOMEVIEW_MMIO_TRACE installed')" -ge 1
+          echo "VALIDATED: actual traced QEMU binary, no stale uninstrumented cache"
       - name: Build selective Apple AEA extractor
         run: |
           git clone --depth 1 https://github.com/dhinakg/aeota.git aeota
