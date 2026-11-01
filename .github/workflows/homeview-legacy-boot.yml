@@ -18,8 +18,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Unit tests
-        run: python3 -m unittest discover -s homeview-legacy/tests -v
+      - name: Unit and shell syntax tests
+        run: |
+          python3 -m unittest discover -s homeview-legacy/tests -v
+          bash -n homeview-legacy/scripts/*.sh
       - name: Verify real HomeView OTA metadata without downloading firmware
         run: |
           mkdir -p reports
@@ -80,12 +82,22 @@ jobs:
         run: |
           sha256sum out/homeview-legacy.raw > out/homeview-legacy.raw.sha256
           zstd -T2 -5 --rm out/homeview-legacy.raw -o out/homeview-legacy.raw.zst
-      - uses: actions/upload-artifact@v4
-        name: Upload boot image and test logs
-        if: always()
+      - name: Upload only validated compressed image
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
           name: homeview-legacy-research-usb
-          path: out/
-          if-no-files-found: ignore
+          path: |
+            out/*.zst
+            out/*.sha256
+            out/*log
+          if-no-files-found: error
           compression-level: 0
           retention-days: 7
+      - name: Upload failed boot serial logs (never 5 GiB raw disk)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-legacy-failure-logs
+          path: out/*log
+          if-no-files-found: ignore

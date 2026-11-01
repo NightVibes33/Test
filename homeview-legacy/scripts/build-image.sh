@@ -21,7 +21,7 @@ cleanup() {
   sudo rm -rf "$TMP"
 }
 trap cleanup EXIT
-for cmd in parted losetup mkfs.vfat mkfs.ext4 debootstrap grub-install; do
+for cmd in parted losetup mkfs.vfat mkfs.ext4 debootstrap grub-mkstandalone; do
   command -v "$cmd" >/dev/null || { echo "missing build dependency: $cmd" >&2; exit 1; }
 done
 echo "Creating GPT/UEFI disk image: $OUT"
@@ -100,8 +100,12 @@ menuentry 'HomeView Legacy Boot (research host)' {
   initrd /boot/initrd.img
 }
 EOF
-sudo grub-install --target=x86_64-efi --efi-directory="$ROOT/boot/efi" \
-  --boot-directory="$ROOT/boot" --removable --no-nvram --recheck
+# Self-contained EFI binary with embedded menu; avoids fragile GRUB disk-prefix autodetection.
+sudo mkdir -p "$ROOT/boot/efi/EFI/BOOT"
+sudo grub-mkstandalone --format=x86_64-efi \
+  --output="$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI" \
+  --modules="part_gpt ext2 fat normal linux search search_fs_label serial" \
+  "boot/grub/grub.cfg=$ROOT/boot/grub/grub.cfg"
 test -f "$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI"
 echo "EFI_STAGING_OK: bootloader, kernel, rootfs and service present"
 sync
