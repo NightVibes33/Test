@@ -88,6 +88,13 @@ jobs:
           ipsw img4 im4p extract "$BASE/Firmware/txm.appletvos.release.im4p" -o "$DEST/txm"
           ipsw img4 im4p extract "$BASE/Firmware/141-21782-189.dmg.trustcache" -o "$DEST/ramdisk.tc"
           cp "$BASE/141-21782-189.dmg" "$DEST/ramdisk.dmg"
+          # The original Apple J490 tree must be adapted for qemu-sptm before boot.
+          git clone --depth=1 https://github.com/jprx/darwin-vm.git darwin-tools
+          python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
+            "$DEST/dtree" "$DEST/dtree.qemu"
+          test -s "$DEST/dtree.qemu"
+          mv "$DEST/dtree.qemu" "$DEST/dtree"
+          echo "Applied upstream qemu-sptm device-tree fixups to the original HomeView J490 ADT."
           for f in bootkc dtree sptm txm ramdisk.tc ramdisk.dmg; do test -s "$DEST/$f"; done
           python3 - <<'PY'
           import hashlib,json,os,pathlib
