@@ -21,7 +21,7 @@ typedef struct HomeViewMmioTrace {
 static uint64_t hv_mmio_read(void *opaque, hwaddr addr, unsigned size) {
     HomeViewMmioTrace *d = opaque;
     if (d->count++ < HV_TRACE_LIMIT) {
-        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_MMIO_TRACE read %s off=0x%" HWADDR_PRIx " size=%u\\\\n",
+        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_MMIO_TRACE read %s off=0x%" HWADDR_PRIx " size=%u\\n",
                       d->label, addr, size);
     }
     return 0;
@@ -29,7 +29,7 @@ static uint64_t hv_mmio_read(void *opaque, hwaddr addr, unsigned size) {
 static void hv_mmio_write(void *opaque, hwaddr addr, uint64_t value, unsigned size) {
     HomeViewMmioTrace *d = opaque;
     if (d->count++ < HV_TRACE_LIMIT) {
-        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_MMIO_TRACE write %s off=0x%" HWADDR_PRIx " value=0x%" PRIx64 " size=%u\\\\n",
+        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_MMIO_TRACE write %s off=0x%" HWADDR_PRIx " value=0x%" PRIx64 " size=%u\\n",
                       d->label, addr, value, size);
     }
 }
@@ -51,7 +51,7 @@ static void hv_trace_device(MachineState *ms, struct dtree_node *root,
     hwaddr length = MIN(regs[0].len, (uint64_t)0x4000);
     memory_region_init_io(&d->mem, OBJECT(ms), &hv_mmio_ops, d, name, length);
     memory_region_add_subregion(get_system_memory(), regs[0].base + iobase, &d->mem);
-    qemu_log_mask(LOG_UNIMP, "HOMEVIEW_MMIO_TRACE installed %s base=0x%" PRIx64 " length=0x%" HWADDR_PRIx "\\\\n",
+    qemu_log_mask(LOG_UNIMP, "HOMEVIEW_MMIO_TRACE installed %s base=0x%" PRIx64 " length=0x%" HWADDR_PRIx "\\n",
                   name, regs[0].base + iobase, length);
 }
 '''
