@@ -1,0 +1,37 @@
+name: HomeView 27.2 - Official Apple OTA AEA provenance
+
+on:
+  push:
+    branches:
+      - temp/homeview-legacy-boot
+    paths:
+      - '.github/workflows/homeview-ota-provenance.yml'
+      - 'homeview-legacy/scripts/probe_apple_ota.py'
+      - 'homeview-legacy/tests/test_ota_probe.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-genuine-homeview-asset:
+    runs-on: xcode-27
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify macOS 27 ARM64 host
+        run: |
+          test "$(uname -m)" = arm64
+          sw_vers
+          test "$(sw_vers -productVersion | cut -d. -f1)" = 27
+      - name: Unit tests
+        run: python3 -m unittest discover -s homeview-legacy/tests -p 'test_ota_probe.py' -v
+      - name: Prove Apple's CDN serves real encrypted HomeView OTA bytes
+        run: python3 homeview-legacy/scripts/probe_apple_ota.py --output out/official-homeview-ota-probe.json
+      - name: Archive small provenance report; never upload Apple firmware
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-apple-ota-provenance
+          path: out/official-homeview-ota-probe.json
+          if-no-files-found: ignore
