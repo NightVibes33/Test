@@ -11,19 +11,23 @@ import subprocess
 import select
 import time
 from boot_evidence import classify
+from capture_real_guest_screen import capture
 import sys
 
 def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest):
     dest.mkdir(parents=True, exist_ok=True)
     debug = dest / ("qemu-" + name + ".log")
     serial = dest / ("native-homeview-" + name + "-serial.log")
+    monitor = dest / ("monitor-" + name + ".sock")
+    screendump = dest / ("native-homeview-guest-frame-" + name + ".ppm")
     argv = [
         str(machine), "-M", "darwin", "-bootkc", str(firmware / "bootkc"),
         "-dtree", str(device_tree), "-sptm", str(firmware / "sptm"),
         "-txm", str(firmware / "txm"), "-tc", str(trustcache),
         "-ramdisk", str(ramdisk),
         "-args", "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1",
-        "-m", "2G", "-nographic", "-serial", "mon:stdio",
+        "-m", "2G", "-display", "none", "-serial", "stdio",
+        "-monitor", "unix:"+str(monitor)+",server=on,wait=off",
         "-d", "guest_errors,unimp", "-D", str(debug)
     ]
     answer = {
@@ -36,6 +40,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     # framebuffer messages make further waiting non-informative.
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     chunks = bytearray()
+    screen_result = None
     stop_reason = None
     deadline = time.monotonic() + 150
     try:
@@ -54,6 +59,8 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
                 break
             recent = bytes(chunks[-120000:]).decode("utf-8", "replace")
             snapshot = classify(recent)
+            if screen_result is None and snapshot["apple_restore_userspace_started"]:
+                screen_result = capture(monitor, screendump)
             if (snapshot["apple_restore_userspace_started"]
                 and snapshot["nand_service_wait_count"] >= 3
                 and snapshot["framebuffer_missing_count"] >= 3):
@@ -75,9 +82,15 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
             proc.kill()
             rest, _ = proc.communicate(timeout=5)
         chunks.extend(rest or b"")
+        monitor.unlink(missing_ok=True)
     output = bytes(chunks).decode("utf-8", "replace")
     answer["qemu_exit_status"] = proc.returncode
     answer["observation_stop_reason"] = stop_reason
+    answer["qemu_real_framebuffer_probe"] = screen_result or {
+        "guest_framebuffer_captured": False,
+        "apple_setup_or_breadboard_verified": False,
+        "reason": "No Apple restore boot stage observed"
+    }
     serial.write_text(output[-250000:], encoding="utf-8")
     answer["serial_bytes"] = len(output.encode("utf-8"))
     # Native Apple bootstrapper logs use com.apple.xpc.launchd|, not launchd[PID].

@@ -24,6 +24,7 @@ jobs:
         run: |
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_boot_evidence.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_adt_hardware.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_real_guest_screen.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -193,6 +194,7 @@ jobs:
             out/homeview-dtree-dock-fixup.json
             out/homeview-dtree-dock-neutralized.json
             out/native-homeview-*-serial.log
+            out/native-homeview-guest-frame-*.ppm
             out/homeview-*-result.json
             out/qemu-*.log
             out/native-homeview-kernel-result.json
