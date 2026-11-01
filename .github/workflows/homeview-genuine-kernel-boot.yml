@@ -28,7 +28,14 @@ jobs:
           brew install blacktop/tap/ipsw || brew install ipsw
           brew install glib pixman capstone dtc libslirp gnutls pkg-config ninja meson
           ipsw --help >/dev/null
+      - name: Restore reproducible Darwin QEMU build cache
+        id: darwin-qemu-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: emulator/build/qemu-system-aarch64
+          key: homeview-macos27-qemu-sptm-bad6336fb24-v2
       - name: Build Apple-specific QEMU TCG Darwin backend on macOS
+        if: steps.darwin-qemu-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 https://github.com/jprx/qemu-sptm.git emulator
           git -C emulator checkout --detach bad6336fb24211f8c4e8e946c259bd5b12417340
@@ -38,6 +45,16 @@ jobs:
             --disable-docs --disable-gtk --disable-sdl
           make -j 3
           ./qemu-system-aarch64 -M help | grep -E '(^|[[:space:]])darwin([[:space:]]|$)'
+      - name: Save compiled Darwin emulator before experimental boot attempt
+        if: steps.darwin-qemu-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: emulator/build/qemu-system-aarch64
+          key: homeview-macos27-qemu-sptm-bad6336fb24-v2
+      - name: Validate built or restored Apple-specific QEMU
+        run: |
+          test -x emulator/build/qemu-system-aarch64
+          emulator/build/qemu-system-aarch64 -M help | grep -E '(^|[[:space:]])darwin([[:space:]]|$)'
       - name: Build selective Apple AEA extractor
         run: |
           git clone --depth 1 https://github.com/dhinakg/aeota.git aeota
