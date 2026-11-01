@@ -30,7 +30,7 @@ def run_variant(machine, firmware, name, device_tree, dest):
         "homeview_setup_gui_rendered": False
     }
     try:
-        proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=95)
+        proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=75)
         output = proc.stdout.decode("utf-8", "replace")
         answer["qemu_exit_status"] = proc.returncode
     except subprocess.TimeoutExpired as exc:
@@ -61,7 +61,8 @@ def main():
     attempts = []
     for name, path in [
         ("dock-removed", root / "dtree"),
-        ("dock-neutralized", root / "dtree.neutralized")
+        ("dock-neutralized", root / "dtree.neutralized"),
+        ("baseline-control", root / "dtree.baseline")
     ]:
         if not path.exists() or not path.stat().st_size:
             raise SystemExit("Missing real device-tree variant " + str(path))

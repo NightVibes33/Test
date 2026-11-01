@@ -105,20 +105,22 @@ jobs:
           ipsw img4 im4p extract "$BASE/Firmware/txm.appletvos.release.im4p" -o "$DEST/txm"
           ipsw img4 im4p extract "$BASE/Firmware/141-21782-189.dmg.trustcache" -o "$DEST/ramdisk.tc"
           cp "$BASE/141-21782-189.dmg" "$DEST/ramdisk.dmg"
-          # The original Apple J490 tree must be adapted for qemu-sptm before boot.
+          # Modify the ORIGINAL ADT in one decode/fixup/encode pass.
+          # A second decode/re-encode of darwin-vm output caused silent stalls.
           git clone --depth=1 https://github.com/jprx/darwin-vm.git darwin-tools
-          python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
-            "$DEST/dtree" "$DEST/dtree.qemu"
-          test -s "$DEST/dtree.qemu"
-          mv "$DEST/dtree.qemu" "$DEST/dtree"
-          cp "$DEST/dtree" "$DEST/dtree.neutralized"
-          python3 homeview-legacy/scripts/patch_homeview_dtree.py "$DEST/dtree" \
-            --upstream darwin-tools/dt_fixup.py --mode remove \
+          mv "$DEST/dtree" "$DEST/dtree.raw"
+          python3 homeview-legacy/scripts/patch_homeview_dtree.py \
+            "$DEST/dtree.raw" "$DEST/dtree" --upstream darwin-tools/dt_fixup.py \
+            --nvram darwin-tools/nvram.bin --mode remove \
             --report out/homeview-dtree-dock-fixup.json
-          python3 homeview-legacy/scripts/patch_homeview_dtree.py "$DEST/dtree.neutralized" \
-            --upstream darwin-tools/dt_fixup.py --mode neutralize \
+          python3 homeview-legacy/scripts/patch_homeview_dtree.py \
+            "$DEST/dtree.raw" "$DEST/dtree.neutralized" --upstream darwin-tools/dt_fixup.py \
+            --nvram darwin-tools/nvram.bin --mode neutralize \
             --report out/homeview-dtree-dock-neutralized.json
-          echo "Generated removed and neutralized AppleDockConnect J490 ADT variants."
+          python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
+            "$DEST/dtree.raw" "$DEST/dtree.baseline"
+          for tree in dtree dtree.neutralized dtree.baseline; do test -s "$DEST/$tree"; done
+          echo "Generated one-pass J490 trees plus unmodified qemu-sptm baseline."
           for f in bootkc dtree sptm txm ramdisk.tc ramdisk.dmg; do test -s "$DEST/$f"; done
           python3 - <<'PY'
           import hashlib,json,os,pathlib

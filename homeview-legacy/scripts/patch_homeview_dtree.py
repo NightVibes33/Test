@@ -1,74 +1,64 @@
 #!/usr/bin/env python3
-"""Remove a physical dock controller that is absent in qemu-sptm.
+"""One-pass HomeView J490 Apple Device Tree adaptation for qemu-sptm.
 
-Applies to an already unwrapped and darwin-vm-fixed-up ADT. No Apple binaries
-are shipped; modifications take place on ephemeral CI firmware inputs.
+Uses the upstream darwin-vm decoder/fixup/encoder exactly once. The original
+raw Apple ADT is never mutated. Snapintosh's J700 qemu oracle demonstrated
+that removing /dock-connect during this same transformation is needed to
+avoid AppleDockConnectAIC accessing unavailable hardware.
 """
 import argparse
 import importlib.util
 import json
 from pathlib import Path
 
-TARGET = "dock-connect"
-
-def edit_tree(path, upstream_python, mode="remove"):
-    spec = importlib.util.spec_from_file_location("darwin_vm_dt_fixup", upstream_python)
+def make_tree(raw, output, upstream_path, nvram_path, mode):
+    spec = importlib.util.spec_from_file_location("darwin_vm_dt_fixup", upstream_path)
     if spec is None or spec.loader is None:
-        raise ValueError("Cannot import upstream ADT codec")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    node = module.ADTNode()
-    data = Path(path).read_bytes()
-    module.decode_node(data, node)
-    removed = []
-    neutralized = []
-    def recurse(parent, current=""):
-        for child in list(parent.children):
-            name = child.props.get("name", "")
-            if isinstance(name, bytes):
-                name = name.split(b"\0", 1)[0].decode("utf-8", "replace")
-            loc = current + "/" + name
-            if name == TARGET or name.startswith(TARGET + "@"):
-                if mode == "remove":
-                    parent.children.remove(child)
-                    removed.append(loc)
-                elif mode == "neutralize":
-                    child.props.pop("compatible", None)
-                    child.props["status"] = "disabled"
-                    neutralized.append(loc)
-                else:
-                    raise ValueError("Unrecognized mode: " + mode)
-            else:
-                recurse(child, loc)
-    recurse(node)
-    if not removed and not neutralized:
-        raise ValueError("No AppleDockConnect dock-connect ADT node found; refusing silent no-op")
-    patched = module.encode_node(node)
-    check = module.ADTNode()
-    module.decode_node(patched, check)
-    if mode == "remove" and len(patched) >= len(data):
-        raise ValueError("Dock node was not actually removed")
-    Path(path).write_bytes(patched)
+        raise ValueError("Cannot load upstream darwin-vm ADT fixup")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    root = mod.ADTNode()
+    data = Path(raw).read_bytes()
+    mod.decode_node(data, root)
+    with Path(nvram_path).open("rb") as nv:
+        mod.fixup(root, nvram_file=nv, disable_network=False)
+    names = []
+    for child in list(root.children):
+        name = child.props.get("name", "")
+        if isinstance(name, bytes):
+            name = name.split(b"\0", 1)[0].decode("utf-8", "replace")
+        if name == "dock-connect":
+            names.append("/dock-connect")
+            if mode == "remove":
+                root.children.remove(child)
+            elif mode == "neutralize":
+                child.props.pop("compatible", None)
+                child.props["status"] = "disabled"
+    if not names:
+        raise ValueError("Expected J490 /dock-connect node missing")
+    encoded = mod.encode_node(root)
+    if not encoded:
+        raise ValueError("Resulting Apple device tree is empty")
+    Path(output).write_bytes(encoded)
     return {
-        "policy": "remove physical AppleDockConnect controller absent from qemu-sptm",
-        "removed_paths": removed,
-        "neutralized_paths": neutralized,
-        "mode": mode,
-        "original_tree_bytes": len(data),
-        "patched_tree_bytes": len(patched),
-        "native_homeview_setup_running": False,
+        "mode": mode, "one_pass_darwin_vm_fixup": True,
+        "source": "original Apple HomeView J490 IM4P payload",
+        "dock_paths_affected": names, "raw_bytes": len(data),
+        "output_bytes": len(encoded), "native_homeview_gui_proven": False
     }
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("dtree")
-    ap.add_argument("--upstream", required=True)
-    ap.add_argument("--mode", choices=("remove", "neutralize"), default="remove")
-    ap.add_argument("--report", required=True)
-    args = ap.parse_args()
-    data = edit_tree(args.dtree, args.upstream, args.mode)
-    Path(args.report).write_text(json.dumps(data, indent=2) + "\n")
-    print(json.dumps(data, indent=2))
+    p=argparse.ArgumentParser()
+    p.add_argument("raw_dtree")
+    p.add_argument("output_dtree")
+    p.add_argument("--upstream", required=True)
+    p.add_argument("--nvram", required=True)
+    p.add_argument("--mode", choices=("remove","neutralize"), default="remove")
+    p.add_argument("--report", required=True)
+    args=p.parse_args()
+    report=make_tree(args.raw_dtree,args.output_dtree,args.upstream,args.nvram,args.mode)
+    Path(args.report).write_text(json.dumps(report,indent=2)+"\n")
+    print(json.dumps(report,indent=2))
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
