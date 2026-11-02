@@ -63,8 +63,8 @@ class ANS2BootTests(unittest.TestCase):
 
     def test_tcg_program_counter_hit_proves_dispatch_only(self):
         log = QEMU + (
-            "HOMEVIEW_PC_TRACE initialized targets=2 read_only=true\\n"
-            "HOMEVIEW_PC_TRACE hit target=0xfffffff009b0dabc cpu=0\\n")
+            "HOMEVIEW_PC_TRACE initialized targets=2 read_only=true\n"
+            "HOMEVIEW_PC_TRACE hit target=0xfffffff009b0dabc cpu=0\n")
         result = a.observe_qemu(log)
         self.assertTrue(result["PC_trace_plugin_initialized"])
         self.assertEqual(result["observed_guest_PC_hits"][0]["target_vaddr"],

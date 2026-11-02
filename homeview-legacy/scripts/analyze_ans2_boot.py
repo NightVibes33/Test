@@ -15,8 +15,8 @@ CONTROLLER_START = re.compile(r"\b(AppleANS[23][A-Za-z0-9_]+)::start\(", re.I)
 RTBUDDY = re.compile(r"\bRTBuddy\(ANS2\):\s*start\(", re.I)
 INSTALL = re.compile(r"HOMEVIEW_MMIO_TRACE installed (arm-io/(?:ans|sart-ans))\s+base=0x[0-9a-f]+\s+length=0x([0-9a-f]+)(?:\s+index=(\d+))?", re.I)
 ACCESS = re.compile(r"HOMEVIEW_MMIO_TRACE (read|write) (arm-io/(?:ans|sart-ans))\s+off=0x([0-9a-f]+)", re.I)
-PC_CONFIG = re.compile(r"HOMEVIEW_PC_TRACE initialized targets=(\\d+)", re.I)
-PC_HIT = re.compile(r"HOMEVIEW_PC_TRACE hit target=(0x[0-9a-f]{8,16}) cpu=(\\d+)", re.I)
+PC_CONFIG = re.compile(r"HOMEVIEW_PC_TRACE initialized targets=(\d+)", re.I)
+PC_HIT = re.compile(r"HOMEVIEW_PC_TRACE hit target=(0x[0-9a-f]{8,16}) cpu=(\d+)", re.I)
 
 
 def observe_serial(text):
