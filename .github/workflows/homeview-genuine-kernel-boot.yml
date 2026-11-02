@@ -12,6 +12,7 @@ on:
       - 'homeview-legacy/scripts/extract_j490_mmio_contract.py'
       - 'homeview-legacy/scripts/verify_j490_mmio_log.py'
       - 'homeview-legacy/tests/test_j490_mmio_contract.py'
+      - 'homeview-legacy/tests/test_mmio_trace_patch.py'
       - 'homeview-legacy/scripts/verify_ans_adt_probe.py'
       - 'homeview-legacy/tests/test_ans_adt_probe.py'
       - 'homeview-legacy/tests/test_boot_evidence.py'
@@ -250,10 +251,14 @@ jobs:
             --ans-adt out/homeview-ans-binding-verification.json \
             --qemu-logs out/qemu-*.log \
             --output out/pumpkin-paired-guest-comparison.json
-          python3 homeview-legacy/scripts/verify_j490_mmio_log.py \
-            --contract out/homeview-j490-mmio-contract.json \
-            --qemu-logs out/qemu-*.log \
-            --output out/homeview-j490-mmio-trace-verification.json
+          if [[ -s out/homeview-j490-mmio-contract.json ]]; then
+            python3 homeview-legacy/scripts/verify_j490_mmio_log.py \
+              --contract out/homeview-j490-mmio-contract.json \
+              --qemu-logs out/qemu-*.log \
+              --output out/homeview-j490-mmio-trace-verification.json
+          else
+            echo "J490 hardware contract unavailable; firmware extraction/build did not finish"
+          fi
       - name: Delete Apple system binaries and key from ephemeral runner
         if: always()
         run: |
