@@ -2,8 +2,22 @@ name: LiveContainer iOS build
 
 on:
   push:
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - '.github/apply_source_playground.py'
+      - 'LiveContainer/**'
+      - 'SwiftSourcePlayground/**'
   pull_request:
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - '.github/apply_source_playground.py'
+      - 'LiveContainer/**'
+      - 'SwiftSourcePlayground/**'
   workflow_dispatch:
+
+concurrency:
+  group: livecontainer-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   archive:
