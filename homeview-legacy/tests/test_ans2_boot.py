@@ -95,6 +95,25 @@ class ANS2BootTests(unittest.TestCase):
                             fingerprints[0]["runtime_guest_vaddr"])
         self.assertFalse(observed["functional_ANS2_device_verified"])
 
+    def test_independent_pc_log_still_parses_without_qemu_debug_mask(self):
+        pc = ("HOMEVIEW_PC_TRACE initialized targets=8 signatures=8 read_only=true\n"
+              "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b0dabc "
+              "guest=0xfffffff109b0dabc cpu=0 mode=cross-tb\n")
+        result = a.compare("control", PROBES, "", pc)
+        observed = result["experimental_QEMU_MMIO"]
+        self.assertTrue(observed["independent_PC_trace_file_present"])
+        self.assertTrue(observed["independent_PC_trace_initialized"])
+        self.assertEqual(observed["original_code_fingerprint_hit_count"], 1)
+        self.assertFalse(observed["zero_hits_are_inconclusive"])
+        self.assertFalse(result["functional_ANS2_device_verified"])
+
+    def test_candidate_budget_exhaustion_prohibits_zero_hit_conclusion(self):
+        trace = ("HOMEVIEW_PC_TRACE initialized targets=8 signatures=8 read_only=true\n"
+                 "HOMEVIEW_PC_TRACE candidate_budget_exhausted=true no_hit_is_inconclusive=true\n")
+        report = a.compare("control", PROBES, "", trace)
+        self.assertTrue(report["experimental_QEMU_MMIO"]["zero_hits_are_inconclusive"])
+        self.assertTrue(report["experimental_QEMU_MMIO"]["PC_trace_candidate_budget_exhausted"])
+
     def test_bounded_log_reader(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "input.log"
