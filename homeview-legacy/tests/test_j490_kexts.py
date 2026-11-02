@@ -87,6 +87,14 @@ class KernelcacheMatchingTests(unittest.TestCase):
                  "AppleANS3NVMeController": {
                      "IOProviderClass": "RTBuddyService",
                      "IOClass": "AppleANS3NVMeController",
+                     "IOPropertyMatch": {"role": "ANS2"}},
+                 "AppleANS2CGv2Controller": {
+                     "IOProviderClass": "RTBuddyService",
+                     "IOClass": "AppleANS2CGv2Controller",
+                     "IOPropertyMatch": {"role": "ANS2"}},
+                 "AppleANS3CGv2Controller": {
+                     "IOProviderClass": "RTBuddyService",
+                     "IOClass": "AppleANS3CGv2Controller",
                      "IOPropertyMatch": {"role": "ANS2"}}}},
         ]
         adt = {
@@ -104,7 +112,7 @@ class KernelcacheMatchingTests(unittest.TestCase):
         self.assertTrue(graph["all_required_matching_rules_found"])
         self.assertTrue(graph["controller_selection_is_ambiguous"])
         self.assertEqual(
-            len(graph["stages"][-1]["kernelcache_personalities"]), 2)
+            len(graph["stages"][-1]["kernelcache_personalities"]), 4)
         self.assertFalse(graph["guest_IORegistry_runtime_verification"])
         self.assertFalse(graph["storage_or_display_operational"])
         self.assertFalse(graph["stages"][0]["actual_matching_or_service_creation_observed"])

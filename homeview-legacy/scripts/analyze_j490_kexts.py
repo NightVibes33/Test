@@ -113,7 +113,9 @@ def hardware_identity_graph(matched, contract):
                 matched, provider, io_class=klass, name=match,
                 role=role_requirement) if usable else []
             if target == "ANS" and stage == "controller_or_firmware_service":
-                found = [c for c in found if "NVMe" in str(c["IOClass"])]
+                # Original IONVMeFamily also exposes CGv2 ANS2/ANS3 classes,
+                # despite those names not containing the substring "NVMe".
+                found = [c for c in found if str(c["IOClass"]).startswith("AppleANS")]
             elif target == "DCP" and stage == "controller_or_firmware_service":
                 found = [c for c in found if "Firmware" in str(c["IOClass"])]
             stages.append({
