@@ -155,3 +155,18 @@ in `homeview-ans2-runtime-matching.json`, comparing the original Apple
 control and compatible-only experimental serial and the QEMU MMIO log.
 The next implementation target is finding why no ANS2 NVMe controller
 `start()`/RTKit mailbox/NAND service success follows the probe path.
+
+## Recover all controller-specific vtable slots, not only inherited IOService slots
+
+The original-Apple run 41513202056 successfully resolved the C++ vtables of
+AppleASCWrapV6 (229 methods), RTBuddy (219), RTBuddyService (168),
+AppleANS2NVMeController (352), AppleANS3NVMeController (354),
+IOCoastGuardSARTMapper (174), and AppleDCPExpert (178). However, the first
+110 printed lines contained mostly inherited `IOService::fn_...` methods,
+not the ANS-controller-specific late vtable entries. The enhanced inspector
+now walks up to 1,500 lines of the actual kernelcache class listing,
+retains bounded class-owned slots with original vtable offset/target address,
+and explicitly covers the original J490 experiment's highest-scoring
+`AppleANS3CGv2Controller` as well as ANS2 CG and CGv2 variants.
+A vtable pointer is a reverse-engineering lead, not a successfully called
+`start()`, working ANS2 mailbox or NAND service.

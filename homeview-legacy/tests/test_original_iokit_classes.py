@@ -45,6 +45,27 @@ class AppleKernelCppTests(unittest.TestCase):
             result=mod.inspect(img,runner=fail)
             self.assertFalse(result["class_inspection"]["AppleASCWrapV6"]["inspection_completed"])
 
+    def test_class_specific_slots_after_first_110_lines_are_recovered(self):
+        rows = ["[  %d] +0x%04x 0xfffffff008000000 -> 0xfffffff00a111111 "
+                "A--- key=0 pac=0x3771 IOService::fn_0x%x()" % (i, i*8, i*8)
+                for i in range(150)]
+        rows.append("[200] +0x0640 0xfffffff008000000 -> 0xfffffff00a222222 "
+                    "AO-- key=0 pac=0x3771 AppleANS3CGv2Controller::fn_0x640()")
+        evidence = mod.normalize_text("\n".join(rows),
+                                      "AppleANS3CGv2Controller")
+        self.assertTrue(evidence["output_truncated"])
+        self.assertEqual(evidence["class_defined_vtable_slots_observed"], 1)
+        self.assertEqual(
+            evidence["class_defined_vtable_slot_sample"][0]["target"],
+            "0xfffffff00a222222")
+        self.assertFalse(evidence["class_defined_vtable_slot_sample"][0][
+            "disassembled_method_or_runtime_call_verified"])
+
+    def test_highest_scored_ans3_cgv2_class_is_inspected(self):
+        self.assertIn("AppleANS3CGv2Controller", mod.CLASSES)
+        self.assertIn("AppleANS2CGv2Controller", mod.CLASSES)
+        self.assertIn("AppleANS2CGNVMeController", mod.CLASSES)
+
     def test_no_kernelcache_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "unavailable"):

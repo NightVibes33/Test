@@ -39,7 +39,9 @@ on:
 
 concurrency:
   group: homeview-real-j490-darwin-temp
-  cancel-in-progress: true
+  # Do not abort a 6.5 GB original-Apple-firmware run when research code changes.
+  # Only one newer run may remain pending; the active evidence job finishes.
+  cancel-in-progress: false
 
 permissions:
   contents: read
