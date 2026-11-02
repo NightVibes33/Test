@@ -1,0 +1,43 @@
+import importlib.util
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "scripts" / "homeview_tcg_pc_trace.c"
+PROBE = ROOT / "scripts" / "probe_homeview_boot.py"
+DISASS = ROOT / "scripts" / "disassemble_ans2_vtables.py"
+spec = importlib.util.spec_from_file_location("disassemble_ans2_vtables", DISASS)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+
+class TCGPCPluginTests(unittest.TestCase):
+    def test_pinned_plugin_v7_callback_contract(self):
+        source = SRC.read_text()
+        self.assertIn("QEMU_PLUGIN_VERSION", source)
+        self.assertIn("qemu_plugin_insn_vaddr(insn)", source)
+        self.assertIn("qemu_plugin_register_vcpu_insn_exec_cb", source)
+        self.assertIn("qemu_plugin_register_vcpu_tb_trans_cb", source)
+        self.assertIn("QEMU_PLUGIN_CB_NO_REGS", source)
+        self.assertIn("__sync_bool_compare_and_swap", source)
+        self.assertNotIn("qemu_plugin_set_pc(", source)
+        self.assertNotIn("qemu_plugin_write_memory", source)
+
+    def test_only_original_apple_addresses_selected(self):
+        classes = {"class_inspection": {
+            "AppleANS3CGv2Controller": {"inspection_completed": True,
+                "class_defined_vtable_slot_sample": [
+                    {"slot":85,"target":"0xfffffff009b0dabc",
+                     "vtable_offset":"0x2a8"}]}}}
+        target = mod.select_targets(classes)
+        self.assertEqual(len(target), 1)
+        self.assertEqual(target[0]["address"], "0xfffffff009b0dabc")
+
+    def test_guest_probe_uses_isolated_variant(self):
+        code = PROBE.read_text()
+        self.assertIn('HOMEVIEW_TCG_PC_PLUGIN', code)
+        self.assertIn('select_targets', code)
+        self.assertIn('if name == "software-update-ans-binding-probe":', code)
+
+if __name__ == "__main__":
+    unittest.main()
