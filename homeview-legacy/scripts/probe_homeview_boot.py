@@ -42,7 +42,8 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     # Only the first J490 boot uses the new MMIO diagnostics; control cases
     # retain the original upstream QEMU hardware behavior.
     if name in ("software-update-dock-removed-control",
-                "software-update-dock-removed-pumpkin"):
+                "software-update-dock-removed-pumpkin",
+                "software-update-ans-binding-probe"):
         env["HOMEVIEW_MMIO_TRACE"] = "1"
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     chunks = bytearray()
@@ -94,7 +95,8 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     answer["observation_stop_reason"] = stop_reason
     answer["experimental_ans_dcp_mmio_trace"] = name in (
         "software-update-dock-removed-control",
-        "software-update-dock-removed-pumpkin")
+        "software-update-dock-removed-pumpkin",
+        "software-update-ans-binding-probe")
     answer["qemu_real_framebuffer_probe"] = screen_result or {
         "guest_framebuffer_captured": False,
         "apple_setup_or_breadboard_verified": False,
@@ -132,6 +134,7 @@ def main():
     for name, path, ramdisk, trustcache in [
         ("software-update-dock-removed-control", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("software-update-dock-removed-pumpkin", root / "dtree.pumpkin", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("software-update-ans-binding-probe", root / "dtree.ans-probe", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("software-update-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("baseline-software-update", root / "dtree.baseline", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("baseline-restore", root / "dtree.baseline", root / "ramdisk.dmg", root / "ramdisk.tc"),

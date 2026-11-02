@@ -207,3 +207,22 @@ unverified. The trace runner now collects `_MGCopyAnswer` assembly as a second
 artifact and an address dump of the constant-object pointer. Analysis is
 scoped to the target symbol only; subsequent unrelated getters cannot satisfy
 the instruction evidence gate. No Apple firmware binaries are committed.
+
+## Authentic ANS driver-matching probe (2026-11-02)
+
+Source-level discovery: the upstream `darwin-vm/dt_fixup.py` applies
+`del_compat(root)`, stripping native `compatible` properties from drivers
+outside its small allowlist; this includes Apple ANS storage paths. The current
+Apple-specific QEMU machine then reports no Apple NAND service. Earlier
+`HOMEVIEW_MMIO_TRACE` logs registered `arm-io/ans` and `arm-io/dcp` MMIO
+windows without logging register access.
+
+An isolated *third* comparison case (`dtree.ans-probe`) now copies the actual
+original J490 compatible properties for `/arm-io/ans`, its original
+`iop-ans-nub` and `/arm-io/sart-ans` across the upstream compatibility
+strip. A decoded-ADT verifier rejects any extra property change or invented
+compatible value, preserving the same dock-removed control. It can reveal
+whether Apple drivers progress to MMIO on an unmodified firmware image.
+**It does not emulate ANS interrupts, DMA, ASC firmware, NAND data or
+persistent APFS storage.** An observed driver probe must not be reported as
+working ANS hardware. DCP/SGX are not enabled by this experiment.

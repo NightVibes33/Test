@@ -8,6 +8,8 @@ on:
       - 'homeview-legacy/scripts/probe_homeview_boot.py'
       - 'homeview-legacy/scripts/boot_evidence.py'
       - 'homeview-legacy/scripts/patch_homeview_dtree.py'
+      - 'homeview-legacy/scripts/verify_ans_adt_probe.py'
+      - 'homeview-legacy/tests/test_ans_adt_probe.py'
       - 'homeview-legacy/tests/test_boot_evidence.py'
       - 'homeview-legacy/profiles/pumpkin-homeaccessory-j490.json'
       - 'homeview-legacy/scripts/pumpkin_personality.py'
@@ -39,6 +41,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_observer.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_adt_pair.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_guest_pair.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans_adt_probe.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -183,6 +186,19 @@ jobs:
             "$DEST/dtree" "$DEST/dtree.pumpkin" \
             --upstream darwin-tools/dt_fixup.py \
             --report out/homeview-pumpkin-pair-verification.json
+          # Separate hardware driver-matching diagnostic. Native compatible
+          # strings are kept, but real ANS MMIO, interrupts, DMA and storage
+          # protocols are still NOT implemented.
+          python3 homeview-legacy/scripts/patch_homeview_dtree.py \
+            "$DEST/dtree.raw" "$DEST/dtree.ans-probe" \
+            --upstream darwin-tools/dt_fixup.py \
+            --nvram darwin-tools/nvram.bin --mode remove \
+            --profile homeview-legacy/profiles/pumpkin-homeaccessory-j490.json \
+            --ans-binding-probe --report out/homeview-dtree-ans-binding.json
+          python3 homeview-legacy/scripts/verify_ans_adt_probe.py \
+            "$DEST/dtree" "$DEST/dtree.ans-probe" "$DEST/dtree.raw" \
+            --upstream darwin-tools/dt_fixup.py \
+            --report out/homeview-ans-binding-verification.json
           python3 homeview-legacy/scripts/patch_homeview_dtree.py \
             "$DEST/dtree.raw" "$DEST/dtree.neutralized" --upstream darwin-tools/dt_fixup.py \
             --nvram darwin-tools/nvram.bin --mode neutralize \
@@ -190,7 +206,7 @@ jobs:
             --report out/homeview-dtree-dock-neutralized.json
           python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
             "$DEST/dtree.raw" "$DEST/dtree.baseline"
-          for tree in dtree dtree.pumpkin dtree.neutralized dtree.baseline; do test -s "$DEST/$tree"; done
+          for tree in dtree dtree.pumpkin dtree.ans-probe dtree.neutralized dtree.baseline; do test -s "$DEST/$tree"; done
           python3 homeview-legacy/scripts/inspect_adt_hardware.py "$DEST/dtree.raw" \
             --upstream darwin-tools/dt_fixup.py \
             --output out/homeview-j490-hardware-inventory.json
@@ -238,6 +254,8 @@ jobs:
             out/homeview-dtree-dock-fixup.json
             out/homeview-dtree-dock-pumpkin.json
             out/homeview-pumpkin-pair-verification.json
+            out/homeview-dtree-ans-binding.json
+            out/homeview-ans-binding-verification.json
             out/homeview-dtree-dock-neutralized.json
             out/native-homeview-*-serial.log
             out/native-homeview-guest-frame-*.ppm
