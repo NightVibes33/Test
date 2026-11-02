@@ -23,3 +23,21 @@ The real HomeView OTA and its software-update ramdisk reach Apple XNU, launchd, 
 Experimental diagnostic: HOMEVIEW_MMIO_TRACE captures bounded register reads/writes against ANS, DCP and SGX addresses. It does not model complete hardware or imply that native graphics work.
 
 For an authentic HomeView boot screenshot, the pixels must come from Apple's active guest display and Setup Assistant or BreadBoard must independently be confirmed. A host Linux screenshot, extracted asset, or someone else's VM screenshot is not proof of this Intel port. Current status: no native HomeView graphical boot on Intel.
+
+## Source-backed J490 register/interrupt contract (2026-11-02)
+
+`scripts/extract_j490_mmio_contract.py` decodes the actual Apple J490ADP
+DeviceTree on the ephemeral firmware runner. It records ANS, SART-ANS,
+DCP, DCP0 expert, DART-DCP, SGX and relevant input/audio register windows,
+physical MMIO addresses and raw interrupt numbers, without copying Apple's
+firmware into the GitHub artifact.
+
+The physical address translation is taken from the pinned jprx/qemu-sptm
+source: `arm-io/ranges[1] + adt_io_reg.base`. A second script,
+`verify_j490_mmio_log.py`, cross-checks every **installed** QEMU probe window
+against the original address and length. The optional trace includes
+`sart-ans` in addition to ANS and the display controls.
+
+This validates emulator mapping provenance only; **nothing here implements
+NAND, NVMe queues, ASC mailboxes, interrupts, firmware upload, DMA, DCP
+framebuffer or host GPU acceleration**.

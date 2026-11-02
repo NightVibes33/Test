@@ -60,6 +60,7 @@ CALL = '''\
     // No device functionality or guest framebuffer is implemented here.
     if (g_getenv("HOMEVIEW_MMIO_TRACE")) {
         hv_trace_device(ms, dt_root, "arm-io/ans", iobase);
+        hv_trace_device(ms, dt_root, "arm-io/sart-ans", iobase);
         hv_trace_device(ms, dt_root, "arm-io/dcp", iobase);
         hv_trace_device(ms, dt_root, "arm-io/dcp0-expert", iobase);
         hv_trace_device(ms, dt_root, "arm-io/sgx", iobase);
