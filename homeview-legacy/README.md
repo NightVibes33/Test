@@ -110,3 +110,18 @@ the multi-gigabyte USB image.
 ## Genuine Apple restore userspace milestone (2026-11-01)
 
 Verified original HomeView 27.2 XNU, APFS root, Apple's launchd PID 1, patchd and ramrod under software QEMU ARM64 emulation. The normal Apple HomeView device is **NOT** booted: restore is waiting for NAND service and no framebuffer exists. See [original serial evidence](evidence/2026-11-01-restore-boot.md). CI tracks these as distinct stages with `scripts/boot_evidence.py`.
+
+
+## Genuine Apple restore/update ramdisk selection on USB
+
+`/usr/local/bin/homeview-darwin` now supports `HOMEVIEW_BOOT_VARIANT=auto`
+(default), `software-update`, or `restore`. With both
+`ramdisk-su.dmg` and `ramdisk-su.tc` available under
+`/opt/homeview/firmware`, `auto` chooses Apple's original software-update
+ramdisk—the genuine restore userspace that previously reached `launchd`,
+`patchd`, and `ramrod` in QEMU. Otherwise it chooses Apple's restore
+ramdisk `ramdisk.dmg` and `ramdisk.tc`. Incomplete software-update pairs
+fail closed rather than silently falling back. The guest is still
+**serial-only**, and neither ramdisk is an installed HomeView system.
+No Apple firmware is bundled with the USB. The new launcher tests use a
+mock executable only to validate argument selection, not Apple boot.
