@@ -20,6 +20,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     serial = dest / ("native-homeview-" + name + "-serial.log")
     monitor = dest / ("monitor-" + name + ".sock")
     screendump = dest / ("native-homeview-guest-frame-" + name + ".ppm")
+    pc_trace = dest / ("homeview-tcg-pc-" + name + ".log")
     argv = [
         str(machine), "-M", "darwin", "-bootkc", str(firmware / "bootkc"),
         "-dtree", str(device_tree), "-sptm", str(firmware / "sptm"),
@@ -68,6 +69,8 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
                 options.extend(fingerprint_args)
                 argv.extend(["-plugin", str(plugin) + "," + ",".join(options)])
                 answer["experimental_original_code_fingerprints"] = len(fingerprint_args)
+                env["HOMEVIEW_TCG_PC_TRACE_FILE"] = str(pc_trace.resolve())
+                answer["pc_trace_artifact"] = pc_trace.name
                 # qemu_plugin_outs uses CPU_LOG_PLUGIN, which is filtered
                 # unless -d plugin is enabled in the ANS experiment.
                 argv[argv.index("-d") + 1] += ",plugin"
@@ -122,6 +125,18 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     answer["experimental_multi_window_ANS_trace"] = name == "software-update-ans-binding-probe"
     answer["experimental_full_primary_ANS_window"] = name == "software-update-ans-binding-probe"
     answer["qemu_exit_status"] = proc.returncode
+    # Preserve trace independently of the QEMU -d plugin filtering/debug file.
+    if "pc_trace_artifact" in answer:
+        trace_text = pc_trace.read_text(errors="replace") if pc_trace.is_file() else ""
+        answer["pc_trace_initialized"] = "HOMEVIEW_PC_TRACE initialized" in trace_text
+        answer["pc_trace_file_bytes"] = len(trace_text.encode("utf-8"))
+        answer["pc_trace_fingerprint_hits"] = trace_text.count("HOMEVIEW_PC_TRACE fingerprint_hit ")
+        answer["pc_trace_exact_pc_hits"] = trace_text.count("HOMEVIEW_PC_TRACE hit ")
+        answer["pc_trace_no_hit_inconclusive"] = (
+            not answer["pc_trace_initialized"]
+            or "candidate_budget_exhausted=true" in trace_text
+            or "candidate_allocation_failed=true" in trace_text
+            or not (answer["pc_trace_fingerprint_hits"] or answer["pc_trace_exact_pc_hits"]))
     answer["observation_stop_reason"] = stop_reason
     answer["experimental_ans_dcp_mmio_trace"] = name in (
         "software-update-dock-removed-control",
