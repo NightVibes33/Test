@@ -27,7 +27,7 @@ MAX_LINE = 5000
 def normalize(line):
     """Tolerate logs with timestamp prefix but reject unbounded/file data."""
     line = line.strip()
-    if len(line) > MAX_LINE:
+    if len(line) > MAX_LINE or "\x00" in line:
         return None
     m = ASSET.search(line)
     if not m:
