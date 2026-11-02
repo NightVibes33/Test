@@ -58,6 +58,26 @@ class GuestPairTests(unittest.TestCase):
         self.assertEqual(module.compare(b, o, {})["result"],
                          "not_evaluable_no_verified_ADT_pair")
 
+    def test_ans_access_is_not_functional_storage(self):
+        b, o = evidence()
+        b["attempts"].append({
+            "variant": module.ANS_PROBE,
+            "stage": "apple_restore_userspace",
+            "nand_service_wait_count": 10,
+            "framebuffer_missing_count": 3,
+        })
+        o["results"]["native-homeview-" + module.ANS_PROBE + "-serial.log"] = {}
+        log = ("HOMEVIEW_MMIO_TRACE installed arm-io/ans base=0x200 length=0x4000\n"
+               "HOMEVIEW_MMIO_TRACE read arm-io/ans off=0x20 size=4\n")
+        r = module.compare_ans_probe(
+            b, o, {"original_apple_compatible_values_preserved": True,
+                   "all_other_ADT_fields_unchanged": True},
+            {"qemu-" + module.ANS_PROBE + ".log": log})
+        self.assertEqual(r["ANS_mmio_delta"], 1)
+        self.assertEqual(r["result"], "additional_ANS_register_accesses_observed")
+        self.assertFalse(r["Apple_ANS_driver_binding_proven"])
+        self.assertFalse(r["Apple_ANS_storage_service_implemented"])
+
     def test_mmio_registers_bounded_and_not_functional(self):
         log = ("HOMEVIEW_MMIO_TRACE installed arm-io/ans base=0x100 length=0x4000\n"
                "HOMEVIEW_MMIO_TRACE read arm-io/ans off=0x20 size=4\n"

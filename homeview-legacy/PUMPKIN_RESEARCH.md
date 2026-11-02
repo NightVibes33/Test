@@ -226,3 +226,12 @@ whether Apple drivers progress to MMIO on an unmodified firmware image.
 **It does not emulate ANS interrupts, DMA, ASC firmware, NAND data or
 persistent APFS storage.** An observed driver probe must not be reported as
 working ANS hardware. DCP/SGX are not enabled by this experiment.
+
+### ANS register access regression gate
+
+The runtime report now contains `ANS_driver_binding_experiment`, comparing
+the dock-removed control with the original-compatible ANS variant. Only an
+actual bounded QEMU MMIO read/write in the Apple guest is counted as an
+observed register access. A changed restore stage, NAND wait count, or
+register-access count is *diagnostic*, not proof of a functioning Apple ANS
+driver, NAND protocol, persisted disk or normal HomeView boot.

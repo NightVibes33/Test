@@ -235,6 +235,7 @@ jobs:
             --boot out/native-homeview-kernel-result.json \
             --observations out/pumpkin-guest-observations.json \
             --adt out/homeview-pumpkin-pair-verification.json \
+            --ans-adt out/homeview-ans-binding-verification.json \
             --qemu-logs out/qemu-*.log \
             --output out/pumpkin-paired-guest-comparison.json
       - name: Delete Apple system binaries and key from ephemeral runner

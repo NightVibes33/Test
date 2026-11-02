@@ -13,6 +13,7 @@ import re
 
 CONTROL = "software-update-dock-removed-control"
 PUMPKIN = "software-update-dock-removed-pumpkin"
+ANS_PROBE = "software-update-ans-binding-probe"
 TRACE = re.compile(
     r"HOMEVIEW_MMIO_TRACE\s+(read|write)\s+(arm-io/[\w-]+)\s+off=0x([0-9a-fA-F]+)"
     r"(?:\s+value=0x([0-9a-fA-F]+))?\s+size=(\d+)")
@@ -41,6 +42,57 @@ def mmio_summary(log_text):
     return {"devices": devices, "accesses_observed": sum(
         v["reads"] + v["writes"] for v in devices.values()),
         "real_hardware_functionality_verified": False}
+
+
+def compare_ans_probe(boot, observations, ans_adt, qemu_logs=None):
+    qemu_logs = qemu_logs or {}
+    attempts = {a.get("variant"): a for a in boot.get("attempts", [])}
+    records = observations.get("results", {})
+    compare = {}
+    for name in (CONTROL, ANS_PROBE):
+        a = attempts.get(name)
+        o = records.get("native-homeview-" + name + "-serial.log")
+        trace = mmio_summary(qemu_logs.get("qemu-" + name + ".log", ""))
+        compare[name] = {
+            "observed_variant": a is not None and o is not None,
+            "boot_stage": a.get("stage") if a else None,
+            "first_panic": a.get("first_kernel_panic") if a else None,
+            "nand_wait_count": a.get("nand_service_wait_count") if a else None,
+            "framebuffer_error_count": a.get("framebuffer_missing_count") if a else None,
+            "apple_guest_mmio_trace": trace,
+            "ANS_mmio_register_accesses": sum(
+                trace["devices"].get(k, {}).get("reads", 0)
+                + trace["devices"].get(k, {}).get("writes", 0)
+                for k in ("arm-io/ans", "arm-io/sart-ans")),
+            "MG_value_observed": bool(o and o.get("mg_pumpkinmode_return_evidence")),
+        }
+    paired = all(compare[name]["observed_variant"] for name in (CONTROL, ANS_PROBE))
+    raw_verified = (ans_adt.get("original_apple_compatible_values_preserved") is True
+                    and ans_adt.get("all_other_ADT_fields_unchanged") is True)
+    c, p = compare[CONTROL], compare[ANS_PROBE]
+    return {
+        "experiment": "J490 native-ANS-original-compatibility-driver-probe",
+        "control_and_probe_serial_observed": paired,
+        "original_compatible_only_change_verified": raw_verified,
+        "variants": compare,
+        "ANS_mmio_delta": (p["ANS_mmio_register_accesses"] -
+                            c["ANS_mmio_register_accesses"]) if paired else None,
+        "new_mmio_access_detected": (
+            p["ANS_mmio_register_accesses"] > c["ANS_mmio_register_accesses"]
+            if paired else None),
+        "boot_stage_changed": (p["boot_stage"] != c["boot_stage"]) if paired else None,
+        "result": ("not_evaluable_unverified_ADT" if not raw_verified else
+                   "not_evaluable_missing_boot_records" if not paired else
+                   "additional_ANS_register_accesses_observed"
+                       if p["ANS_mmio_register_accesses"] > c["ANS_mmio_register_accesses"]
+                   else "no_additional_ANS_register_accesses_observed"),
+        "Apple_ANS_driver_binding_proven": False,
+        "Apple_ANS_storage_service_implemented": False,
+        "persistent_APFS_or_NAND_present": False,
+        "note": ("A register access is useful driver-probe evidence, not proof "
+                 "of a functional ANS controller. A lack of reads is not "
+                 "proof a driver never attempted to match.")
+    }
 
 
 def compare(boot, observations, adt, qemu_logs=None):
@@ -117,6 +169,7 @@ def main():
     parser.add_argument("--boot", required=True)
     parser.add_argument("--observations", required=True)
     parser.add_argument("--adt", required=True)
+    parser.add_argument("--ans-adt")
     parser.add_argument("--qemu-logs", nargs="*", default=[])
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -124,8 +177,12 @@ def main():
     for pattern in args.qemu_logs:
         for path in glob.glob(pattern):
             debug[Path(path).name] = Path(path).read_text(errors="replace")
-    result = compare(read_json(args.boot), read_json(args.observations),
-                     read_json(args.adt), debug)
+    boot = read_json(args.boot)
+    observations = read_json(args.observations)
+    result = compare(boot, observations, read_json(args.adt), debug)
+    if args.ans_adt:
+        result["ANS_driver_binding_experiment"] = compare_ans_probe(
+            boot, observations, read_json(args.ans_adt), debug)
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2) + "\n")
