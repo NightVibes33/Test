@@ -12,6 +12,8 @@ on:
       - 'homeview-legacy/profiles/pumpkin-homeaccessory-j490.json'
       - 'homeview-legacy/scripts/pumpkin_personality.py'
       - 'homeview-legacy/scripts/observe_pumpkin_boot.py'
+      - 'homeview-legacy/scripts/verify_pumpkin_adt_pair.py'
+      - 'homeview-legacy/tests/test_pumpkin_adt_pair.py'
       - 'homeview-legacy/tests/test_pumpkin_personality.py'
       - 'homeview-legacy/tests/test_pumpkin_observer.py'
   workflow_dispatch:
@@ -33,6 +35,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_mmio_trace_patch.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_personality.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_observer.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_adt_pair.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -165,7 +168,18 @@ jobs:
             "$DEST/dtree.raw" "$DEST/dtree" --upstream darwin-tools/dt_fixup.py \
             --nvram darwin-tools/nvram.bin --mode remove \
             --profile homeview-legacy/profiles/pumpkin-homeaccessory-j490.json \
-            --pumpkin-probe --report out/homeview-dtree-dock-fixup.json
+            --report out/homeview-dtree-dock-fixup.json
+          # Exact same Apple source, fixup, and dock removal. Only this second
+          # output adds the synthetic /chosen/PumpkinMode=1 test property.
+          python3 homeview-legacy/scripts/patch_homeview_dtree.py \
+            "$DEST/dtree.raw" "$DEST/dtree.pumpkin" --upstream darwin-tools/dt_fixup.py \
+            --nvram darwin-tools/nvram.bin --mode remove \
+            --profile homeview-legacy/profiles/pumpkin-homeaccessory-j490.json \
+            --pumpkin-probe --report out/homeview-dtree-dock-pumpkin.json
+          python3 homeview-legacy/scripts/verify_pumpkin_adt_pair.py \
+            "$DEST/dtree" "$DEST/dtree.pumpkin" \
+            --upstream darwin-tools/dt_fixup.py \
+            --report out/homeview-pumpkin-pair-verification.json
           python3 homeview-legacy/scripts/patch_homeview_dtree.py \
             "$DEST/dtree.raw" "$DEST/dtree.neutralized" --upstream darwin-tools/dt_fixup.py \
             --nvram darwin-tools/nvram.bin --mode neutralize \
@@ -173,7 +187,7 @@ jobs:
             --report out/homeview-dtree-dock-neutralized.json
           python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
             "$DEST/dtree.raw" "$DEST/dtree.baseline"
-          for tree in dtree dtree.neutralized dtree.baseline; do test -s "$DEST/$tree"; done
+          for tree in dtree dtree.pumpkin dtree.neutralized dtree.baseline; do test -s "$DEST/$tree"; done
           python3 homeview-legacy/scripts/inspect_adt_hardware.py "$DEST/dtree.raw" \
             --upstream darwin-tools/dt_fixup.py \
             --output out/homeview-j490-hardware-inventory.json
@@ -212,6 +226,8 @@ jobs:
             out/homeview-j490-hardware-inventory.json
             out/pumpkin-guest-observations.json
             out/homeview-dtree-dock-fixup.json
+            out/homeview-dtree-dock-pumpkin.json
+            out/homeview-pumpkin-pair-verification.json
             out/homeview-dtree-dock-neutralized.json
             out/native-homeview-*-serial.log
             out/native-homeview-guest-frame-*.ppm

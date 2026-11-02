@@ -41,7 +41,8 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     env = os.environ.copy()
     # Only the first J490 boot uses the new MMIO diagnostics; control cases
     # retain the original upstream QEMU hardware behavior.
-    if name == "software-update-dock-removed":
+    if name in ("software-update-dock-removed-control",
+                "software-update-dock-removed-pumpkin"):
         env["HOMEVIEW_MMIO_TRACE"] = "1"
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     chunks = bytearray()
@@ -91,7 +92,9 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     output = bytes(chunks).decode("utf-8", "replace")
     answer["qemu_exit_status"] = proc.returncode
     answer["observation_stop_reason"] = stop_reason
-    answer["experimental_ans_dcp_mmio_trace"] = name == "software-update-dock-removed"
+    answer["experimental_ans_dcp_mmio_trace"] = name in (
+        "software-update-dock-removed-control",
+        "software-update-dock-removed-pumpkin")
     answer["qemu_real_framebuffer_probe"] = screen_result or {
         "guest_framebuffer_captured": False,
         "apple_setup_or_breadboard_verified": False,
@@ -127,7 +130,8 @@ def main():
     machine = pathlib.Path("emulator/build/qemu-system-aarch64").resolve()
     attempts = []
     for name, path, ramdisk, trustcache in [
-        ("software-update-dock-removed", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("software-update-dock-removed-control", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("software-update-dock-removed-pumpkin", root / "dtree.pumpkin", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("software-update-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("baseline-software-update", root / "dtree.baseline", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("baseline-restore", root / "dtree.baseline", root / "ramdisk.dmg", root / "ramdisk.tc"),
@@ -143,8 +147,19 @@ def main():
     preferred = max(attempts, key=lambda x:(
         x["boot_reached_userspace"], x["xnu_executed"], bool(x["serial_bytes"])
     ))
+    pair = {
+        "control": "software-update-dock-removed-control",
+        "experimental": "software-update-dock-removed-pumpkin",
+        "only_adt_difference_verified_by": "homeview-pumpkin-pair-verification.json",
+        "comparison_complete": all(name in {a["variant"] for a in attempts}
+                                   for name in ("software-update-dock-removed-control",
+                                                "software-update-dock-removed-pumpkin")),
+        "guest_MobileGestalt_return_observed": False,
+        "device_tree_hint_is_getter_source_proven": False,
+    }
     result = {
         "target": "HomeAccessory17,1 / J490", "build": "HomeView 27.2 (24V514)",
+        "pumpkin_matched_pair": pair,
         "real_homeview_firmware": True,
         "native_breadboard_rendered": False, "native_setup_rendered": False,
         "boot_reached_userspace": any(x["boot_reached_userspace"] for x in attempts),

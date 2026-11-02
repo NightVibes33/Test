@@ -155,3 +155,23 @@ PumpkinMode hypothesis into production machine identity.
 ## Original-Mach-O instruction evidence gate (2026-11-02)
 
 `analyze_pumpkin_disassembly.py` parses the original 24B5110a `ipsw dyld disass` output to extract instruction addresses, direct/indirect calls, returns, and *named callsite hints* only. The `homeview-pumpkin-macho.yml` job now rejects non-instruction output (including CLI usage or error text), runs unit tests, and publishes `pumpkin-instruction-analysis.json` beside the original disassembly. Neither named calls nor extraction success alone establish whether `/chosen/PumpkinMode`, IORegistry, NVRAM, hardware model or Gestalt cache drives the real getter. Actual backing-source verification and the normal HomeView GUI remain **unproven**.
+
+## Matched controlled Pumpkin ADT experiment (2026-11-02)
+
+Prior comparisons accidentally coupled the synthetic Pumpkin property to a different
+dock-connect patch mode. The revised boot experiment generates two J490 DeviceTrees
+from the same original Apple ADT with the same darwin-vm fixup, same NVRAM input,
+and the same /dock-connect removal:
+- `dtree`: unmodified /chosen identity control (PumpkinMode absent).
+- `dtree.pumpkin`: exactly one extra /chosen/PumpkinMode = u32:1 property.
+
+`verify_pumpkin_adt_pair.py` decodes both complete ADTs and fails the
+workflow if any other property, child ordering or node topology differs.
+Both variants use the identical original update ramdisk and trustcache,
+the same QEMU machine and the same optional MMIO tracing configuration.
+The existing dock-neutralized/baseline variants remain separate diagnostic
+experiments, not the Pumpkin comparison control.
+
+This verifies *one-property experimental isolation only*. Even a behavioral
+difference cannot prove the actual MobileGestalt getter derives from that
+property without ARM64 disassembly and corroborating guest instrumentation.
