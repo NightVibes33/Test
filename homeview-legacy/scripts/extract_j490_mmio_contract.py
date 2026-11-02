@@ -48,13 +48,18 @@ def parse_ranges(root):
     return fields[1], fields
 
 
-def parse_reg(value):
+def parse_reg(value, path):
     if value is None:
-        return []
+        return [], False
+    # Child SPI/I2C/Nub registers describe addresses on their parent bus, not
+    # ARM physical MMIO windows. Upstream ADT decoder expresses 4/8-byte
+    # values as u32:/u64: strings. Never translate them using arm-io/ranges.
+    if path.count("/") >= 2:
+        return [], True
     if not isinstance(value, bytes) or len(value) % 16:
-        raise ValueError("Unsupported Apple reg field: must be pairs of u64")
+        raise ValueError("Unsupported direct arm-io MMIO reg field: " + path)
     fields = decode_u64(value, "reg")
-    return [(fields[i], fields[i+1]) for i in range(0, len(fields), 2)]
+    return [(fields[i], fields[i+1]) for i in range(0, len(fields), 2)], False
 
 
 def parse_irq(value):
@@ -81,7 +86,7 @@ def collect(root):
         if node is None:
             nodes[path] = {"present": False}
             continue
-        regs = parse_reg(node.props.get("reg"))
+        regs, parent_bus_register = parse_reg(node.props.get("reg"), path)
         entries = []
         for offset, length in regs:
             if offset + iobase > 0xFFFFFFFFFFFFFFFF or length > 0xFFFFFFFFFFFFFFFF - (offset + iobase):
@@ -93,6 +98,7 @@ def collect(root):
             "present": True,
             "original_compatible": first_compatible(node.props.get("compatible")),
             "reg_windows": entries,
+            "parent_bus_register_not_MMIO": parent_bus_register,
             "interrupts_raw": parse_irq(node.props.get("interrupts")),
             "has_iommu_parent": "iommu-parent" in node.props,
             "hardware_emulated": False,

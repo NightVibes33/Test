@@ -59,6 +59,16 @@ class MMIOContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unregistered"):
             verify.check(data, "HOMEVIEW_MMIO_TRACE read arm-io/ans off=0x20 size=4\n")
 
+    def test_child_spi_register_not_translated_to_arm_mmio(self):
+        root = fake_raw_tree()
+        arm = root.children[0]
+        arm.children.append(Node("spi1", {"reg": struct.pack("<QQ", 0x8000, 0x1000)}, [
+            Node("multi-touch", {"reg": "u32:0x1"})]))
+        r = extract.collect(root)
+        self.assertEqual(r["nodes"]["arm-io/spi1/multi-touch"]["reg_windows"], [])
+        self.assertTrue(r["nodes"]["arm-io/spi1/multi-touch"]
+                        ["parent_bus_register_not_MMIO"])
+
     def test_bad_range_or_reg_is_rejected(self):
         root = fake_raw_tree()
         root.children[0].props["ranges"] = struct.pack("<QQQ", 1, 2, 3)
