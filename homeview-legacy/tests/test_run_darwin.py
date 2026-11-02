@@ -57,8 +57,18 @@ class DarwinLauncherTests(unittest.TestCase):
         (self.fw / "ramdisk-su.dmg").write_bytes(b"su-fixture")
         result = self.run_script(HOMEVIEW_BOOT_VARIANT="auto")
         self.assertEqual(result.returncode, 78)
-        self.assertIn("INCOMPLETE_SOFTWARE-UPDATE_FIRMWARE", result.stderr)
+        self.assertIn("INCOMPLETE_SOFTWARE_UPDATE_FIRMWARE", result.stderr)
         self.assertNotIn("MOCK_QEMU_ARGS", result.stdout)
+    def test_missing_restore_trustcache_exits_78_on_bash32_compatible_path(self):
+        (self.fw / "ramdisk.tc").unlink()
+        result = self.run_script(HOMEVIEW_BOOT_VARIANT="restore")
+        self.assertEqual(result.returncode, 78, result.stderr)
+        self.assertIn("APPLE_DARWIN_INCOMPLETE_RESTORE_FIRMWARE", result.stderr)
+        self.assertNotIn("MOCK_QEMU_ARGS", result.stdout)
+
+    def test_no_bash4_case_conversion(self):
+        self.assertNotIn(chr(36) + "{MODE^^}", SCRIPT.read_text())
+
     def test_explicit_restore_overrides_su(self):
         (self.fw / "ramdisk-su.dmg").write_bytes(b"su-fixture")
         (self.fw / "ramdisk-su.tc").write_bytes(b"tc-fixture")

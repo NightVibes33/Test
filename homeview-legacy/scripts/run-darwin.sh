@@ -30,17 +30,20 @@ case "$MODE" in
 esac
 case "$MODE" in
   software-update)
+    ERROR_VARIANT="SOFTWARE_UPDATE"
     RAMDISK="$FW/ramdisk-su.dmg"
     TRUSTCACHE="$FW/ramdisk-su.tc"
     ;;
   restore)
+    ERROR_VARIANT="RESTORE"
     RAMDISK="$FW/ramdisk.dmg"
     TRUSTCACHE="$FW/ramdisk.tc"
     ;;
 esac
 for required in "$RAMDISK" "$TRUSTCACHE"; do
   [[ -s "$required" ]] || {
-    echo "APPLE_DARWIN_INCOMPLETE_${MODE^^}_FIRMWARE: $required" >&2
+    # macOS ships Bash 3.2; ${var^^} is Bash 4+ and exits before our code 78.
+    echo "APPLE_DARWIN_INCOMPLETE_${ERROR_VARIANT}_FIRMWARE: $required" >&2
     exit 78
   }
 done
