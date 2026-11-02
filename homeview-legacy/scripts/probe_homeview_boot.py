@@ -61,6 +61,9 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
                 plugin = pathlib.Path(path).resolve()
                 argv.extend(["-plugin", str(plugin) + "," +
                              ",".join("addr=" + address for address in addresses)])
+                # qemu_plugin_outs uses CPU_LOG_PLUGIN, which is filtered
+                # unless -d plugin is enabled in the ANS experiment.
+                argv[argv.index("-d") + 1] += ",plugin"
                 answer["experimental_guest_PC_trace_targets"] = addresses
         answer["guest_PC_trace_is_not_controller_start_proof"] = True
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)

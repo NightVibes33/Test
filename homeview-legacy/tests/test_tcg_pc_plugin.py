@@ -38,6 +38,7 @@ class TCGPCPluginTests(unittest.TestCase):
         self.assertIn('HOMEVIEW_TCG_PC_PLUGIN', code)
         self.assertIn('select_targets', code)
         self.assertIn('if name == "software-update-ans-binding-probe":', code)
+        self.assertIn('argv[argv.index("-d") + 1] += ",plugin"', code)
 
 if __name__ == "__main__":
     unittest.main()
