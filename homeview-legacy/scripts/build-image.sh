@@ -56,7 +56,7 @@ sudo mount --bind /dev/pts "$ROOT/dev/pts"
 sudo mount -t proc proc "$ROOT/proc"
 sudo mount -t sysfs sysfs "$ROOT/sys"
 sudo env DEBIAN_FRONTEND=noninteractive chroot "$ROOT" /bin/bash -c \
-  'apt-get update && apt-get install -y --no-install-recommends systemd-sysv systemd-resolved initramfs-tools linux-image-generic qemu-system-arm qemu-efi-aarch64 qemu-system-gui qemu-utils iproute2 kmod ca-certificates dbus udev pciutils xserver-xorg-core xinit xauth xserver-xorg-video-all xserver-xorg-input-all linux-firmware alsa-utils usbutils libinput-tools network-manager mesa-utils libcapstone4 libslirp0 libfdt1 libpixman-1-0 libgnutls30t64'
+  'apt-get update && apt-get install -y --no-install-recommends systemd-sysv systemd-resolved initramfs-tools linux-image-generic qemu-system-arm qemu-efi-aarch64 qemu-system-gui qemu-utils iproute2 kmod ca-certificates dbus udev pciutils xserver-xorg-core xinit xauth xserver-xorg-video-all xserver-xorg-input-all linux-firmware alsa-utils usbutils libinput-tools network-manager python3-minimal mesa-utils libcapstone4 libslirp0 libfdt1 libpixman-1-0 libgnutls30t64'
 sudo mkdir -p "$ROOT/etc/systemd/network" "$ROOT/etc/systemd/system/multi-user.target.wants" "$ROOT/opt/homeview" "$ROOT/var/log/homeview"
 cat <<'EOF' | sudo tee "$ROOT/etc/systemd/network/20-wired.network" >/dev/null
 [Match]
@@ -69,6 +69,8 @@ sudo ln -sf /usr/lib/systemd/system/systemd-resolved.service "$ROOT/etc/systemd/
 sudo ln -sf /run/systemd/resolve/stub-resolv.conf "$ROOT/etc/resolv.conf"
 sudo install -m 0755 "$SCRIPT_DIR/launch-homeview.sh" "$ROOT/usr/local/bin/homeview-launch"
 sudo install -m 0755 "$SCRIPT_DIR/run-darwin.sh" "$ROOT/usr/local/bin/homeview-darwin"
+sudo install -m 0755 "$SCRIPT_DIR/import-homeview-firmware.sh" "$ROOT/usr/local/bin/homeview-import-firmware"
+sudo install -m 0755 "$SCRIPT_DIR/import_homeview_firmware.py" "$ROOT/usr/local/bin/homeview-import-firmware.py"
 sudo install -m 0755 "$SCRIPT_DIR/hardware-audit.sh" "$ROOT/usr/local/bin/homeview-hardware-audit"
 if [[ -n "${QEMU_SPTM_BIN:-}" ]]; then
   [[ -x "$QEMU_SPTM_BIN" ]] || { echo "QEMU_SPTM_BIN not executable: $QEMU_SPTM_BIN" >&2; exit 1; }
@@ -85,7 +87,8 @@ fi
 cat <<'EOF' | sudo tee "$ROOT/etc/systemd/system/homeview-legacy.service" >/dev/null
 [Unit]
 Description=HomeView Legacy Research Launcher (no Apple firmware included)
-After=local-fs.target systemd-udevd.service homeview-hardware-audit.service
+Requires=homeview-firmware-import.service
+After=local-fs.target systemd-udevd.service homeview-hardware-audit.service homeview-firmware-import.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
@@ -95,6 +98,18 @@ StandardError=journal+console
 TimeoutStartSec=0
 [Install]
 WantedBy=multi-user.target
+EOF
+cat <<'EOF' | sudo tee "$ROOT/etc/systemd/system/homeview-firmware-import.service" >/dev/null
+[Unit]
+Description=Verify and import user-supplied QEMU-prepared HomeView firmware
+After=local-fs.target systemd-udevd.service
+Before=homeview-legacy.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/homeview-import-firmware
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=0
 EOF
 cat <<'EOF' | sudo tee "$ROOT/etc/systemd/system/homeview-hardware-audit.service" >/dev/null
 [Unit]

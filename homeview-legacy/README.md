@@ -125,3 +125,43 @@ fail closed rather than silently falling back. The guest is still
 **serial-only**, and neither ramdisk is an installed HomeView system.
 No Apple firmware is bundled with the USB. The new launcher tests use a
 mock executable only to validate argument selection, not Apple boot.
+
+## Import user-supplied, QEMU-prepared original HomeView firmware
+
+No Apple OS files are embedded into the downloaded USB image. With access
+to a separately extracted **original** 24V514 firmware set, prepare these
+files from the actual Apple OTA using the appropriate IMG4 tools:
+`bootkc`, `dtree` (QEMU-ready prepared J490 ADT),
+`sptm`, `txm`, and `ramdisk-su.dmg` +
+`ramdisk-su.tc` (or the paired `ramdisk.dmg` +
+`ramdisk.tc`). The SU ramdisk is the original Apple *recovery/update*
+environment, not the installed HomeView system. Never rename a random DMG
+or use a mismatched iPhone/iPad build.
+
+Arrange the files under `HomeView/` and use the repository's helper:
+```sh
+python3 homeview-legacy/scripts/import_homeview_firmware.py \
+  --source /path/to/HomeView --create-manifest
+```
+The manifest contains a SHA-256 checksum and byte length for each file,
+plus an asserted device/build identity. These **do not verify Apple's
+cryptographic signatures or provenance**. The import verifies exact
+checksums again after copying and publishes no firmware bytes in CI.
+
+Copy that `HomeView/` folder either into the USB's FAT32 EFI partition
+(`HVBOOT`) **if it fits**—this partition is only 256MiB—or, for larger
+firmware files, onto a second FAT32 USB volume labeled `HVFIRMWARE`.
+The research Linux host automatically mounts that extra volume read-only,
+checks the manifest and file hashes, and installs a complete firmware set
+under `/opt/homeview/firmware` before launching the Apple QEMU guest.
+Invalid, incomplete, tampered or mismatched firmware is rejected, and the
+launcher does not fall back to an incomplete update pair.
+
+To test with already prepared local files on a Linux machine:
+```sh
+python3 homeview-legacy/scripts/import_homeview_firmware.py \
+  --source /path/to/HomeView --destination /path/to/firmware-dir
+```
+This import is the missing **input transport**, not Apple ANS/NAND
+emulation, APFS system reconstruction, a working DCP framebuffer, or
+a complete HomeView/BreadBoard boot.
