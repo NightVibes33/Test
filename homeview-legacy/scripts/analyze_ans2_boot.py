@@ -68,6 +68,8 @@ def observe_qemu(text):
         "zero_MMIO_access_cannot_disprove_driver_probes": True,
         "QEMU_MMIO_zero_return_stubs_are_not_hardware_emulation": True,
         "PC_trace_plugin_initialized": bool(PC_CONFIG.search(text)),
+        "PC_trace_candidate_budget_exhausted": "candidate_budget_exhausted=true" in text,
+        "PC_trace_candidate_allocation_failed": "candidate_allocation_failed=true" in text,
         "observed_guest_PC_hits": [
             {"target_vaddr": m.group(1), "cpu": int(m.group(2))}
             for m in list(PC_HIT.finditer(text))[:24]],
@@ -81,10 +83,16 @@ def observe_qemu(text):
     }
 
 
-def compare(control_text, experiment_text, qemu_text=""):
+def compare(control_text, experiment_text, qemu_text="", pc_trace_text=""):
     control = observe_serial(control_text)
     trial = observe_serial(experiment_text)
-    qemu = observe_qemu(qemu_text)
+    qemu = observe_qemu(qemu_text + "\n" + pc_trace_text)
+    qemu["independent_PC_trace_file_present"] = bool(pc_trace_text)
+    qemu["independent_PC_trace_initialized"] = bool(PC_CONFIG.search(pc_trace_text))
+    qemu["zero_hits_are_inconclusive"] = (
+        not qemu["independent_PC_trace_initialized"]
+        or qemu["PC_trace_candidate_budget_exhausted"]
+        or qemu["PC_trace_candidate_allocation_failed"])
     # QEMU plugins may emit qemu_plugin_outs() to the configured -D log
     # OR to the captured guest stdout/stderr stream on different hosts.
     # Union both streams and remove duplicate address/CPU pairs.
@@ -104,6 +112,9 @@ def compare(control_text, experiment_text, qemu_text=""):
             for h in hits})][:16]
     qemu["original_code_fingerprint_hit_count"] = len(
         qemu["original_code_fingerprint_hits"])
+    # Even with a complete trace, no hits cannot rule out incorrect static
+    # addresses, a different KASLR slide, or unmapped original code.
+    qemu["zero_hits_are_not_proof_of_driver_absence"] = True
     if not control_text or not experiment_text:
         result = "incomplete_guest_log_pair"
     elif trial["ANS2_RTBuddy_start_was_invoked"] and not control["ANS2_RTBuddy_start_was_invoked"]:
@@ -148,10 +159,12 @@ def main():
     parser.add_argument("--control", required=True)
     parser.add_argument("--experiment", required=True)
     parser.add_argument("--qemu-log", required=True)
+    parser.add_argument("--pc-log", help="Independent read-only QEMU TCG trace artifact")
     parser.add_argument("--output", required=True)
     a = parser.parse_args()
     result = compare(read_limited(a.control), read_limited(a.experiment),
-                     read_limited(a.qemu_log))
+                     read_limited(a.qemu_log),
+                     read_limited(a.pc_log) if a.pc_log else "")
     out = Path(a.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2) + "\n")
