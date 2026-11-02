@@ -14,7 +14,7 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 INSTRUCTION = re.compile(
     r"^\s*(0x[0-9a-fA-F]{8,16}):\s+(?:(?:[0-9a-fA-F]{2}\s+){4})?"
     r"([a-z][a-z0-9._]*)\b\s*(.*)$", re.I)
-LABEL = re.compile(r"^(_[A-Za-z][\w$.]*):\s*$")
+LABEL = re.compile(r"^((?:_[A-Za-z][\w$.]*|sub_[0-9a-fA-F]+)):\s*$")
 SOURCE_SYMBOLS = {
     "IORegistry": ("IORegistryEntry", "IOServiceGetMatching", "IORegistryGet"),
     "NVRAM": ("IODTNVRAM", "IONVRAM", "PEGetNVRAM", "nvram_get"),
@@ -134,6 +134,8 @@ def analyze_resolver(text):
         for source, symbols in SOURCE_SYMBOLS.items():
             if any(s.lower() in i["operand"].lower() for s in symbols):
                 hints.append({"source": source, "call": i["text"]})
+    tail = next((i["operand"].split(";", 1)[0].strip()
+                 for i in reversed(inst) if i["opcode"] == "b"), None)
     return {
         "target": "_MGCopyAnswer",
         "instruction_stream_present": len(inst) >= 4,
@@ -142,6 +144,10 @@ def analyze_resolver(text):
         "direct_calls": direct[:120],
         "indirect_calls": indirect[:40],
         "named_callsite_hints": hints[:60],
+        "MGGetGlobalCache_called_directly": any(
+            "_MGGetGlobalCache" in i["operand"] for i in direct),
+        "tail_branch_target": tail,
+        "tail_branch_requires_followup": bool(tail),
         "potentially_truncated": bool(inst and inst[-1]["opcode"] not in (
             "ret", "retab", "retaa")),
         "actual_resolver_backing_source_verified": False,
@@ -149,16 +155,55 @@ def analyze_resolver(text):
     }
 
 
+def analyze_followup(text, expected_entry):
+    """Return evidence only for a function beginning at the exact vaddr."""
+    candidates = parse_functions(text)
+    function = next((rows for rows in candidates.values()
+                     if rows and rows[0]["address"] == expected_entry.lower()), [])
+    direct = [i for i in function if i["opcode"] == "bl"]
+    indirect = [i for i in function if i["opcode"] in (
+        "blr", "blraa", "blrab", "blraaz", "blrabz")]
+    return {
+        "expected_entry": expected_entry,
+        "entry_verified_from_original_disassembly": bool(function),
+        "instruction_count": len(function),
+        "direct_calls": direct[:100],
+        "indirect_calls": indirect[:40],
+        "dataflow_to_PumpkinMode_verified": False,
+        "classification": "unresolved_cache_dispatch_or_helper",
+    }
+
+
+def analyze_global_cache(text):
+    inst = parse_functions(text).get("_MGGetGlobalCache", [])
+    return {
+        "target": "_MGGetGlobalCache",
+        "instruction_stream_present": len(inst) >= 4,
+        "entry": inst[0]["address"] if inst else None,
+        "instructions_in_symbol": len(inst),
+        "direct_calls": [i for i in inst if i["opcode"] == "bl"][:100],
+        "backing_source_verified": False,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("disassembly")
     ap.add_argument("--resolver")
+    ap.add_argument("--global-cache")
+    ap.add_argument("--resolver-tail")
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
     result = analyze(Path(args.disassembly).read_text(errors="replace"))
     if args.resolver:
         result["MGCopyAnswer_resolver"] = analyze_resolver(
             Path(args.resolver).read_text(errors="replace"))
+    if args.global_cache:
+        result["MGGetGlobalCache"] = analyze_global_cache(
+            Path(args.global_cache).read_text(errors="replace"))
+    if args.resolver_tail:
+        result["MGCopyAnswer_tail"] = analyze_followup(
+            Path(args.resolver_tail).read_text(errors="replace"), "0x1afe68848")
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2) + "\n")

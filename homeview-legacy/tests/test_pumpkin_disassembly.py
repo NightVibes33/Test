@@ -59,6 +59,38 @@ class DisassemblyTests(unittest.TestCase):
         self.assertFalse(module.analyze("Usage: ipsw dyld disass [flags]")[
             "instruction_level_disassembly_present"])
 
+    def test_anonymous_subfunctions_not_part_of_mgcopyanswer(self):
+        output = """_MGCopyAnswer:
+0x1afe68fa8: 7f 23 03 d5 pacibsp
+0x1afe68fb0: fd 7b 01 a9 stp fp, lr, [sp, #0x10]
+0x1afe68fbc: 73 fd ff 97 bl _MGGetGlobalCache
+0x1afe68fc8: 02 00 80 d2 mov x2, #0
+0x1afe68fe4: 19 fe ff 17 b 0x1afe68848
+sub_1afe68fe8:
+0x1afe68fe8: 40 fe 1e f0 adrp x0, 0x1ede33000
+0x1afe68fec: 00 80 29 91 add x0, x0, #0xa60
+0x1afe68ff0: 01 00 80 d2 mov x1, #0
+0x1afe68ff4: 03 45 0b 14 b _pthread_key_create_stub
+"""
+        result = module.analyze_resolver(output)
+        self.assertEqual(result["instruction_count"], 5)
+        self.assertEqual(result["tail_branch_target"], "0x1afe68848")
+        self.assertTrue(result["MGGetGlobalCache_called_directly"])
+        self.assertFalse(result["actual_resolver_backing_source_verified"])
+
+    def test_followup_rejects_mismatched_start(self):
+        output = """sub_1afe68848:
+0x1afe68848: 7f 23 03 d5 pacibsp
+0x1afe6884c: f4 4f be a9 stp x20, x19, [sp, #-0x20]!
+0x1afe68850: 00 00 00 94 bl _CFDictionaryGetValue_stub
+_Other:
+0x1afe68854: ff 0f 5f d6 retab
+"""
+        self.assertTrue(module.analyze_followup(output, "0x1afe68848")
+                        ["entry_verified_from_original_disassembly"])
+        self.assertFalse(module.analyze_followup(output, "0x1afe6884c")
+                         ["entry_verified_from_original_disassembly"])
+
     def test_resolver_cannot_prove_dataflow(self):
         output = """_MGCopyAnswer:
 0x180010000: 7f 23 03 d5 pacibsp

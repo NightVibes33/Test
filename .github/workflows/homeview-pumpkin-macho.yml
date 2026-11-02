@@ -80,7 +80,13 @@ jobs:
           # same original Apple DSC; don't assume this resolves all dataflow.
           ipsw dyld disass "$CACHE" \
             --symbol _MGCopyAnswer --symbol-image libMobileGestalt.dylib \
-            --count 240 > out/mobilegestalt-mgcopyanswer-disassembly.txt 2>&1 || true
+            --count 70 > out/mobilegestalt-mgcopyanswer-disassembly.txt 2>&1 || true
+          # iPhoneOS 24B5110a: real MGCopyAnswer tail branch target.
+          ipsw dyld disass "$CACHE" --vaddr 0x1afe68848 --count 160 \
+            > out/mobilegestalt-mgcopyanswer-tail-disassembly.txt 2>&1 || true
+          ipsw dyld disass "$CACHE" \
+            --symbol _MGGetGlobalCache --symbol-image libMobileGestalt.dylib \
+            --count 160 > out/mobilegestalt-global-cache-disassembly.txt 2>&1 || true
           # Dump the constant-object address seen in the getter. This is not
           # the plaintext key until the NSCFConstantString is decoded.
           ipsw dyld dump "$CACHE" 0x1e5557138 \
@@ -107,6 +113,8 @@ jobs:
           python3 homeview-legacy/scripts/analyze_pumpkin_disassembly.py \
             out/mobilegestalt-pumpkin-disassembly.txt \
             --resolver out/mobilegestalt-mgcopyanswer-disassembly.txt \
+            --global-cache out/mobilegestalt-global-cache-disassembly.txt \
+            --resolver-tail out/mobilegestalt-mgcopyanswer-tail-disassembly.txt \
             --output out/pumpkin-instruction-analysis.json
       - name: Remove Apple binaries before upload
         if: always()
@@ -121,6 +129,8 @@ jobs:
             out/dyld-extraction.log
             out/mobilegestalt-pumpkin-disassembly.txt
             out/mobilegestalt-mgcopyanswer-disassembly.txt
+            out/mobilegestalt-global-cache-disassembly.txt
+            out/mobilegestalt-mgcopyanswer-tail-disassembly.txt
             out/mobilegestalt-key-constant-object.txt
             out/mobilegestalt-disass-status.txt
             out/mobilegestalt-extract.log
