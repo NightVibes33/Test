@@ -19,6 +19,8 @@ on:
       - 'homeview-legacy/tests/test_original_iokit_classes.py'
       - 'homeview-legacy/scripts/disassemble_ans2_vtables.py'
       - 'homeview-legacy/tests/test_ans2_vtable_disassembly.py'
+      - 'homeview-legacy/scripts/analyze_original_ans2_callgraph.py'
+      - 'homeview-legacy/tests/test_original_ans2_callgraph.py'
       - 'homeview-legacy/scripts/analyze_ans2_boot.py'
       - 'homeview-legacy/tests/test_ans2_boot.py'
       - 'homeview-legacy/scripts/homeview_tcg_pc_trace.c'
@@ -74,6 +76,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_j490_kexts.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_iokit_classes.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_vtable_disassembly.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_ans2_callgraph.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_boot.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_pc_plugin.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_plugin_smoke.py' -v
@@ -346,6 +349,16 @@ jobs:
           else
             echo "Original class listing or Apple kernelcache missing, disassembly not claimed"
           fi
+      - name: Analyze original ANS2 and ANS3 CGv2 shared direct calls
+        if: always()
+        run: |
+          if [[ -s out/homeview-original-ans2-vtable-disassembly.json ]]; then
+            python3 homeview-legacy/scripts/analyze_original_ans2_callgraph.py \
+              --disassembly out/homeview-original-ans2-vtable-disassembly.json \
+              --output out/homeview-original-ans2-shared-calls.json
+          else
+            echo "No original Apple vtable disassembly; cannot claim call targets"
+          fi
       - name: Compare original and patched J490 device trees with real XNU
         env:
           HOMEVIEW_TCG_PC_PLUGIN: ${{ github.workspace }}/out/homeview-tcg-pc-trace.dylib
@@ -409,6 +422,7 @@ jobs:
             out/homeview-original-kext-iokit-personalities.json
             out/homeview-original-iokit-cpp-methods.json
             out/homeview-original-ans2-vtable-disassembly.json
+            out/homeview-original-ans2-shared-calls.json
             out/homeview-ans2-runtime-matching.json
             out/homeview-original-ota-layout.json
             out/homeview-j490-hardware-inventory.json
