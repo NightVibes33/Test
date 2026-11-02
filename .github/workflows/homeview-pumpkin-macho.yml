@@ -1,0 +1,106 @@
+name: PumpkinMode 27.2 - original MobileGestalt Mach-O disassembly
+
+on:
+  push:
+    branches: [temp/homeview-legacy-boot]
+    paths:
+      - '.github/workflows/homeview-pumpkin-macho.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pumpkin-original-binary:
+    runs-on: xcode-27
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm Apple Silicon macOS and available scratch disk
+        run: |
+          uname -m
+          sw_vers
+          test "$(uname -m)" = arm64
+          mkdir -p out
+          df -h "$RUNNER_TEMP"
+          test "$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')" -ge 18000000
+      - name: Install current Apple firmware and Mach-O analysis utilities
+        run: |
+          brew install blacktop/tap/ipsw || brew install ipsw
+          ipsw dyld disass --help > out/disassembler-help.txt 2>&1
+          ipsw extract --help > out/extractor-help.txt 2>&1
+      - name: Verify genuine Apple iOS 27.2 beta 4 IPSW URL (iPhone18,1)
+        run: |
+          python3 - <<'PY'
+          import pathlib,urllib.parse
+          url='https://updates.cdn-apple.com/2026FallSeed/940e54a8-cf85-4d19-a746-ea133685cfc2/iPhone18,1_27.2_24B5110a_Restore.ipsw'
+          p=urllib.parse.urlsplit(url)
+          assert p.scheme=='https' and p.hostname=='updates.cdn-apple.com'
+          assert p.path.endswith('iPhone18,1_27.2_24B5110a_Restore.ipsw')
+          pathlib.Path('out/official-source-url.txt').write_text(url+'\n')
+          print('Expected Apple firmware: iPhone18,1 iOS 27.2 beta 4 (24B5110a)')
+          PY
+      - name: Extract original arm64e dyld shared cache from Apple IPSW (remote)
+        run: |
+          set -o pipefail
+          URL="$(cat out/official-source-url.txt)"
+          mkdir -p "$RUNNER_TEMP/pumpkin-dsc"
+          ipsw extract --remote --dyld --dyld-arch arm64e \
+            -o "$RUNNER_TEMP/pumpkin-dsc" "$URL" > out/dyld-extraction.log 2>&1
+          find "$RUNNER_TEMP/pumpkin-dsc" -name 'dyld_shared_cache_arm64e*' -type f -print \
+            > out/cache-file-list.txt
+          test -s out/cache-file-list.txt
+          cat out/cache-file-list.txt
+      - name: Disassemble original PumpkinMode getter without LLM inference
+        run: |
+          set +e
+          CACHE="$(find "$RUNNER_TEMP/pumpkin-dsc" -name 'dyld_shared_cache_arm64e' -type f | head -n1)"
+          if [[ -z "$CACHE" ]]; then
+            echo "Could not find base arm64e dyld shared cache" >&2
+            exit 1
+          fi
+          ipsw dyld disass "$CACHE" \
+            --symbol _MobileGestalt_get_pumpkinMode \
+            --symbol-image libMobileGestalt.dylib --count 160 \
+            > out/mobilegestalt-pumpkin-disassembly.txt 2>&1
+          STATUS=$?
+          echo "disassembler-exit-code=$STATUS" > out/mobilegestalt-disass-status.txt
+          ipsw dyld extract "$CACHE" libMobileGestalt \
+            -o "$RUNNER_TEMP/mobilegestalt" > out/mobilegestalt-extract.log 2>&1
+          find "$RUNNER_TEMP/mobilegestalt" -type f -maxdepth 3 -print > out/mobilegestalt-paths.txt
+          python3 - <<'PY'
+          import json,pathlib
+          s=pathlib.Path('out/mobilegestalt-pumpkin-disassembly.txt').read_text(errors='replace')
+          mentions=[x.strip() for x in s.splitlines() if any(t in x.lower() for t in ('mobilegestalt','bl ','blr ','nvram','ioget','sysctl','ret','b.eq','b.ne'))][:250]
+          data={'firmware':'iOS 27.2 beta 4 (24B5110a)','target':'libMobileGestalt.dylib',
+             'symbol':'_MobileGestalt_get_pumpkinMode',
+             'nonempty_disassembly':len(s.strip())>200,
+             'lines':len(s.splitlines()),'candidate_calls':mentions,
+             'exact_getter_derivation_verified':False,
+             'requires_manual_control_flow_review':True,
+             'no_firmware_binaries_uploaded':True}
+          pathlib.Path('out/pumpkin-original-machO-analysis.json').write_text(json.dumps(data,indent=2)+'\n')
+          print(json.dumps({k:v for k,v in data.items() if k!='candidate_calls'},indent=2))
+          PY
+          test "$STATUS" = 0
+          test "$(wc -c < out/mobilegestalt-pumpkin-disassembly.txt)" -gt 200
+      - name: Remove Apple binaries before upload
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/pumpkin-dsc" "$RUNNER_TEMP/mobilegestalt"
+      - name: Publish text evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pumpkin-original-ios27_2-machO-evidence
+          path: |
+            out/dyld-extraction.log
+            out/mobilegestalt-pumpkin-disassembly.txt
+            out/mobilegestalt-disass-status.txt
+            out/mobilegestalt-extract.log
+            out/mobilegestalt-paths.txt
+            out/pumpkin-original-machO-analysis.json
+            out/cache-file-list.txt
+            out/official-source-url.txt
+          if-no-files-found: ignore
+          retention-days: 7
