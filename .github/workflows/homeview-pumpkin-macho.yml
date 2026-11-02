@@ -89,8 +89,15 @@ jobs:
             --count 160 > out/mobilegestalt-global-cache-disassembly.txt 2>&1 || true
           # Dump the constant-object address seen in the getter. This is not
           # the plaintext key until the NSCFConstantString is decoded.
+          # --bytes emits actual binary data. Convert it to readable hex
+          # before publishing; never attach raw Apple cache bytes as "text".
           ipsw dyld dump "$CACHE" 0x1e5557138 \
-            --size 64 --bytes > out/mobilegestalt-key-constant-object.txt 2>&1 || true
+            --size 64 --bytes > "$RUNNER_TEMP/pumpkin-key-object.bin" 2> out/key-object-dump-status.txt || true
+          if [[ -s "$RUNNER_TEMP/pumpkin-key-object.bin" ]]; then
+            xxd -g 1 "$RUNNER_TEMP/pumpkin-key-object.bin" \
+              > out/mobilegestalt-key-constant-object.txt
+          fi
+          rm -f "$RUNNER_TEMP/pumpkin-key-object.bin"
           python3 - <<'PY'
           import json,pathlib
           s=pathlib.Path('out/mobilegestalt-pumpkin-disassembly.txt').read_text(errors='replace')
@@ -132,6 +139,7 @@ jobs:
             out/mobilegestalt-global-cache-disassembly.txt
             out/mobilegestalt-mgcopyanswer-tail-disassembly.txt
             out/mobilegestalt-key-constant-object.txt
+            out/key-object-dump-status.txt
             out/mobilegestalt-disass-status.txt
             out/mobilegestalt-extract.log
             out/mobilegestalt-paths.txt

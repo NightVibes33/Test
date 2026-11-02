@@ -235,3 +235,9 @@ actual bounded QEMU MMIO read/write in the Apple guest is counted as an
 observed register access. A changed restore stage, NAND wait count, or
 register-access count is *diagnostic*, not proof of a functioning Apple ANS
 driver, NAND protocol, persisted disk or normal HomeView boot.
+
+## ANS driver matching observed result — 2026-11-02
+
+Original Apple boot evidence from GitHub Actions run 41498055984 records the exact source-J490 ADT compatibility fields retained at /arm-io/ans, /arm-io/ans/iop-ans-nub and /arm-io/sart-ans. The original restore userspace started; the ANS variant still logged three missing-NAND waits and three framebuffer failures, with no ANS MMIO register accesses in the QEMU trace. This is negative evidence for the hypothesis that restoring compatible strings alone will activate ANS in the restore environment. It does not prove no ANS driver is present or that an eventual installed HomeView boot follows the same path. Hardware MMIO, interrupt, DMA, firmware messaging and APFS-backed storage remain unimplemented.
+
+The firmware-analysis workflow now renders its 64-byte constant-object address dump as ASCII hex, not raw Apple binary bytes, before uploading diagnostics.
