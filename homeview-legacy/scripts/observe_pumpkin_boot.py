@@ -21,7 +21,8 @@ SERVICE_START=re.compile(r"(?:launchd|running|spawned|starting)[^\n]{0,100}\b(Si
 
 def inspect(text):
     mg_queries=[line.strip() for line in text.splitlines() if MG_QUERY.search(line)]
-    vals=[m.group(1) for m in MG_VALUE.finditer(text)]
+    # Only count return values on guest MobileGestalt query lines, never host-side ADT hints.
+    vals=[match.group(1) for line in mg_queries for match in MG_VALUE.finditer(line)]
     branches=[line.strip() for line in text.splitlines() if PUMPKIN_BRANCH.search(line)]
     shells=[m.group(1) for m in SHELL_START.finditer(text)]
     services=[m.group(1) for m in SERVICE_START.finditer(text)]
