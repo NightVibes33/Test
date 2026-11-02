@@ -21,6 +21,9 @@ class TraceTests(unittest.TestCase):
         self.assertIn('adt_get_prop_len(node, "reg")',changed)
         self.assertIn('skipped_overlap',changed)
         self.assertIn('index=%zu',changed)
+        # Generated C contains literal backslash-n, never a newline inside a string.
+        self.assertNotIn('index=%zu\\n"',changed)
+        self.assertIn('index=%zu\\\\n"',changed)
         self.assertIn('arm-io/dcp',changed)
         self.assertIn('arm-io/ans',changed)
         self.assertEqual(module.patch(changed),changed)

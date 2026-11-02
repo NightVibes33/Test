@@ -63,7 +63,7 @@ static void hv_trace_device(MachineState *ms, struct dtree_node *root,
         hwaddr base = regs[i].base + iobase;
         if (base < iobase || base + len < base) {
             qemu_log_mask(LOG_UNIMP,
-                "HOMEVIEW_MMIO_TRACE skipped_overflow %s index=%zu\n", name, i);
+                "HOMEVIEW_MMIO_TRACE skipped_overflow %s index=%zu\\n", name, i);
             continue;
         }
         bool overlaps = false;
@@ -77,7 +77,7 @@ static void hv_trace_device(MachineState *ms, struct dtree_node *root,
         if (overlaps || hv_trace_window_count >= HV_MMIO_MAX_WINDOWS) {
             qemu_log_mask(LOG_UNIMP,
                 "HOMEVIEW_MMIO_TRACE skipped_overlap %s base=0x%" HWADDR_PRIx
-                " length=0x%" HWADDR_PRIx " index=%zu\n",
+                " length=0x%" HWADDR_PRIx " index=%zu\\n",
                 name, base, len, i);
             continue;
         }
@@ -91,7 +91,7 @@ static void hv_trace_device(MachineState *ms, struct dtree_node *root,
         };
         qemu_log_mask(LOG_UNIMP,
             "HOMEVIEW_MMIO_TRACE installed %s base=0x%" HWADDR_PRIx
-            " length=0x%" HWADDR_PRIx " index=%zu\n", name, base, len, i);
+            " length=0x%" HWADDR_PRIx " index=%zu\\n", name, base, len, i);
     }
 }
 '''
