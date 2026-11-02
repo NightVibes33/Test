@@ -67,9 +67,24 @@ jobs:
             > out/mobilegestalt-pumpkin-disassembly.txt 2>&1
           STATUS=$?
           echo "disassembler-exit-code=$STATUS" > out/mobilegestalt-disass-status.txt
-          ipsw dyld extract "$CACHE" libMobileGestalt \
-            -o "$RUNNER_TEMP/mobilegestalt" > out/mobilegestalt-extract.log 2>&1
-          find "$RUNNER_TEMP/mobilegestalt" -type f -maxdepth 3 -print > out/mobilegestalt-paths.txt
+          # Use the exact cache image path. The previous abbreviated target
+          # "libMobileGestalt" did not match an image even though disassembly worked.
+          ipsw dyld extract "$CACHE" /usr/lib/libMobileGestalt.dylib \
+            -o "$RUNNER_TEMP/mobilegestalt" > out/mobilegestalt-extract.log 2>&1 || true
+          if [[ -d "$RUNNER_TEMP/mobilegestalt" ]]; then
+            find "$RUNNER_TEMP/mobilegestalt" -maxdepth 4 -type f -print > out/mobilegestalt-paths.txt
+          else
+            : > out/mobilegestalt-paths.txt
+          fi
+          # Resolve the immediate MGCopyAnswer callsite separately, using the
+          # same original Apple DSC; don't assume this resolves all dataflow.
+          ipsw dyld disass "$CACHE" \
+            --symbol _MGCopyAnswer --symbol-image libMobileGestalt.dylib \
+            --count 240 > out/mobilegestalt-mgcopyanswer-disassembly.txt 2>&1 || true
+          # Dump the constant-object address seen in the getter. This is not
+          # the plaintext key until the NSCFConstantString is decoded.
+          ipsw dyld dump "$CACHE" 0x1e5557138 \
+            --size 64 --bytes > out/mobilegestalt-key-constant-object.txt 2>&1 || true
           python3 - <<'PY'
           import json,pathlib
           s=pathlib.Path('out/mobilegestalt-pumpkin-disassembly.txt').read_text(errors='replace')
@@ -91,6 +106,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_disassembly.py' -v
           python3 homeview-legacy/scripts/analyze_pumpkin_disassembly.py \
             out/mobilegestalt-pumpkin-disassembly.txt \
+            --resolver out/mobilegestalt-mgcopyanswer-disassembly.txt \
             --output out/pumpkin-instruction-analysis.json
       - name: Remove Apple binaries before upload
         if: always()
@@ -104,6 +120,8 @@ jobs:
           path: |
             out/dyld-extraction.log
             out/mobilegestalt-pumpkin-disassembly.txt
+            out/mobilegestalt-mgcopyanswer-disassembly.txt
+            out/mobilegestalt-key-constant-object.txt
             out/mobilegestalt-disass-status.txt
             out/mobilegestalt-extract.log
             out/mobilegestalt-paths.txt

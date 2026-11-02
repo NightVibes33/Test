@@ -186,3 +186,24 @@ returns. A missing MG log is **not** interpreted as a getter returning false
 or as proof that Apple did not call it. QEMU register probes are not device
 hardware implementations. The report is published as
 `pumpkin-paired-guest-comparison.json` even when the boot is blocked.
+
+## Disassembly-backed PumpkinMode getter (original Apple iPhoneOS 24B5110a)
+
+Original Apple DSC disassembly was successfully captured in
+[run 41493261681](https://github.com/NightVibes33/Test/actions/runs/41493261681),
+artifact `pumpkin-original-ios27_2-machO-evidence`.
+The getter `_MobileGestalt_get_pumpkinMode` begins at `0x1afe8db50`.
+Direct instruction evidence:
+- `0x1afe8db78: adrp x0, 0x1e5557000`
+- `0x1afe8db7c: add x0,x0,#0x138` — key CFString *object* pointer `0x1e5557138`, not decoded plaintext.
+- `0x1afe8db84: bl _MGCopyAnswer` — actual helper invoked.
+- `0x1afe8db98: bl _CFNumberGetTypeID_stub`, then `0x1afe8dbb0: bl _CFNumberGetValue_stub` — numeric answer conversion, not a simple `MGGetBoolAnswer` direct call.
+- `mov w21,#0xffffffff`, stack-store and later stack-load form the failure fallback `-1`.
+
+The getter function itself has no direct IORegistry or NVRAM call in the captured
+instruction range. This **does not** mean the nested `MGCopyAnswer` resolver or
+the HomeView `24V514` image lacks such a dependency. Those are separately
+unverified. The trace runner now collects `_MGCopyAnswer` assembly as a second
+artifact and an address dump of the constant-object pointer. Analysis is
+scoped to the target symbol only; subsequent unrelated getters cannot satisfy
+the instruction evidence gate. No Apple firmware binaries are committed.
