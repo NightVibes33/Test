@@ -5,6 +5,7 @@
 This checks actual dynamic plugin loading, API version, and -d plugin logging.
 """
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -28,8 +29,11 @@ def verify(qemu, plugin, timeout=7, runner=subprocess.Popen):
         raise ValueError("QEMU executable or compiled TCG plugin is missing")
     with tempfile.TemporaryDirectory(prefix="homeview-tcg-smoke-") as temp:
         log = Path(temp) / "qemu-plugin.log"
+        trace = Path(temp) / "direct-pc-trace.log"
         argv = command(qemu, plugin, log)
-        proc = runner(argv, stdin=subprocess.DEVNULL,
+        env = os.environ.copy()
+        env["HOMEVIEW_TCG_PC_TRACE_FILE"] = str(trace)
+        proc = runner(argv, stdin=subprocess.DEVNULL, env=env,
                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         expired = False
         try:
@@ -42,6 +46,10 @@ def verify(qemu, plugin, timeout=7, runner=subprocess.Popen):
             except subprocess.TimeoutExpired:
                 proc.kill()
                 output, _ = proc.communicate(timeout=3)
+        # A real on-disk marker must survive independently of -d plugin.
+        direct = trace.read_text(errors="replace") if trace.is_file() else ""
+        if MARKER not in direct:
+            raise RuntimeError("QEMU did not write the independent plugin trace file")
         text = (log.read_text(errors="replace") if log.is_file() else "")
         if output:
             text += "\n" + output.decode("utf-8", "replace")
@@ -54,6 +62,7 @@ def verify(qemu, plugin, timeout=7, runner=subprocess.Popen):
         return {
             "qemu_plugin_dynamic_load_verified": True,
             "QEMU_plugin_logging_mask_active": True,
+            "independent_PC_trace_file_verified": True,
             "test_executed_Apple_instructions": False,
             "test_established_controller_start": False,
             "guest_firmware_used": False,
