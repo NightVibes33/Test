@@ -11,6 +11,8 @@ on:
       - 'homeview-legacy/scripts/patch_qemu_mmio_trace.py'
       - 'homeview-legacy/scripts/extract_j490_mmio_contract.py'
       - 'homeview-legacy/scripts/verify_j490_mmio_log.py'
+      - 'homeview-legacy/scripts/scan_original_kernelcache.py'
+      - 'homeview-legacy/tests/test_original_kernelcache.py'
       - 'homeview-legacy/tests/test_j490_mmio_contract.py'
       - 'homeview-legacy/tests/test_mmio_trace_patch.py'
       - 'homeview-legacy/scripts/verify_ans_adt_probe.py'
@@ -52,6 +54,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_guest_pair.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans_adt_probe.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_j490_mmio_contract.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_kernelcache.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -153,6 +156,9 @@ jobs:
           test -s "$BASE/Firmware/arm64eSURamDisk.dmg.trustcache"
           test -s "$RUNNER_TEMP/hv-extracted/AssetData/payload/replace/usr/standalone/update/ramdisk/arm64eSURamDisk.dmg"
           ipsw img4 im4p extract "$BASE/kernelcache.release.homeaccessory17" -o "$DEST/bootkc"
+          python3 homeview-legacy/scripts/scan_original_kernelcache.py \
+            --kernelcache "$DEST/bootkc" \
+            --output out/homeview-original-kernelcache-driver-markers.json
           ipsw img4 im4p extract "$BASE/Firmware/all_flash/DeviceTree.j490ap.im4p" -o "$DEST/dtree"
           ipsw img4 im4p extract "$BASE/Firmware/sptm.t8140.release.im4p" -o "$DEST/sptm"
           ipsw img4 im4p extract "$BASE/Firmware/txm.appletvos.release.im4p" -o "$DEST/txm"
@@ -270,6 +276,7 @@ jobs:
           name: genuine-homeview-j490-darwin-boot-evidence
           path: |
             out/genuine-darwin-boot-inputs.json
+            out/homeview-original-kernelcache-driver-markers.json
             out/homeview-j490-hardware-inventory.json
             out/homeview-j490-mmio-contract.json
             out/homeview-j490-mmio-trace-verification.json
