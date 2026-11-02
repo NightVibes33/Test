@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/homeview-pumpkin-research.yml'
       - 'homeview-legacy/scripts/scan_pumpkin_diffs.py'
+      - 'homeview-legacy/scripts/scan_full_pumpkin_diff.py'
       - 'homeview-legacy/scripts/pumpkin_personality.py'
       - 'homeview-legacy/scripts/observe_pumpkin_boot.py'
       - 'homeview-legacy/profiles/pumpkin-homeaccessory-j490.json'
@@ -54,5 +55,36 @@ jobs:
           path: |
             out/pumpkin-xrefs.json
             out/pumpkin-xrefs.md
+          if-no-files-found: error
+          retention-days: 14
+
+  pumpkin-complete-beta4-diff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate full diff scanner
+        run: python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_full_scan.py' -v
+      - name: Sparse-checkout pinned complete iOS 27.2 beta-3 to beta-4 diff
+        run: |
+          git clone --depth=1 --filter=blob:none --sparse \
+            https://github.com/blacktop/ipsw-diffs.git upstream-diffs
+          git -C upstream-diffs sparse-checkout set \
+            iOS/27_2_24B5099f_vs_27_2_24B5110a
+          git -C upstream-diffs fetch --depth=1 origin \
+            8af66bf3a924930979237d896ee447f0f2684ac8
+          git -C upstream-diffs checkout --detach \
+            8af66bf3a924930979237d896ee447f0f2684ac8
+      - name: Scan all selected identifiers across every checked-out diff file
+        run: |
+          python3 homeview-legacy/scripts/scan_full_pumpkin_diff.py \
+            upstream-diffs/iOS/27_2_24B5099f_vs_27_2_24B5110a \
+            --output out/pumpkin-full-diff-inventory.json
+      - name: Publish exhaustive public diff reference ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-pumpkin-complete-beta4-diff-ledger
+          path: out/pumpkin-full-diff-inventory.json
           if-no-files-found: error
           retention-days: 14
