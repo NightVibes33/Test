@@ -21,6 +21,8 @@ on:
       - 'homeview-legacy/tests/test_ans2_vtable_disassembly.py'
       - 'homeview-legacy/scripts/analyze_ans2_boot.py'
       - 'homeview-legacy/tests/test_ans2_boot.py'
+      - 'homeview-legacy/scripts/homeview_tcg_pc_trace.c'
+      - 'homeview-legacy/tests/test_tcg_pc_plugin.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
       - 'homeview-legacy/tests/test_homeview_ota_layout.py'
       - 'homeview-legacy/tests/test_j490_mmio_contract.py'
@@ -71,6 +73,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_iokit_classes.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_vtable_disassembly.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_boot.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_pc_plugin.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
@@ -124,6 +127,16 @@ jobs:
           emulator/build/qemu-system-aarch64 -M help | grep -E '(^|[[:space:]])darwin([[:space:]]|$)'
           test "$(strings emulator/build/qemu-system-aarch64 | grep -F -c 'HOMEVIEW_MMIO_TRACE installed')" -ge 1
           echo "VALIDATED: actual traced QEMU binary, no stale uninstrumented cache"
+      - name: Build read-only HomeView QEMU TCG PC observer from pinned API
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O2 -Wall -Wextra -Werror -dynamiclib -undefined dynamic_lookup \
+            -I"$PWD/emulator/include" $(pkg-config --cflags glib-2.0) \
+            -o out/homeview-tcg-pc-trace.dylib \
+            homeview-legacy/scripts/homeview_tcg_pc_trace.c
+          test -s out/homeview-tcg-pc-trace.dylib
+          emulator/build/qemu-system-aarch64 -help | grep -q -- '-plugin'
+          echo "TCG_PLUGIN_COMPILED: exact guest instruction VAs, no hardware mutation"
       - name: Build selective Apple AEA extractor
         run: |
           git clone --depth 1 https://github.com/dhinakg/aeota.git aeota
@@ -299,6 +312,8 @@ jobs:
             echo "Original class listing or Apple kernelcache missing, disassembly not claimed"
           fi
       - name: Compare original and patched J490 device trees with real XNU
+        env:
+          HOMEVIEW_TCG_PC_PLUGIN: ${{ github.workspace }}/out/homeview-tcg-pc-trace.dylib
         run: python3 homeview-legacy/scripts/probe_homeview_boot.py
       - name: Report observed Pumpkin/HomeAccessory queries and shell selections
         if: always()
