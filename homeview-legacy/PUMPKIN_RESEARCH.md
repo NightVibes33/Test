@@ -109,3 +109,30 @@ BreadBoard and activation still require a normal userland boot.
 
 **Native HomeView Hello/BreadBoard rendered in Intel QEMU: NO.**
 No fake screenshot may be substituted.
+
+## Whole beta-4 diff cross-reference expansion (2026-11-02)
+
+Complete pinned public iOS beta-3 to beta-4 diff tree:
+**2,431 text files scanned, 925 matching lines**, including **5 direct
+Pumpkin-specific identifier lines**. The remaining matches are contextual
+HomeAccessory/BreadBoard references or unrelated occurrences. This is the
+complete *published diff surface*, not full original firmware disassembly.
+
+Full JSON reference ledger: [GitHub Actions run 41493981223](https://github.com/NightVibes33/Test/actions/runs/41493981223)
+(artifact: homeview-pumpkin-complete-beta4-diff-ledger).
+
+Additional directly observed symbols:
+
+| Framework / component | Signal | Status and likely role |
+|---|---|---|
+| SiriInformationTypes | DeviceType.homeAccessory and HomeAccessoryCodingKeys | Confirmed typed Siri device identity and serialization; actual Pumpkin mapping unknown |
+| SiriSetup | EnrollmentMode.homeAccessory, homeAccessoryCompanion, homeAccessoryCustomization | Confirmed distinct Siri setup modes; activation/launch decision unknown |
+| SiriSetup | VoiceTrainingPresenter.playHomeAccessoryIntro | HomeAccessory voice-enrollment intro path, not HomeView Shell |
+| ProductKitCore / ProductKit | HomeAccessory.HardwareModel enum, Configuration, Assets | Hardware model asset mapping with at least separate HomeAccessory product family |
+| HomeControlService | HomeAccessoryControlUI.ControlsStyle.PresentationStyle.fullScreen and roundedCard | Device-oriented home control presentation candidates; not proof BreadBoard launched |
+| HomeAccessoryControlUI | HomeAccessoryControl, thermostat and door-lock UI symbols | HomeAccessory-specific controls; no Pumpkin condition recovered |
+| HomeUI (J490 localization) | HUSensitiveStrings-J490 | J490-specific home-device localization, not proof of DeviceTree property |
+
+These extend the service-selection hypothesis to Siri enrollment and Home UI;
+they do not justify inventing NVRAM keys, entitlements, or a MobileGestalt value.
+The physical Apple ANS and DCP/SGX hardware gaps remain independent blockers.

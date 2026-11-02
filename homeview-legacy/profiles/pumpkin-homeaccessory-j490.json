@@ -102,7 +102,26 @@
     "springboard_replacement": "HomeView BreadBoard based on firmware descriptions; guest launch unproven",
     "siri_device_capability": "PegasusAPI.Useragentpb_DeviceCapabilities.isPumpkin",
     "siri_log": "originIsHomeAccessory, isPumpkin",
-    "observed_apple_guest_service_branches": []
+    "observed_apple_guest_service_branches": [],
+    "siri_enrollment_modes_in_ios27_2_beta4": [
+      "homeAccessory",
+      "homeAccessoryCompanion",
+      "homeAccessoryCustomization"
+    ],
+    "siri_enrollment_mapping_status": "Swift enum symbols confirmed; actual guest branch/activation not observed",
+    "homecontrol_presentation_styles": [
+      "fullScreen",
+      "roundedCard"
+    ],
+    "homecontrol_presentation_status": "HomeAccessoryControlUI types in iOS delta; normal HomeView shell integration unproven",
+    "productkit_hardware_model_types": [
+      "ProductKitCore.HomeAccessory.HardwareModel",
+      "ProductKit.HomeAccessory.HardwareModel"
+    ],
+    "nearby_device_identifiers": [
+      "HomeAccessory17,1",
+      "HomeAccessory17,2"
+    ]
   },
   "acceptance": {
     "native_hello_framebuffer": false,
