@@ -15,7 +15,7 @@ class KernelcacheTests(unittest.TestCase):
         self.assertEqual(data["AppleANS"]["match_count"], 2)
         self.assertEqual(data["AppleANS2"]["match_count"], 1)
         self.assertEqual(data["AppleDCP"]["match_count"], 1)
-        self.assertEqual(data["RTBuddy"]["sample_file_offsets"], ["0x20"])
+        self.assertEqual(data["RTBuddy"]["sample_file_offsets"], ["0x1c"])
         self.assertFalse(data["AppleANS"]["kext_driver_present_or_loaded_proven"])
         self.assertFalse(data["AppleNVMe"]["literal_bytes_found"])
 
