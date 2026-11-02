@@ -136,3 +136,18 @@ Additional directly observed symbols:
 These extend the service-selection hypothesis to Siri enrollment and Home UI;
 they do not justify inventing NVRAM keys, entitlements, or a MobileGestalt value.
 The physical Apple ANS and DCP/SGX hardware gaps remain independent blockers.
+
+## Important iOS-versus-HomeView firmware boundary
+
+The confirmed PumpkinMode symbol and key are from an **iPhoneOS 27.2 beta 4**
+build (24B5110a). The genuine HomeView J490 OTA is a **different build**
+(24V514), and its AppleArchive contains many
+`AssetData/payloadv2/payload.*` system-update chunks rather than an
+immediately readable standalone HomeView libMobileGestalt file.
+
+Consequently, proving the key in iPhoneOS does **not** prove that the
+same getter exists in the installed HomeView userland or that
+HomeAccessory17,1 will return true. The installed HomeView system
+volume and its MobileGestalt implementation must still be extracted
+and compared against the iPhoneOS instructions before binding the
+PumpkinMode hypothesis into production machine identity.

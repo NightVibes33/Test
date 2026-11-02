@@ -9,7 +9,11 @@
     "product_type": "HomeAccessory17,1",
     "board_config": "J490AP",
     "soc": "t8140",
-    "source": "Apple HomeView OTA inventory, J490 DeviceTree"
+    "source": "Apple HomeView OTA inventory, J490 DeviceTree",
+    "installed_homeview_mobilegestalt_scanned": false,
+    "ios_pumpkin_source_build": "iOS 27.2 beta 4 (24B5110a)",
+    "homeview_installed_userland_payload": "AppleArchive AssetData/payloadv2 chunks",
+    "ios_to_homeview_getter_equivalence": "not verified"
   },
   "identity": {
     "product_type": "HomeAccessory17,1",
