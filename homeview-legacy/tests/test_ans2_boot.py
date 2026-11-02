@@ -85,6 +85,16 @@ class ANS2BootTests(unittest.TestCase):
         self.assertEqual(qemu["observed_guest_PC_hits"][0]["cpu"], 0)
         self.assertFalse(result["functional_ANS2_device_verified"])
 
+    def test_sld_original_code_fingerprint_at_guest_vaddr(self):
+        log = (QEMU + "HOMEVIEW_PC_TRACE fingerprint_hit "
+               "static=0xfffffff009b0dabc guest=0xfffffff109b0dabc cpu=0\n")
+        observed = a.compare("baseline guest", PROBES, log)
+        fingerprints = observed["experimental_QEMU_MMIO"]["original_code_fingerprint_hits"]
+        self.assertEqual(len(fingerprints), 1)
+        self.assertNotEqual(fingerprints[0]["static_vaddr"],
+                            fingerprints[0]["runtime_guest_vaddr"])
+        self.assertFalse(observed["functional_ANS2_device_verified"])
+
     def test_bounded_log_reader(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "input.log"

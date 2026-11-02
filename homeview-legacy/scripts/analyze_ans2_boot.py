@@ -17,6 +17,9 @@ INSTALL = re.compile(r"HOMEVIEW_MMIO_TRACE installed (arm-io/(?:ans|sart-ans))\s
 ACCESS = re.compile(r"HOMEVIEW_MMIO_TRACE (read|write) (arm-io/(?:ans|sart-ans))\s+off=0x([0-9a-f]+)", re.I)
 PC_CONFIG = re.compile(r"HOMEVIEW_PC_TRACE initialized targets=(\d+)", re.I)
 PC_HIT = re.compile(r"HOMEVIEW_PC_TRACE hit target=(0x[0-9a-f]{8,16}) cpu=(\d+)", re.I)
+FINGERPRINT_HIT = re.compile(
+    r"HOMEVIEW_PC_TRACE fingerprint_hit static=(0x[0-9a-f]{8,16}) "
+    r"guest=(0x[0-9a-f]{8,16}) cpu=(\d+)", re.I)
 
 
 def observe_serial(text):
@@ -69,6 +72,11 @@ def observe_qemu(text):
             {"target_vaddr": m.group(1), "cpu": int(m.group(2))}
             for m in list(PC_HIT.finditer(text))[:24]],
         "PC_hit_proves_dispatch_not_method_completion": True,
+        "original_code_fingerprint_hits": [
+            {"static_vaddr": m.group(1), "runtime_guest_vaddr": m.group(2),
+             "cpu": int(m.group(3))}
+            for m in list(FINGERPRINT_HIT.finditer(text))[:16]],
+        "fingerprint_match_is_not_an_ANS_driver_start_proof": True,
         "no_PC_hits_does_not_exclude_KASLR_or_missing_targets": True,
     }
 
@@ -88,6 +96,14 @@ def compare(control_text, experiment_text, qemu_text=""):
         for address, cpu in sorted({(entry["target_vaddr"], entry["cpu"])
                                     for entry in hits})][:24]
     qemu["PC_hit_count"] = len(qemu["observed_guest_PC_hits"])
+    hits = qemu["original_code_fingerprint_hits"] + serial_pc["original_code_fingerprint_hits"]
+    qemu["original_code_fingerprint_hits"] = [
+        {"static_vaddr": static, "runtime_guest_vaddr": guest, "cpu": cpu}
+        for static, guest, cpu in sorted({
+            (h["static_vaddr"], h["runtime_guest_vaddr"], h["cpu"])
+            for h in hits})][:16]
+    qemu["original_code_fingerprint_hit_count"] = len(
+        qemu["original_code_fingerprint_hits"])
     if not control_text or not experiment_text:
         result = "incomplete_guest_log_pair"
     elif trial["ANS2_RTBuddy_start_was_invoked"] and not control["ANS2_RTBuddy_start_was_invoked"]:

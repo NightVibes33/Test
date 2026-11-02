@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-MARKER = "HOMEVIEW_PC_TRACE initialized targets=1 read_only=true"
+MARKER = "HOMEVIEW_PC_TRACE initialized targets=1 signatures=0 read_only=true"
 TEST_PC = "0xfffffff009b0dabc"
 
 

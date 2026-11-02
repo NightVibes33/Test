@@ -37,6 +37,8 @@ class TCGPCPluginTests(unittest.TestCase):
         code = PROBE.read_text()
         self.assertIn('HOMEVIEW_TCG_PC_PLUGIN', code)
         self.assertIn('select_targets', code)
+        self.assertIn('original_pc_signatures', code)
+        self.assertIn('fingerprint_args', code)
         self.assertIn('if name == "software-update-ans-binding-probe":', code)
         self.assertIn('argv[argv.index("-d") + 1] += ",plugin"', code)
 

@@ -57,10 +57,17 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
             from disassemble_ans2_vtables import select_targets
             classes = json.loads(classes_path.read_text())
             addresses = [x["address"] for x in select_targets(classes)]
-            if addresses:
+            fingerprint_args = []
+            disassembly = dest / "homeview-original-ans2-vtable-disassembly.json"
+            if disassembly.is_file():
+                from original_pc_signatures import plugin_args
+                fingerprint_args = plugin_args(json.loads(disassembly.read_text()))
+            if addresses or fingerprint_args:
                 plugin = pathlib.Path(path).resolve()
-                argv.extend(["-plugin", str(plugin) + "," +
-                             ",".join("addr=" + address for address in addresses)])
+                options = ["addr=" + address for address in addresses]
+                options.extend(fingerprint_args)
+                argv.extend(["-plugin", str(plugin) + "," + ",".join(options)])
+                answer["experimental_original_code_fingerprints"] = len(fingerprint_args)
                 # qemu_plugin_outs uses CPU_LOG_PLUGIN, which is filtered
                 # unless -d plugin is enabled in the ANS experiment.
                 argv[argv.index("-d") + 1] += ",plugin"

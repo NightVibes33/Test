@@ -27,6 +27,8 @@ on:
       - 'homeview-legacy/tests/test_tcg_pc_plugin.py'
       - 'homeview-legacy/scripts/smoke_homeview_tcg_plugin.py'
       - 'homeview-legacy/tests/test_tcg_plugin_smoke.py'
+      - 'homeview-legacy/scripts/original_pc_signatures.py'
+      - 'homeview-legacy/tests/test_original_pc_signatures.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
       - 'homeview-legacy/tests/test_homeview_ota_layout.py'
       - 'homeview-legacy/tests/test_j490_mmio_contract.py'
@@ -80,6 +82,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_boot.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_pc_plugin.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_plugin_smoke.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_pc_signatures.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
