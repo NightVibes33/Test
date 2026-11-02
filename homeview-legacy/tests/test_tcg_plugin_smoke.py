@@ -27,7 +27,7 @@ class SmokeArgumentsTests(unittest.TestCase):
                 mod.verify(Path(d) / "qemu", Path(d) / "observer")
 
     def test_smoke_marker_not_conflated_with_guest_execution(self):
-        self.assertIn("initialized targets=1 read_only=true", mod.MARKER)
+        self.assertIn("initialized targets=1 signatures=0 read_only=true", mod.MARKER)
         self.assertNotIn(" hit ", mod.MARKER)
 
 if __name__ == "__main__":
