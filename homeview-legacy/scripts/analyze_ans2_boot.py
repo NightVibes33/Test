@@ -77,6 +77,17 @@ def compare(control_text, experiment_text, qemu_text=""):
     control = observe_serial(control_text)
     trial = observe_serial(experiment_text)
     qemu = observe_qemu(qemu_text)
+    # QEMU plugins may emit qemu_plugin_outs() to the configured -D log
+    # OR to the captured guest stdout/stderr stream on different hosts.
+    # Union both streams and remove duplicate address/CPU pairs.
+    serial_pc = observe_qemu(experiment_text)
+    qemu["PC_trace_plugin_initialized"] |= serial_pc["PC_trace_plugin_initialized"]
+    hits = qemu["observed_guest_PC_hits"] + serial_pc["observed_guest_PC_hits"]
+    qemu["observed_guest_PC_hits"] = [
+        dict(target_vaddr=address, cpu=cpu)
+        for address, cpu in sorted({(entry["target_vaddr"], entry["cpu"])
+                                    for entry in hits})][:24]
+    qemu["PC_hit_count"] = len(qemu["observed_guest_PC_hits"])
     if not control_text or not experiment_text:
         result = "incomplete_guest_log_pair"
     elif trial["ANS2_RTBuddy_start_was_invoked"] and not control["ANS2_RTBuddy_start_was_invoked"]:

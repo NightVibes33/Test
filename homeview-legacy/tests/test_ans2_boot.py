@@ -72,6 +72,19 @@ class ANS2BootTests(unittest.TestCase):
         self.assertTrue(result["PC_hit_proves_dispatch_not_method_completion"])
         self.assertTrue(result["no_PC_hits_does_not_exclude_KASLR_or_missing_targets"])
 
+    def test_pc_hits_from_serial_and_qemu_are_deduplicated(self):
+        original = "original control"
+        guest = PROBES + "HOMEVIEW_PC_TRACE hit target=0xfffffff009b0dabc cpu=0\n"
+        trace = QEMU + (
+            "HOMEVIEW_PC_TRACE initialized targets=2 read_only=true\n"
+            "HOMEVIEW_PC_TRACE hit target=0xfffffff009b0dabc cpu=0\n")
+        result = a.compare(original, guest, trace)
+        qemu = result["experimental_QEMU_MMIO"]
+        self.assertTrue(qemu["PC_trace_plugin_initialized"])
+        self.assertEqual(qemu["PC_hit_count"], 1)
+        self.assertEqual(qemu["observed_guest_PC_hits"][0]["cpu"], 0)
+        self.assertFalse(result["functional_ANS2_device_verified"])
+
     def test_bounded_log_reader(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "input.log"
