@@ -383,6 +383,7 @@ jobs:
             --control out/native-homeview-baseline-software-update-serial.log \
             --experiment out/native-homeview-software-update-ans-binding-probe-serial.log \
             --qemu-log out/qemu-software-update-ans-binding-probe.log \
+            --pc-log out/homeview-tcg-pc-software-update-ans-binding-probe.log \
             --output out/homeview-ans2-runtime-matching.json
           if [[ -s out/homeview-j490-mmio-contract.json ]]; then
             python3 homeview-legacy/scripts/verify_j490_mmio_log.py \
@@ -443,6 +444,7 @@ jobs:
             out/native-homeview-guest-frame-*.ppm
             out/homeview-*-result.json
             out/qemu-*.log
+            out/homeview-tcg-pc-*.log
             out/native-homeview-kernel-result.json
             out/native-homeview-kernel-serial.log
             out/selective-extraction.log
