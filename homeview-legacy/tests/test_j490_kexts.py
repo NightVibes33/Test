@@ -61,5 +61,67 @@ class KernelcacheMatchingTests(unittest.TestCase):
         self.assertEqual(result["original_Apple_J490_ANS_identity"], {})
 
 
+    def test_exact_apple_ans2_service_graph_uses_original_adt_selectors(self):
+        rows = [
+            {"id": "com.apple.driver.AppleA7IOP-ASCWrap-v6",
+             "io_kit_personalities": {
+                 "AppleASCWrapV6": {
+                     "IOProviderClass": "AppleARMIODevice",
+                     "IOClass": "AppleASCWrapV6",
+                     "IONameMatch": ["iop,ascwrap-v6", "iop,ascwrap-v7"]}}},
+            {"id": "com.apple.driver.RTBuddy",
+             "io_kit_personalities": {
+                 "RTBuddy": {
+                     "IOProviderClass": "AppleA7IOPNub",
+                     "IOClass": "RTBuddy",
+                     "IONameMatch": "iop-nub,rtbuddy-v2"},
+                 "RTBuddyService": {
+                     "IOProviderClass": "RTBuddy",
+                     "IOClass": "RTBuddyService"}}},
+            {"id": "com.apple.iokit.IONVMeFamily",
+             "io_kit_personalities": {
+                 "AppleANS2NVMeController": {
+                     "IOProviderClass": "RTBuddyService",
+                     "IOClass": "AppleANS2NVMeController",
+                     "IOPropertyMatch": {"role": "ANS2"}},
+                 "AppleANS3NVMeController": {
+                     "IOProviderClass": "RTBuddyService",
+                     "IOClass": "AppleANS3NVMeController",
+                     "IOPropertyMatch": {"role": "ANS2"}}}},
+        ]
+        adt = {
+            "nodes": {
+                "arm-io/ans": {
+                    "present": True, "original_compatible": "iop,ascwrap-v6"},
+                "arm-io/ans/iop-ans-nub": {
+                    "present": True, "original_compatible": "iop-nub,rtbuddy-v2"},
+            },
+            "ANS_original_firmware_capabilities": {
+                "role": {"present": True, "value": "ANS2"}},
+        }
+        result = a.summarize(rows, adt)
+        graph = result["source_backed_IOKit_service_dependency_graph"]["ANS"]
+        self.assertTrue(graph["all_required_matching_rules_found"])
+        self.assertTrue(graph["controller_selection_is_ambiguous"])
+        self.assertEqual(
+            len(graph["stages"][-1]["kernelcache_personalities"]), 2)
+        self.assertFalse(graph["guest_IORegistry_runtime_verification"])
+        self.assertFalse(graph["storage_or_display_operational"])
+        self.assertFalse(graph["stages"][0]["actual_matching_or_service_creation_observed"])
+
+    def test_missing_adt_does_not_invent_a_matched_driver(self):
+        rows = [{
+            "id": "com.apple.iokit.IONVMeFamily",
+            "io_kit_personalities": {"AppleANS2NVMeController": {
+                "IOProviderClass": "RTBuddyService",
+                "IOClass": "AppleANS2NVMeController",
+                "IOPropertyMatch": {"role": "ANS2"}}},
+        }]
+        graph = a.summarize(rows)["source_backed_IOKit_service_dependency_graph"]["ANS"]
+        self.assertFalse(graph["all_required_matching_rules_found"])
+        self.assertEqual(graph["stages"][-1]["kernelcache_personalities"], [])
+        self.assertIsNone(graph["firmware_role"])
+
+
 if __name__ == "__main__":
     unittest.main()

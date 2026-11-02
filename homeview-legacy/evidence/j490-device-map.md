@@ -93,3 +93,27 @@ The pinned QEMU source's TLBI page-granule error is logged with
 `LOG_GUEST_ERROR` and returns a zero-length range, not a direct
 emulator fatal assertion. Preserve the error in diagnostics; don't infer
 it caused an observed guest shutdown without corroborating runtime evidence.
+
+## Actual Apple J490 ANS2 service dependency graph
+
+The original 24V514 kernelcache analysis artifact from
+[Actions 41509325012](https://github.com/NightVibes33/Test/actions/runs/41509325012)
+proves the *embedded* `com.apple.driver.AppleA7IOP-ASCWrap-v6`,
+`com.apple.driver.RTBuddy`, `com.apple.iokit.IONVMeFamily`, and
+`com.apple.driver.AppleSART` IOKit personality selectors. They match
+the original ADT's `iop,ascwrap-v6` and `iop-nub,rtbuddy-v2` identities.
+The IONVMeFamily includes **multiple controller classes** with
+`IOProviderClass=RTBuddyService` and `IOPropertyMatch.role=ANS2`,
+so there is no evidence that any single AppleANS2/AppleANS3 class has won.
+The DCP equivalent uses `role=DCP`. The original Apple guest's full
+31-region ANS binding diagnostic produced **zero MMIO read/write
+events**, and the guest still blocked waiting for NAND and framebuffer.
+This argues for checking actual service publishing, the ASC mailbox,
+RTBuddy/RTKit firmware handshake, and SART authorization before attempting
+functional NVMe queues.
+
+`scripts/analyze_j490_kexts.py` now generates
+`source_backed_IOKit_service_dependency_graph` for ANS and DCP,
+preserving every matching candidate and explicit false runtime flags.
+A matching Info.plist does not establish an instantiated provider service
+or functional ANS, NVMe, DCP or APFS volumes.

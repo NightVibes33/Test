@@ -47,6 +47,99 @@ def matching_personalities(personalities):
     return result
 
 
+
+def candidates_for(matched, provider, io_class=None, name=None, role=None):
+    """Find declared IOKit personalities, not live IORegistry matches."""
+    result = []
+    for entry in matched:
+        for personality in entry["matching_personalities"]:
+            selectors = personality["selectors"]
+            if selectors.get("IOProviderClass") != provider:
+                continue
+            if io_class and selectors.get("IOClass") != io_class:
+                continue
+            if name:
+                options = selectors.get("IONameMatch")
+                names = options if isinstance(options, list) else [options]
+                if name not in names:
+                    continue
+            if role is not None:
+                conditions = selectors.get("IOPropertyMatch")
+                if not isinstance(conditions, dict) or conditions.get("role") != role:
+                    continue
+            result.append({
+                "bundle_id": entry["bundle_id"],
+                "personality_name": personality["personality_name"],
+                "IOClass": selectors.get("IOClass"),
+                "IOProviderClass": provider,
+                "guest_IOService_started": False,
+            })
+    return sorted(result, key=lambda x: (x["bundle_id"], x["personality_name"]))
+
+
+def hardware_identity_graph(matched, contract):
+    """IOKit selector graph; no claims about firmware execution or RTKit."""
+    nodes = (contract or {}).get("nodes") or {}
+    storage = nodes.get("arm-io/ans") or {}
+    storage_nub = nodes.get("arm-io/ans/iop-ans-nub") or {}
+    graphics = nodes.get("arm-io/dcp") or {}
+    graphics_nub = nodes.get("arm-io/dcp/iop-dcp-nub") or {}
+    caps = (contract or {}).get("ANS_original_firmware_capabilities") or {}
+    role = (caps.get("role") or {}).get("value")
+    if not isinstance(role, str) or len(role) > 24:
+        role = None
+    graph = {}
+    for target, wrapper, nub, target_role in (
+        ("ANS", storage, storage_nub, role),
+        ("DCP", graphics, graphics_nub, "DCP"),
+    ):
+        compat = wrapper.get("original_compatible")
+        nub_compat = nub.get("original_compatible")
+        # A declared compatibility is necessary but cannot prove IOService matching.
+        requirements = [
+            ("asc_wrapper", "AppleARMIODevice", None, compat, None),
+            ("rtbuddy", "AppleA7IOPNub", "RTBuddy", nub_compat, None),
+            ("rtbuddy_service", "RTBuddy", "RTBuddyService", None, None),
+            ("controller_or_firmware_service", "RTBuddyService", None,
+             None, target_role),
+        ]
+        stages = []
+        for stage, provider, klass, match, role_requirement in requirements:
+            usable = (stage not in ("asc_wrapper", "rtbuddy") or
+                      isinstance(match, str) and bool(match)) and (
+                      stage != "controller_or_firmware_service" or
+                      isinstance(role_requirement, str) and bool(role_requirement))
+            found = candidates_for(
+                matched, provider, io_class=klass, name=match,
+                role=role_requirement) if usable else []
+            if target == "ANS" and stage == "controller_or_firmware_service":
+                found = [c for c in found if "NVMe" in str(c["IOClass"])]
+            elif target == "DCP" and stage == "controller_or_firmware_service":
+                found = [c for c in found if "Firmware" in str(c["IOClass"])]
+            stages.append({
+                "stage": stage, "expected_Apple_ADT_compatible": match,
+                "expected_Apple_ADT_role": role_requirement,
+                "required_provider_class": provider,
+                "kernelcache_personalities": found,
+                "kernelcache_matching_rule_found": bool(found),
+                "actual_matching_or_service_creation_observed": False,
+            })
+        graph[target] = {
+            "apple_adt_node_present": bool(wrapper.get("present")),
+            "original_compatible": compat,
+            "original_nub_compatible": nub_compat,
+            "firmware_role": target_role,
+            "stages": stages,
+            "all_required_matching_rules_found": all(
+                x["kernelcache_matching_rule_found"] for x in stages),
+            "controller_selection_is_ambiguous": (
+                len(stages[-1]["kernelcache_personalities"]) > 1),
+            "guest_IORegistry_runtime_verification": False,
+            "ASC_mailbox_RTKit_handshake_implemented": False,
+            "storage_or_display_operational": False,
+        }
+    return graph
+
 def summarize(raw, contract=None):
     if isinstance(raw, dict):
         raw = raw.get("kexts") or raw.get("extensions")
@@ -92,6 +185,8 @@ def summarize(raw, contract=None):
         "matching_storage_graphics_RTKit_KEXTs": matched,
         "matched_KEXT_count": len(matched),
         "original_Apple_J490_ANS_identity": identity,
+        "source_backed_IOKit_service_dependency_graph":
+            hardware_identity_graph(matched, contract),
         "role_ANS2_matches_an_original_kernelcache_IOKit_personality_proven": False,
         "runtime_driver_loaded_or_start_success_proven": False,
         "NAND_service_or_APFS_system_available_proven": False,
