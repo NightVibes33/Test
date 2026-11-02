@@ -170,3 +170,17 @@ and explicitly covers the original J490 experiment's highest-scoring
 `AppleANS3CGv2Controller` as well as ANS2 CG and CGv2 variants.
 A vtable pointer is a reverse-engineering lead, not a successfully called
 `start()`, working ANS2 mailbox or NAND service.
+
+## Original ANS2/RTBuddy vtable target disassembly
+
+The original 24V514 kernelcache from Actions 41515456130 contains 16
+class-specific `AppleANS3CGv2Controller` vtable slots, 26 for
+`AppleANS2CGv2Controller`, 58 for `RTBuddy`, and 33 for
+`AppleASCWrapV6`. The original Apple VM addresses for selected class-owned
+slots (e.g. ANS3CGv2 slot 85 `0xfffffff009b0dabc` and slot 260
+`0xfffffff009ad026c`) are now used with
+`ipsw macho disass --fileset-entry --vaddr` on the original temporary
+Apple kernelcache. `homeview-original-ans2-vtable-disassembly.json`
+records exact command success, starting VA and bounded ARM64 assembly.
+The vtable slot is **not** labeled a `start()` entry without independently
+verifying its signature; none of this proves the guest invoked the method.

@@ -17,6 +17,8 @@ on:
       - 'homeview-legacy/tests/test_j490_kexts.py'
       - 'homeview-legacy/scripts/inspect_original_iokit_classes.py'
       - 'homeview-legacy/tests/test_original_iokit_classes.py'
+      - 'homeview-legacy/scripts/disassemble_ans2_vtables.py'
+      - 'homeview-legacy/tests/test_ans2_vtable_disassembly.py'
       - 'homeview-legacy/scripts/analyze_ans2_boot.py'
       - 'homeview-legacy/tests/test_ans2_boot.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -67,6 +69,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_kernelcache.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_j490_kexts.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_iokit_classes.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_vtable_disassembly.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_boot.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
@@ -284,6 +287,17 @@ jobs:
           else
             echo "Original Apple kernelcache not extracted; no vtable inspection"
           fi
+      - name: Disassemble original ANS2 NVMe and RTBuddy class-owned entrypoints
+        if: always()
+        run: |
+          if [[ -s "$RUNNER_TEMP/hv-firmware/bootkc" && -s out/homeview-original-iokit-cpp-methods.json ]]; then
+            python3 homeview-legacy/scripts/disassemble_ans2_vtables.py \
+              --kernelcache "$RUNNER_TEMP/hv-firmware/bootkc" \
+              --classes out/homeview-original-iokit-cpp-methods.json \
+              --output out/homeview-original-ans2-vtable-disassembly.json
+          else
+            echo "Original class listing or Apple kernelcache missing, disassembly not claimed"
+          fi
       - name: Compare original and patched J490 device trees with real XNU
         run: python3 homeview-legacy/scripts/probe_homeview_boot.py
       - name: Report observed Pumpkin/HomeAccessory queries and shell selections
@@ -344,6 +358,7 @@ jobs:
             out/homeview-original-kernelcache-driver-markers.json
             out/homeview-original-kext-iokit-personalities.json
             out/homeview-original-iokit-cpp-methods.json
+            out/homeview-original-ans2-vtable-disassembly.json
             out/homeview-ans2-runtime-matching.json
             out/homeview-original-ota-layout.json
             out/homeview-j490-hardware-inventory.json
