@@ -13,7 +13,9 @@ on:
       - 'homeview-legacy/scripts/pumpkin_personality.py'
       - 'homeview-legacy/scripts/observe_pumpkin_boot.py'
       - 'homeview-legacy/scripts/verify_pumpkin_adt_pair.py'
+      - 'homeview-legacy/scripts/compare_pumpkin_guest_pair.py'
       - 'homeview-legacy/tests/test_pumpkin_adt_pair.py'
+      - 'homeview-legacy/tests/test_pumpkin_guest_pair.py'
       - 'homeview-legacy/tests/test_pumpkin_personality.py'
       - 'homeview-legacy/tests/test_pumpkin_observer.py'
   workflow_dispatch:
@@ -36,6 +38,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_personality.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_observer.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_adt_pair.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_guest_pair.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -212,6 +215,12 @@ jobs:
           python3 homeview-legacy/scripts/observe_pumpkin_boot.py \
             --logs out/native-homeview-*-serial.log \
             --output out/pumpkin-guest-observations.json
+          python3 homeview-legacy/scripts/compare_pumpkin_guest_pair.py \
+            --boot out/native-homeview-kernel-result.json \
+            --observations out/pumpkin-guest-observations.json \
+            --adt out/homeview-pumpkin-pair-verification.json \
+            --qemu-logs out/qemu-*.log \
+            --output out/pumpkin-paired-guest-comparison.json
       - name: Delete Apple system binaries and key from ephemeral runner
         if: always()
         run: |
@@ -225,6 +234,7 @@ jobs:
             out/genuine-darwin-boot-inputs.json
             out/homeview-j490-hardware-inventory.json
             out/pumpkin-guest-observations.json
+            out/pumpkin-paired-guest-comparison.json
             out/homeview-dtree-dock-fixup.json
             out/homeview-dtree-dock-pumpkin.json
             out/homeview-pumpkin-pair-verification.json

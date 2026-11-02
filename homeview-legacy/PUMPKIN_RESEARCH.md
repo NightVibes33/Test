@@ -175,3 +175,14 @@ experiments, not the Pumpkin comparison control.
 This verifies *one-property experimental isolation only*. Even a behavioral
 difference cannot prove the actual MobileGestalt getter derives from that
 property without ARM64 disassembly and corroborating guest instrumentation.
+
+## Paired guest runtime and MMIO evidence (2026-11-02)
+
+`compare_pumpkin_guest_pair.py` correlates the two exactly matched J490
+device-tree variants with original Apple serial logs and bounded QEMU MMIO
+debug traces for ANS/DCP. The report compares restore stage, NAND waits,
+framebuffer errors, crashes and any *explicitly logged* MobileGestalt query
+returns. A missing MG log is **not** interpreted as a getter returning false
+or as proof that Apple did not call it. QEMU register probes are not device
+hardware implementations. The report is published as
+`pumpkin-paired-guest-comparison.json` even when the boot is blocked.
