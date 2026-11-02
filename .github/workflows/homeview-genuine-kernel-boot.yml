@@ -13,6 +13,8 @@ on:
       - 'homeview-legacy/scripts/verify_j490_mmio_log.py'
       - 'homeview-legacy/scripts/scan_original_kernelcache.py'
       - 'homeview-legacy/tests/test_original_kernelcache.py'
+      - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
+      - 'homeview-legacy/tests/test_homeview_ota_layout.py'
       - 'homeview-legacy/tests/test_j490_mmio_contract.py'
       - 'homeview-legacy/tests/test_mmio_trace_patch.py'
       - 'homeview-legacy/scripts/verify_ans_adt_probe.py'
@@ -55,6 +57,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans_adt_probe.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_j490_mmio_contract.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_kernelcache.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -265,6 +268,24 @@ jobs:
           else
             echo "J490 hardware contract unavailable; firmware extraction/build did not finish"
           fi
+      - name: Inventory real Apple OTA payload layout without redistributing files
+        if: always()
+        run: |
+          set +x
+          STATUS=125
+          LISTING="$RUNNER_TEMP/homeview-ota-layout-list.txt"
+          if [[ -s "$RUNNER_TEMP/HomeView.aea" && -s "$RUNNER_TEMP/hv-key" && -x ./aeota/aastuff_standalone ]]; then
+            set +e
+            ./aeota/aastuff_standalone -i "$RUNNER_TEMP/HomeView.aea" -l \
+              -r '^AssetData/' -k "$(cat "$RUNNER_TEMP/hv-key")" \
+              > "$LISTING" 2> "$RUNNER_TEMP/homeview-ota-listing-errors.log"
+            STATUS=$?
+            set -e
+          fi
+          python3 homeview-legacy/scripts/scan_homeview_ota_layout.py \
+            --listing "$LISTING" --list-exit-code "$STATUS" \
+            --output out/homeview-original-ota-layout.json
+          rm -f "$LISTING" "$RUNNER_TEMP/homeview-ota-listing-errors.log"
       - name: Delete Apple system binaries and key from ephemeral runner
         if: always()
         run: |
@@ -277,6 +298,7 @@ jobs:
           path: |
             out/genuine-darwin-boot-inputs.json
             out/homeview-original-kernelcache-driver-markers.json
+            out/homeview-original-ota-layout.json
             out/homeview-j490-hardware-inventory.json
             out/homeview-j490-mmio-contract.json
             out/homeview-j490-mmio-trace-verification.json
