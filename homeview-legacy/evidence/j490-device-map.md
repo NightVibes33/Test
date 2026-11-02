@@ -132,3 +132,26 @@ limits each class to 110 lines and 24 unique addresses, and identifies
 failed/timed-out queries instead of fabricating method resolutions.
 A vtable or `start()` method in a Mach-O is **not proof of invocation**
 in QEMU; actual guest IORegistry/driver matching remains unproven.
+
+## Corrected guest-driver runtime finding — original J490 24V514
+
+The original ANS-compatible device-tree experiment is **not merely**
+evidence of source-embedded IOKit personalities. Its genuine Apple guest
+serial contains an invoked `RTBuddy(ANS2): start()`, followed by
+`AppleANS2CGv2Controller::probe` (400000),
+`AppleANS2NVMeController::probe` (100000),
+`AppleANS3CGv2Controller::probe` (500000), and
+`AppleANS3NVMeController::probe` (300000). The matched original-control
+serial contains none of those messages. Four methods were **probed**;
+the 500000 score is only the largest *reported* score and does not prove
+that this class won, successfully started or published NAND. The native
+Apple guest still logs `Couldn't alloc class "AFKResource"`, waits for
+NAND publishing, and reports no framebuffer. The expanded isolated QEMU
+ANS/SART stub mapping records **zero register accesses**, which clearly
+does not negate the runtime IOKit probe evidence.
+
+`scripts/analyze_ans2_boot.py` now publishes the exact distinctions
+in `homeview-ans2-runtime-matching.json`, comparing the original Apple
+control and compatible-only experimental serial and the QEMU MMIO log.
+The next implementation target is finding why no ANS2 NVMe controller
+`start()`/RTKit mailbox/NAND service success follows the probe path.
