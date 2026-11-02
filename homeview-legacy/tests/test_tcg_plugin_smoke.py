@@ -29,6 +29,10 @@ class SmokeArgumentsTests(unittest.TestCase):
     def test_smoke_marker_not_conflated_with_guest_execution(self):
         self.assertIn("initialized targets=1 signatures=0 read_only=true", mod.MARKER)
         self.assertNotIn(" hit ", mod.MARKER)
+        smoke = P.read_text()
+        self.assertIn("independent_PC_trace_file_verified", smoke)
+        self.assertIn("HOMEVIEW_TCG_PC_TRACE_FILE", smoke)
+        self.assertIn("MARKER not in direct", smoke)
 
 if __name__ == "__main__":
     unittest.main()
