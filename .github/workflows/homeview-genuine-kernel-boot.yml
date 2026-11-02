@@ -77,6 +77,23 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
+      - name: Compile real QEMU API v7 observer before expensive Apple firmware download
+        run: |
+          set -euo pipefail
+          pkg-config --exists glib-2.0 || { sudo apt-get update -qq; sudo apt-get install -y libglib2.0-dev pkg-config; }
+          API="$RUNNER_TEMP/homeview-pinned-qemu-api"
+          mkdir -p "$API/plugins"
+          curl -fsSL --retry 3 \
+            "https://raw.githubusercontent.com/jprx/qemu-sptm/bad6336fb24211f8c4e8e946c259bd5b12417340/include/plugins/qemu-plugin.h" \
+            -o "$API/plugins/qemu-plugin.h"
+          grep -Fq '#define QEMU_PLUGIN_VERSION 7' "$API/plugins/qemu-plugin.h"
+          cc -std=c11 -Wall -Wextra -Werror -fPIC -shared \
+            -I"$API" $(pkg-config --cflags glib-2.0) \
+            -o "$RUNNER_TEMP/homeview-tcg-pc-trace.so" \
+            homeview-legacy/scripts/homeview_tcg_pc_trace.c
+          test -s "$RUNNER_TEMP/homeview-tcg-pc-trace.so"
+          nm -D "$RUNNER_TEMP/homeview-tcg-pc-trace.so" | grep -q 'qemu_plugin_install'
+          echo 'TCG_PLUGIN_API7_COMPILED_FAST: signature and headers verified'
 
   original-apple-kernel:
     needs: fast-evidence-validation
@@ -102,7 +119,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: emulator/build/qemu-system-aarch64
-          key: homeview-macos27-qemu-sptm-bad6336fb24-trace-${{ hashFiles('homeview-legacy/scripts/patch_qemu_mmio_trace.py') }}
+          key: homeview-macos27-qemu-sptm-bad6336fb24-plugin-v1-trace-${{ hashFiles('homeview-legacy/scripts/patch_qemu_mmio_trace.py') }}
       - name: Build Apple-specific QEMU TCG Darwin backend on macOS
         if: steps.darwin-qemu-cache.outputs.cache-hit != 'true'
         run: |
@@ -112,7 +129,7 @@ jobs:
           mkdir emulator/build
           cd emulator/build
           ../configure --target-list=aarch64-softmmu --disable-pvg --disable-werror \
-            --disable-docs --disable-gtk --disable-sdl
+            --disable-docs --disable-gtk --disable-sdl --enable-plugins
           make -j 3
           ./qemu-system-aarch64 -M help | grep -E '(^|[[:space:]])darwin([[:space:]]|$)'
       - name: Save compiled Darwin emulator before experimental boot attempt
@@ -120,7 +137,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: emulator/build/qemu-system-aarch64
-          key: homeview-macos27-qemu-sptm-bad6336fb24-trace-${{ hashFiles('homeview-legacy/scripts/patch_qemu_mmio_trace.py') }}
+          key: homeview-macos27-qemu-sptm-bad6336fb24-plugin-v1-trace-${{ hashFiles('homeview-legacy/scripts/patch_qemu_mmio_trace.py') }}
       - name: Validate built or restored Apple-specific QEMU
         run: |
           test -x emulator/build/qemu-system-aarch64
@@ -130,13 +147,23 @@ jobs:
       - name: Build read-only HomeView QEMU TCG PC observer from pinned API
         run: |
           set -euo pipefail
+          # The binary-only QEMU cache omits include/plugins/qemu-plugin.h.
+          # Fetch this exact file from the SAME pinned upstream commit, even
+          # on cache hits. The fast Ubuntu job already compiled against it.
+          API="$RUNNER_TEMP/homeview-pinned-qemu-api"
+          mkdir -p "$API/plugins"
+          curl -fsSL --retry 3 \
+            "https://raw.githubusercontent.com/jprx/qemu-sptm/bad6336fb24211f8c4e8e946c259bd5b12417340/include/plugins/qemu-plugin.h" \
+            -o "$API/plugins/qemu-plugin.h"
+          grep -Fq '#define QEMU_PLUGIN_VERSION 7' "$API/plugins/qemu-plugin.h"
           cc -std=c11 -O2 -Wall -Wextra -Werror -dynamiclib -undefined dynamic_lookup \
-            -I"$PWD/emulator/include" $(pkg-config --cflags glib-2.0) \
+            -I"$API" $(pkg-config --cflags glib-2.0) \
             -o out/homeview-tcg-pc-trace.dylib \
             homeview-legacy/scripts/homeview_tcg_pc_trace.c
           test -s out/homeview-tcg-pc-trace.dylib
           emulator/build/qemu-system-aarch64 -help | grep -q -- '-plugin'
-          echo "TCG_PLUGIN_COMPILED: exact guest instruction VAs, no hardware mutation"
+          nm -gU out/homeview-tcg-pc-trace.dylib | grep -q 'qemu_plugin_install'
+          echo "TCG_PLUGIN_COMPILED: pinned QEMU API v7, plugin-supported emulator, no guest modification"
       - name: Build selective Apple AEA extractor
         run: |
           git clone --depth 1 https://github.com/dhinakg/aeota.git aeota
