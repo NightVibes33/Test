@@ -236,7 +236,11 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
     if (!count && !signature_count) return -1;
     const char *path = getenv("HOMEVIEW_TCG_PC_TRACE_FILE");
     if (path && *path) {
-        trace_fd = open(path, O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0600);
+        trace_fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+        if (trace_fd >= 0 && fcntl(trace_fd, F_SETFD, FD_CLOEXEC) < 0) {
+            close(trace_fd);
+            trace_fd = -1;
+        }
         if (trace_fd < 0) {
             return -1;  /* Never silently fall back if an artifact is required. */
         }
