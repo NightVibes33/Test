@@ -18,7 +18,9 @@ def scan(root):
     root=pathlib.Path(root)
     if not root.is_dir():raise FileNotFoundError(str(root))
     records=[]
-    files=list(root.rglob("*"))
+    # Filesystem enumeration differs on Linux and Intel macOS/APFS. Stable
+    # sorting is essential for reproducible evidence and unit-test ordering.
+    files=sorted(root.rglob("*"), key=lambda p:p.relative_to(root).as_posix())
     checked=0
     for f in files:
         if not f.is_file() or f.suffix not in (".md",".txt",".json",".plist",".strings"):

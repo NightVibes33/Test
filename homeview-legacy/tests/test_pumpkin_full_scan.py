@@ -13,7 +13,11 @@ class ScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             root=pathlib.Path(t)
             (root/"a.md").write_text('+ _MobileGestalt_get_pumpkinMode\n+ "PumpkinMode"\n')
-            (root/"b.md").write_text('+ "BreadBoard"\n')
+            (root/"b.md").write_text('+ "BreadBoard"\\n')
+            # Recreate a.md last to ensure a predictable result even where
+            # filesystem iteration order differs from POSIX lexicographic order.
+            (root/"a.md").unlink()
+            (root/"a.md").write_text('+ _MobileGestalt_get_pumpkinMode\\n+ "PumpkinMode"\\n')
             data=mod.scan(root)
             self.assertEqual(data["matches"],3)
             self.assertEqual(data["files_scanned"],2)
