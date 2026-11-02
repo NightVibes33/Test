@@ -6,8 +6,20 @@ on:
       - temp/homeview-legacy-boot
     paths:
       - '.github/workflows/homeview-legacy-boot.yml'
-      - 'homeview-legacy/**'
+      - 'homeview-legacy/scripts/build-image.sh'
+      - 'homeview-legacy/scripts/launch-homeview.sh'
+      - 'homeview-legacy/scripts/run-darwin.sh'
+      - 'homeview-legacy/scripts/test-arm-uefi.sh'
+      - 'homeview-legacy/scripts/test-uefi.sh'
+      - 'homeview-legacy/scripts/native_startup_gate.py'
+      - 'homeview-legacy/scripts/firmware_probe.py'
+      - 'homeview-legacy/tests/test_firmware_probe.py'
+      - 'homeview-legacy/tests/test_ota_probe.py'
   workflow_dispatch:
+
+concurrency:
+  group: homeview-legacy-x86-usb-temp
+  cancel-in-progress: true
 
 permissions:
   contents: read

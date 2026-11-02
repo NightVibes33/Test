@@ -26,6 +26,10 @@ on:
       - 'homeview-legacy/tests/test_pumpkin_observer.py'
   workflow_dispatch:
 
+concurrency:
+  group: homeview-real-j490-darwin-temp
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

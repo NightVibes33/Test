@@ -9,6 +9,10 @@ on:
       - 'homeview-legacy/tests/test_pumpkin_disassembly.py'
   workflow_dispatch:
 
+concurrency:
+  group: homeview-pumpkin-original-macho-temp
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
