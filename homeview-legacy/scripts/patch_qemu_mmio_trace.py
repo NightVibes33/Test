@@ -59,7 +59,14 @@ static void hv_trace_device(MachineState *ms, struct dtree_node *root,
     if (!g_getenv("HOMEVIEW_MMIO_ALL_WINDOWS")) count = MIN(count, (size_t)1);
     for (size_t i = 0; i < count; i++) {
         if (!regs[i].len) continue;
+        // Apple's J490 ANS first window is 0x88000 bytes. The old 0x4000
+        // cap excluded its actual NVMMU/linear queue registers (~0x28100).
+        // Expand this one original range ONLY for the isolated ANS probe.
         hwaddr len = MIN(regs[i].len, (uint64_t)0x4000);
+        if (g_getenv("HOMEVIEW_MMIO_FULL_ANS") &&
+            g_strcmp0(name, "arm-io/ans") == 0 && i == 0) {
+            len = MIN(regs[i].len, (uint64_t)0x100000);
+        }
         hwaddr base = regs[i].base + iobase;
         if (base < iobase || base + len < base) {
             qemu_log_mask(LOG_UNIMP,

@@ -81,6 +81,28 @@ class MMIOContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not demonstrated"):
             verify.check(data, skip)
 
+    def test_full_apple_ans_mmio_window_and_nvmmu_offsets(self):
+        data = extract.collect(fake_raw_tree())
+        win = data["nodes"]["arm-io/ans"]["reg_windows"][0]
+        win["length"] = "0x88000"
+        base = win["guest_physical_base"]
+        log = (
+            f"HOMEVIEW_MMIO_TRACE installed arm-io/ans base={base} length=0x88000 index=0\\n"
+            "HOMEVIEW_MMIO_TRACE read arm-io/ans off=0x28100 size=4 index=0\\n"
+        )
+        result = verify.check(data, log)
+        self.assertTrue(result["full_primary_ANS_window_installed"])
+        self.assertEqual(result["access_sample"][0]["linux_register_reference"],
+                         "ans_nvmmu_num_tcbs")
+        self.assertIn("ans_linear_sq_control",
+                      result["registered_regions"][0]["linux_ANS_reference_offsets_in_range"])
+        with self.assertRaisesRegex(ValueError, "disagrees"):
+            verify.check(data, log.replace("length=0x88000", "length=0x88001"))
+        # The old 16KiB tracing limit cannot observe this offset.
+        old = f"HOMEVIEW_MMIO_TRACE installed arm-io/ans base={base} length=0x4000 index=0\\n"
+        with self.assertRaisesRegex(ValueError, "exceeds"):
+            verify.check(data, old + "HOMEVIEW_MMIO_TRACE read arm-io/ans off=0x28100 size=4 index=0\\n")
+
     def test_unregistered_access_is_rejected(self):
         data = extract.collect(fake_raw_tree())
         with self.assertRaisesRegex(ValueError, "unregistered"):

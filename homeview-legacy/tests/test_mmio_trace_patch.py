@@ -18,6 +18,8 @@ class TraceTests(unittest.TestCase):
         self.assertIn('g_getenv("HOMEVIEW_MMIO_TRACE")',changed)
         self.assertIn('HV_TRACE_LIMIT 96',changed)
         self.assertIn('HOMEVIEW_MMIO_ALL_WINDOWS',changed)
+        self.assertIn('HOMEVIEW_MMIO_FULL_ANS',changed)
+        self.assertIn('0x100000',changed)
         self.assertIn('adt_get_prop_len(node, "reg")',changed)
         self.assertIn('skipped_overlap',changed)
         self.assertIn('index=%zu',changed)

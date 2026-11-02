@@ -41,3 +41,22 @@ against the original address and length. The optional trace includes
 This validates emulator mapping provenance only; **nothing here implements
 NAND, NVMe queues, ASC mailboxes, interrupts, firmware upload, DMA, DCP
 framebuffer or host GPU acceleration**.
+
+## Original ANS register reachability — 2026-11-02
+
+The original HomeView 24V514 J490 DeviceTree gives `/arm-io/ans/reg[0]`
+`base=0x389600000, length=0x88000`. Previous diagnostic QEMU mapped
+only `0x4000` at that base. The Linux Apple NVMe driver maps the coprocessor
+registers and NVMe register bank separately, uses the linear SQ control at
+`+0x24908`, the NVMMU TCB count at `+0x28100`, and TCB invalidation at
+`+0x28118`; all lie outside the prior diagnostic 16KiB window.
+The isolated ANS-binding probe now maps the *original* whole
+`0x88000` window. The paired Pumpkin control retains the identical
+`0x4000` coverage to preserve its experimental isolation.
+
+Reference: https://github.com/torvalds/linux/blob/master/drivers/nvme/host/apple.c
+and Apple ASC mailbox.c in the Linux tree. Register names from Linux are
+comparative guidance, not a proof of identical behavior in Apple's HomeView
+J490 driver. The host-side read handlers still return zero; the guest still
+has **no** functional RTKit, ASC mailbox, NVMMU, DMA, NVMe queue, persistent
+NAND image, block backend, APFS volume, or graphical display emulator.
