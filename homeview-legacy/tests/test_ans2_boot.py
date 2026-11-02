@@ -61,6 +61,17 @@ class ANS2BootTests(unittest.TestCase):
         self.assertEqual(data["ANS_or_SART_MMIO_access_count"], 1)
         self.assertTrue(data["QEMU_MMIO_zero_return_stubs_are_not_hardware_emulation"])
 
+    def test_tcg_program_counter_hit_proves_dispatch_only(self):
+        log = QEMU + (
+            "HOMEVIEW_PC_TRACE initialized targets=2 read_only=true\\n"
+            "HOMEVIEW_PC_TRACE hit target=0xfffffff009b0dabc cpu=0\\n")
+        result = a.observe_qemu(log)
+        self.assertTrue(result["PC_trace_plugin_initialized"])
+        self.assertEqual(result["observed_guest_PC_hits"][0]["target_vaddr"],
+                         "0xfffffff009b0dabc")
+        self.assertTrue(result["PC_hit_proves_dispatch_not_method_completion"])
+        self.assertTrue(result["no_PC_hits_does_not_exclude_KASLR_or_missing_targets"])
+
     def test_bounded_log_reader(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "input.log"

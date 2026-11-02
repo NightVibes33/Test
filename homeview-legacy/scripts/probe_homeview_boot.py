@@ -49,6 +49,20 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     if name == "software-update-ans-binding-probe":
         env["HOMEVIEW_MMIO_ALL_WINDOWS"] = "1"
         env["HOMEVIEW_MMIO_FULL_ANS"] = "1"
+    if name == "software-update-ans-binding-probe":
+        path = os.environ.get("HOMEVIEW_TCG_PC_PLUGIN")
+        classes_path = dest / "homeview-original-iokit-cpp-methods.json"
+        # Only exact VAs from the original Apple kernelcache; no KASLR guesses.
+        if path and pathlib.Path(path).is_file() and classes_path.is_file():
+            from disassemble_ans2_vtables import select_targets
+            classes = json.loads(classes_path.read_text())
+            addresses = [x["address"] for x in select_targets(classes)]
+            if addresses:
+                plugin = pathlib.Path(path).resolve()
+                argv.extend(["-plugin", str(plugin) + "," +
+                             ",".join("addr=" + address for address in addresses)])
+                answer["experimental_guest_PC_trace_targets"] = addresses
+        answer["guest_PC_trace_is_not_controller_start_proof"] = True
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     chunks = bytearray()
     screen_result = None
