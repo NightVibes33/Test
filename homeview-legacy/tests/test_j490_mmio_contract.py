@@ -54,6 +54,33 @@ class MMIOContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "disagrees"):
             verify.check(data, log.replace(hex(expected), "0x10000"))
 
+    def test_multiregion_apple_ans_indices(self):
+        data = extract.collect(fake_raw_tree())
+        a = data["nodes"]["arm-io/ans"]
+        a["reg_windows"].append({
+            "relative_offset": "0x8000",
+            "guest_physical_base": hex(int(data["arm_io_phys_base"], 0) + 0x8000),
+            "length": "0x8000",
+        })
+        window = a["reg_windows"][1]
+        base = window["guest_physical_base"]
+        log = f"HOMEVIEW_MMIO_TRACE installed arm-io/ans base={base} length=0x4000 index=1\\n"
+        observed = verify.check(data, log)
+        self.assertEqual(observed["registered_regions"][0]["window_index"], 1)
+        with self.assertRaisesRegex(ValueError, "disagrees"):
+            verify.check(data, log.replace("index=1", "index=0"))
+        with self.assertRaisesRegex(ValueError, "unregistered"):
+            verify.check(data, "HOMEVIEW_MMIO_TRACE read arm-io/ans off=0x20 size=4 index=1\\n")
+
+    def test_overlap_skip_requires_a_real_registered_overlap(self):
+        data = extract.collect(fake_raw_tree())
+        base = data["nodes"]["arm-io/ans"]["reg_windows"][0]["guest_physical_base"]
+        registered = f"HOMEVIEW_MMIO_TRACE installed arm-io/ans base={base} length=0x4000 index=0\\n"
+        skip = f"HOMEVIEW_MMIO_TRACE skipped_overlap arm-io/ans base={base} length=0x4000 index=0\\n"
+        self.assertEqual(len(verify.check(data, registered + skip)["skipped_overlap_windows"]), 1)
+        with self.assertRaisesRegex(ValueError, "not demonstrated"):
+            verify.check(data, skip)
+
     def test_unregistered_access_is_rejected(self):
         data = extract.collect(fake_raw_tree())
         with self.assertRaisesRegex(ValueError, "unregistered"):
