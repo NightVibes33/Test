@@ -91,6 +91,20 @@ _Other:
         self.assertFalse(module.analyze_followup(output, "0x1afe6884c")
                          ["entry_verified_from_original_disassembly"])
 
+    def test_real_unlabeled_vaddr_disassembly(self):
+        output = """    • Loading symbol cache file...
+0x1afe68848: 7f 23 03 d5 pacibsp
+0x1afe6884c: ff c3 01 d1 sub sp, sp, #0x70
+0x1afe68850: f8 5f 03 a9 stp x24, x23, [sp, #0x30]
+0x1afe68854: 00 00 00 94 bl 0x1afe68bf4
+"""
+        result = module.analyze_followup(output, "0x1afe68848")
+        self.assertTrue(result["entry_verified_from_original_disassembly"])
+        self.assertEqual(result["instruction_count"], 4)
+        self.assertTrue(result["instruction_range_may_be_truncated"])
+        self.assertFalse(module.analyze_followup(output, "0x1afe6884c")[
+            "entry_verified_from_original_disassembly"])
+
     def test_resolver_cannot_prove_dataflow(self):
         output = """_MGCopyAnswer:
 0x180010000: 7f 23 03 d5 pacibsp

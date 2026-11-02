@@ -91,6 +91,11 @@ jobs:
           ipsw dyld disass "$CACHE" \
             --symbol _MGGetGlobalCache --symbol-image libMobileGestalt.dylib \
             --count 160 > out/mobilegestalt-global-cache-disassembly.txt 2>&1 || true
+          # Direct original Apple callsites from the MGCopyAnswer resolver.
+          ipsw dyld disass "$CACHE" --vaddr 0x1afe94848 --count 160 \
+            > out/mobilegestalt-fallback-fetch-disassembly.txt 2>&1 || true
+          ipsw dyld disass "$CACHE" --vaddr 0x1afe68cdc --count 160 \
+            > out/mobilegestalt-cache-lookup-disassembly.txt 2>&1 || true
           # Dump the constant-object address seen in the getter. This is not
           # the plaintext key until the NSCFConstantString is decoded.
           # --bytes emits actual binary data. Convert it to readable hex
@@ -126,6 +131,8 @@ jobs:
             --resolver out/mobilegestalt-mgcopyanswer-disassembly.txt \
             --global-cache out/mobilegestalt-global-cache-disassembly.txt \
             --resolver-tail out/mobilegestalt-mgcopyanswer-tail-disassembly.txt \
+            --fallback-fetch out/mobilegestalt-fallback-fetch-disassembly.txt \
+            --cache-lookup out/mobilegestalt-cache-lookup-disassembly.txt \
             --output out/pumpkin-instruction-analysis.json
       - name: Remove Apple binaries before upload
         if: always()
@@ -142,6 +149,8 @@ jobs:
             out/mobilegestalt-mgcopyanswer-disassembly.txt
             out/mobilegestalt-global-cache-disassembly.txt
             out/mobilegestalt-mgcopyanswer-tail-disassembly.txt
+            out/mobilegestalt-fallback-fetch-disassembly.txt
+            out/mobilegestalt-cache-lookup-disassembly.txt
             out/mobilegestalt-key-constant-object.txt
             out/key-object-dump-status.txt
             out/mobilegestalt-disass-status.txt

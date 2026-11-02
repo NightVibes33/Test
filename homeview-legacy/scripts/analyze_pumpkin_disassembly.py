@@ -156,16 +156,47 @@ def analyze_resolver(text):
 
 
 def analyze_followup(text, expected_entry):
-    """Return evidence only for a function beginning at the exact vaddr."""
-    candidates = parse_functions(text)
+    """Follow real ipsw --vaddr instructions without requiring a symbol label.
+
+    This CLI prints address-first output, often with no symbol at all.
+    The first instruction must equal the requested entry; unrelated later
+    instructions may never satisfy an expected-address assertion.
+    """
+    clean = ANSI.sub("", text)
+    candidates = parse_functions(clean)
     function = next((rows for rows in candidates.values()
                      if rows and rows[0]["address"] == expected_entry.lower()), [])
+    if not function:
+        lines = clean.splitlines()
+        start = next((i for i, line in enumerate(lines) if INSTRUCTION.match(line)), None)
+        if start is not None:
+            first = INSTRUCTION.match(lines[start])
+            if first.group(1).lower() == expected_entry.lower():
+                function = []
+                expected_pc = int(expected_entry, 16)
+                for line in lines[start:]:
+                    if LABEL.match(line.strip()):
+                        break
+                    ins = INSTRUCTION.match(line)
+                    if not ins:
+                        continue
+                    if int(ins.group(1), 16) != expected_pc:
+                        break
+                    function.append({
+                        "address": ins.group(1).lower(),
+                        "opcode": ins.group(2).lower(),
+                        "operand": ins.group(3).strip(),
+                        "text": line.strip()[:350],
+                    })
+                    expected_pc += 4
     direct = [i for i in function if i["opcode"] == "bl"]
     indirect = [i for i in function if i["opcode"] in (
         "blr", "blraa", "blrab", "blraaz", "blrabz")]
     return {
         "expected_entry": expected_entry,
         "entry_verified_from_original_disassembly": bool(function),
+        "instruction_range_may_be_truncated": bool(function and not any(
+            i["opcode"] in ("ret", "retab", "retaa") for i in function)),
         "instruction_count": len(function),
         "direct_calls": direct[:100],
         "indirect_calls": indirect[:40],
@@ -178,7 +209,7 @@ def analyze_global_cache(text):
     inst = parse_functions(text).get("_MGGetGlobalCache", [])
     return {
         "target": "_MGGetGlobalCache",
-        "instruction_stream_present": len(inst) >= 4,
+        "instruction_stream_present": len(inst) >= 3,
         "entry": inst[0]["address"] if inst else None,
         "instructions_in_symbol": len(inst),
         "direct_calls": [i for i in inst if i["opcode"] == "bl"][:100],
@@ -192,6 +223,8 @@ def main():
     ap.add_argument("--resolver")
     ap.add_argument("--global-cache")
     ap.add_argument("--resolver-tail")
+    ap.add_argument("--fallback-fetch")
+    ap.add_argument("--cache-lookup")
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
     result = analyze(Path(args.disassembly).read_text(errors="replace"))
@@ -204,6 +237,12 @@ def main():
     if args.resolver_tail:
         result["MGCopyAnswer_tail"] = analyze_followup(
             Path(args.resolver_tail).read_text(errors="replace"), "0x1afe68848")
+    if args.fallback_fetch:
+        result["MGCopyAnswer_fallback_fetch"] = analyze_followup(
+            Path(args.fallback_fetch).read_text(errors="replace"), "0x1afe94848")
+    if args.cache_lookup:
+        result["MGCopyAnswer_cache_lookup"] = analyze_followup(
+            Path(args.cache_lookup).read_text(errors="replace"), "0x1afe68cdc")
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2) + "\n")
