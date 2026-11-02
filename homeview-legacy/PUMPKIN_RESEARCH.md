@@ -151,3 +151,7 @@ HomeAccessory17,1 will return true. The installed HomeView system
 volume and its MobileGestalt implementation must still be extracted
 and compared against the iPhoneOS instructions before binding the
 PumpkinMode hypothesis into production machine identity.
+
+## Original-Mach-O instruction evidence gate (2026-11-02)
+
+`analyze_pumpkin_disassembly.py` parses the original 24B5110a `ipsw dyld disass` output to extract instruction addresses, direct/indirect calls, returns, and *named callsite hints* only. The `homeview-pumpkin-macho.yml` job now rejects non-instruction output (including CLI usage or error text), runs unit tests, and publishes `pumpkin-instruction-analysis.json` beside the original disassembly. Neither named calls nor extraction success alone establish whether `/chosen/PumpkinMode`, IORegistry, NVRAM, hardware model or Gestalt cache drives the real getter. Actual backing-source verification and the normal HomeView GUI remain **unproven**.

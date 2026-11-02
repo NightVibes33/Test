@@ -5,6 +5,8 @@ on:
     branches: [temp/homeview-legacy-boot]
     paths:
       - '.github/workflows/homeview-pumpkin-macho.yml'
+      - 'homeview-legacy/scripts/analyze_pumpkin_disassembly.py'
+      - 'homeview-legacy/tests/test_pumpkin_disassembly.py'
   workflow_dispatch:
 
 permissions:
@@ -84,6 +86,12 @@ jobs:
           PY
           test "$STATUS" = 0
           test "$(wc -c < out/mobilegestalt-pumpkin-disassembly.txt)" -gt 200
+      - name: Verify ARM64 instruction evidence without inferring behavior
+        run: |
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_disassembly.py' -v
+          python3 homeview-legacy/scripts/analyze_pumpkin_disassembly.py \
+            out/mobilegestalt-pumpkin-disassembly.txt \
+            --output out/pumpkin-instruction-analysis.json
       - name: Remove Apple binaries before upload
         if: always()
         run: |
@@ -100,6 +108,7 @@ jobs:
             out/mobilegestalt-extract.log
             out/mobilegestalt-paths.txt
             out/pumpkin-original-machO-analysis.json
+            out/pumpkin-instruction-analysis.json
             out/cache-file-list.txt
             out/official-source-url.txt
           if-no-files-found: ignore
