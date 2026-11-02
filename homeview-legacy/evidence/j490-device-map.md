@@ -117,3 +117,18 @@ functional NVMe queues.
 preserving every matching candidate and explicit false runtime flags.
 A matching Info.plist does not establish an instantiated provider service
 or functional ANS, NVMe, DCP or APFS volumes.
+
+## Original Apple ANS2 kernel C++ method inspection
+
+`scripts/inspect_original_iokit_classes.py` uses the source-backed
+`ipsw kernel cpp --class NAME --methods` command against the **decrypted
+original** kernelcache on the ephemeral macOS 27 runner. It records
+bounded C++ vtable/method evidence for AppleASCWrapV6, AppleA7IOPNub,
+RTBuddy, RTBuddyService, AppleANS2NVMeController,
+AppleANS2DARTNVMeController, AppleANS3NVMeController,
+IOCoastGuardSARTMapper, and AppleDCPExpert. The generated
+`homeview-original-iokit-cpp-methods.json` contains no binary firmware,
+limits each class to 110 lines and 24 unique addresses, and identifies
+failed/timed-out queries instead of fabricating method resolutions.
+A vtable or `start()` method in a Mach-O is **not proof of invocation**
+in QEMU; actual guest IORegistry/driver matching remains unproven.
