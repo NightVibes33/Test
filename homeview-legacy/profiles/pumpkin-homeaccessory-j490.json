@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "profile_id": "homeview-j490-pumpkin-research",
+  "status": "experimental-not-confirmed-as-apple-personality",
+  "firmware": {
+    "os": "HomeView",
+    "version": "27.2",
+    "build": "24V514",
+    "product_type": "HomeAccessory17,1",
+    "board_config": "J490AP",
+    "soc": "t8140",
+    "source": "Apple HomeView OTA inventory, J490 DeviceTree"
+  },
+  "identity": {
+    "product_type": "HomeAccessory17,1",
+    "board_config": "J490AP",
+    "device_class": "HomeAccessory",
+    "hardware_model": null,
+    "platform_name": null,
+    "hardware_model_status": "unresolved-from-raw-device-tree",
+    "platform_name_status": "read-from-original-ADT-never-spoof"
+  },
+  "gestalt": {
+    "key": "PumpkinMode",
+    "obfuscated_key": "WnCqFWpQgAFLfacM07K0RA",
+    "symbol": "_MobileGestalt_get_pumpkinMode",
+    "candidate_true": true,
+    "observed_guest_value": null,
+    "derivation": "unknown-until-MachO-disassembly",
+    "allowed_sources_to_investigate": [
+      "product-type",
+      "board-config",
+      "IORegistry/IODeviceTree",
+      "NVRAM",
+      "MobileGestalt-cache",
+      "PlatformExpert",
+      "entitlement",
+      "service-response"
+    ]
+  },
+  "device_tree": {
+    "preserve_original_apple_nodes": true,
+    "known": [
+      "/arm-io/ans",
+      "/arm-io/sart-ans",
+      "/arm-io/dcp",
+      "/arm-io/dcp0-expert",
+      "/arm-io/dart-dcp",
+      "/arm-io/sgx",
+      "/arm-io/spi1/multi-touch",
+      "/arm-io/i2c1/audio-speaker"
+    ],
+    "experimental_probe": {
+      "path": "/chosen",
+      "property": "PumpkinMode",
+      "type": "u32",
+      "value": 1,
+      "apple_reads_this_property": "unknown",
+      "only_when_explicitly_enabled": true
+    }
+  },
+  "nvram": {
+    "source": "original-darwin-vm-NVRAM-proxy",
+    "discovered_pumpkin_keys": [],
+    "inject_keys": {},
+    "pumpkin_nvram_source_confirmed": false
+  },
+  "capabilities": {
+    "display": {
+      "native_node": "/arm-io/dcp",
+      "gpu_node": "/arm-io/sgx",
+      "native_framebuffer_available": false,
+      "topology": "unverified",
+      "reference_virtual_size": [
+        1088,
+        1088
+      ]
+    },
+    "audio": {
+      "native_node": "/arm-io/i2c1/audio-speaker",
+      "hardware_emulated": false
+    },
+    "usb": {
+      "controller": "unknown",
+      "host_linux_enumerates": true,
+      "homeview_guest_supported": false
+    },
+    "input": {
+      "native_node": "/arm-io/spi1/multi-touch",
+      "touch_emulated": false,
+      "mouse_keyboard_translation": "not implemented"
+    },
+    "networking": {
+      "homekit_capability": "unknown",
+      "wifi_emulated": false
+    }
+  },
+  "services": {
+    "expected_shell": "BreadBoard",
+    "shell_bundle_id": "unverified",
+    "known_related_service": "com.apple.breadboard.app-drawer",
+    "springboard_replacement": "HomeView BreadBoard based on firmware descriptions; guest launch unproven",
+    "siri_device_capability": "PegasusAPI.Useragentpb_DeviceCapabilities.isPumpkin",
+    "siri_log": "originIsHomeAccessory, isPumpkin",
+    "observed_apple_guest_service_branches": []
+  },
+  "acceptance": {
+    "native_hello_framebuffer": false,
+    "native_breadboard_framebuffer": false,
+    "apple_ans_nand_emulated": false,
+    "apple_dcp_sgx_emulated": false
+  }
+}

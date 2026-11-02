@@ -1,0 +1,58 @@
+name: HomeView 27.2 Pumpkin device-personality analysis
+
+on:
+  push:
+    branches: [temp/homeview-legacy-boot]
+    paths:
+      - '.github/workflows/homeview-pumpkin-research.yml'
+      - 'homeview-legacy/scripts/scan_pumpkin_diffs.py'
+      - 'homeview-legacy/scripts/pumpkin_personality.py'
+      - 'homeview-legacy/scripts/observe_pumpkin_boot.py'
+      - 'homeview-legacy/profiles/pumpkin-homeaccessory-j490.json'
+      - 'homeview-legacy/tests/test_pumpkin_*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pumpkin-static-xrefs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate device profile and Pumpkin signal interpretation
+        run: |
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_*.py' -v
+          python3 -m py_compile homeview-legacy/scripts/pumpkin_personality.py
+          python3 -m py_compile homeview-legacy/scripts/scan_pumpkin_diffs.py
+          python3 -m py_compile homeview-legacy/scripts/observe_pumpkin_boot.py
+          python3 -m py_compile homeview-legacy/scripts/patch_homeview_dtree.py
+      - name: Fetch pinned iOS 27.2 beta diff and generate per-framework xref map
+        run: |
+          python3 homeview-legacy/scripts/scan_pumpkin_diffs.py \
+            --output out/pumpkin-xrefs.json \
+            --markdown out/pumpkin-xrefs.md
+      - name: Assert critical new symbols and obfuscated key were actually retrieved
+        run: |
+          python3 - <<'PY'
+          import json
+          d=json.load(open('out/pumpkin-xrefs.json'))
+          source='\n'.join(r['reference'] for r in d['references'])
+          for token in ('PumpkinMode','WnCqFWpQgAFLfacM07K0RA',
+                        '_MobileGestalt_get_pumpkinMode','isPumpkin',
+                        'originIsHomeAccessory','HomeAccessory','BreadBoard','TestMode2'):
+              assert token in source, 'missing symbol in pinned diff: '+token
+          assert not d['errors'],d['errors']
+          print('Verified public diff references:',len(d['references']))
+          PY
+      - name: Upload source-backed cross-reference evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-pumpkin-xrefs-and-report
+          path: |
+            out/pumpkin-xrefs.json
+            out/pumpkin-xrefs.md
+          if-no-files-found: error
+          retention-days: 14

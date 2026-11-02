@@ -9,6 +9,11 @@ on:
       - 'homeview-legacy/scripts/boot_evidence.py'
       - 'homeview-legacy/scripts/patch_homeview_dtree.py'
       - 'homeview-legacy/tests/test_boot_evidence.py'
+      - 'homeview-legacy/profiles/pumpkin-homeaccessory-j490.json'
+      - 'homeview-legacy/scripts/pumpkin_personality.py'
+      - 'homeview-legacy/scripts/observe_pumpkin_boot.py'
+      - 'homeview-legacy/tests/test_pumpkin_personality.py'
+      - 'homeview-legacy/tests/test_pumpkin_observer.py'
   workflow_dispatch:
 
 permissions:
@@ -26,6 +31,8 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_adt_hardware.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_real_guest_screen.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_mmio_trace_patch.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_personality.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_observer.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
 
@@ -157,10 +164,12 @@ jobs:
           python3 homeview-legacy/scripts/patch_homeview_dtree.py \
             "$DEST/dtree.raw" "$DEST/dtree" --upstream darwin-tools/dt_fixup.py \
             --nvram darwin-tools/nvram.bin --mode remove \
-            --report out/homeview-dtree-dock-fixup.json
+            --profile homeview-legacy/profiles/pumpkin-homeaccessory-j490.json \
+            --pumpkin-probe --report out/homeview-dtree-dock-fixup.json
           python3 homeview-legacy/scripts/patch_homeview_dtree.py \
             "$DEST/dtree.raw" "$DEST/dtree.neutralized" --upstream darwin-tools/dt_fixup.py \
             --nvram darwin-tools/nvram.bin --mode neutralize \
+            --profile homeview-legacy/profiles/pumpkin-homeaccessory-j490.json \
             --report out/homeview-dtree-dock-neutralized.json
           python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
             "$DEST/dtree.raw" "$DEST/dtree.baseline"
@@ -183,6 +192,12 @@ jobs:
           PY
       - name: Compare original and patched J490 device trees with real XNU
         run: python3 homeview-legacy/scripts/probe_homeview_boot.py
+      - name: Report observed Pumpkin/HomeAccessory queries and shell selections
+        if: always()
+        run: |
+          python3 homeview-legacy/scripts/observe_pumpkin_boot.py \
+            --logs out/native-homeview-*-serial.log \
+            --output out/pumpkin-guest-observations.json
       - name: Delete Apple system binaries and key from ephemeral runner
         if: always()
         run: |
@@ -195,6 +210,7 @@ jobs:
           path: |
             out/genuine-darwin-boot-inputs.json
             out/homeview-j490-hardware-inventory.json
+            out/pumpkin-guest-observations.json
             out/homeview-dtree-dock-fixup.json
             out/homeview-dtree-dock-neutralized.json
             out/native-homeview-*-serial.log

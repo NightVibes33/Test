@@ -10,8 +10,9 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
+from pumpkin_personality import apply as apply_personality, load_profile
 
-def make_tree(raw, output, upstream_path, nvram_path, mode):
+def make_tree(raw, output, upstream_path, nvram_path, mode, profile_path=None, pumpkin_probe=False):
     spec = importlib.util.spec_from_file_location("darwin_vm_dt_fixup", upstream_path)
     if spec is None or spec.loader is None:
         raise ValueError("Cannot load upstream darwin-vm ADT fixup")
@@ -36,6 +37,10 @@ def make_tree(raw, output, upstream_path, nvram_path, mode):
                 child.props["status"] = "disabled"
     if not names:
         raise ValueError("Expected J490 /dock-connect node missing")
+    # Device personality is sourced from ONE canonical profile. Original
+    # ProductType/board identity is preserved; no generic iPhone spoofing.
+    profile = load_profile(profile_path) if profile_path else load_profile()
+    personality_report = apply_personality(root, profile, pumpkin_probe)
     encoded = mod.encode_node(root)
     if not encoded:
         raise ValueError("Resulting Apple device tree is empty")
@@ -44,7 +49,8 @@ def make_tree(raw, output, upstream_path, nvram_path, mode):
         "mode": mode, "one_pass_darwin_vm_fixup": True,
         "source": "original Apple HomeView J490 IM4P payload",
         "dock_paths_affected": names, "raw_bytes": len(data),
-        "output_bytes": len(encoded), "native_homeview_gui_proven": False
+        "output_bytes": len(encoded), "native_homeview_gui_proven": False,
+        "device_personality": personality_report
     }
 
 def main():
@@ -55,8 +61,12 @@ def main():
     p.add_argument("--nvram", required=True)
     p.add_argument("--mode", choices=("remove","neutralize"), default="remove")
     p.add_argument("--report", required=True)
+    p.add_argument("--profile")
+    p.add_argument("--pumpkin-probe", action="store_true",
+                   help="Inject experimental /chosen/PumpkinMode; not actual MG override")
     args=p.parse_args()
-    report=make_tree(args.raw_dtree,args.output_dtree,args.upstream,args.nvram,args.mode)
+    report=make_tree(args.raw_dtree,args.output_dtree,args.upstream,args.nvram,args.mode,
+                     profile_path=args.profile, pumpkin_probe=args.pumpkin_probe)
     Path(args.report).write_text(json.dumps(report,indent=2)+"\n")
     print(json.dumps(report,indent=2))
 
