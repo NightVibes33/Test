@@ -60,3 +60,16 @@ comparative guidance, not a proof of identical behavior in Apple's HomeView
 J490 driver. The host-side read handlers still return zero; the guest still
 has **no** functional RTKit, ASC mailbox, NVMMU, DMA, NVMe queue, persistent
 NAND image, block backend, APFS volume, or graphical display emulator.
+
+## HomeView J490 native ANS/NVMe personality properties
+
+The Apple-original `/arm-io/ans` node includes `nvme-linear-sq`,
+`nvme-num-sl`, `nvme-queue-entries`, `nvme-interrupt-idx`,
+`nvme-secure-bar`, `nvme-tl-wa`, `iommu-parent`,
+`namespaces`, and `iop-version`. They are now included in
+`homeview-j490-mmio-contract.json` using decoded original scalar values
+or a SHA-256/size-only description for opaque firmware binary properties.
+Missing values remain explicitly absent; no default is substituted.
+This is metadata only: the QEMU guest will still not see a hardware-backed
+Apple ANS device until ASC/RTKit, SART, NVMMU, queues, interrupts, and
+persistent block storage are implemented.

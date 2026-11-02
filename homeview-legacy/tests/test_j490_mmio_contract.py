@@ -37,6 +37,32 @@ def fake_raw_tree():
 
 
 class MMIOContractTests(unittest.TestCase):
+    def test_original_ans_nvme_personality_properties(self):
+        tree = fake_raw_tree()
+        ans = tree.children[0].children[0]
+        ans.props.update({
+            "nvme-linear-sq": "u32:1",
+            "nvme-num-sl": struct.pack("<I", 2),
+            "nvme-queue-entries": struct.pack("<Q", 64),
+            "nvme-secure-bar": b"\x00\xff\x01\x02\x03\x04\x05\x06\x07",
+            "namespaces": b"",
+        })
+        data = extract.collect(tree)
+        caps = data["ANS_original_firmware_capabilities"]
+        self.assertEqual(caps["nvme-linear-sq"]["unsigned"], 1)
+        self.assertEqual(caps["nvme-num-sl"]["kind"], "raw-u32")
+        self.assertEqual(caps["nvme-queue-entries"]["unsigned"], 64)
+        self.assertEqual(caps["nvme-secure-bar"]["length"], 9)
+        self.assertEqual(caps["namespaces"]["length"], 0)
+        self.assertFalse(caps["nvme-interrupt-idx"]["present"])
+        self.assertFalse(data["controller_emulation_implemented"])
+
+    def test_integer_property_rejects_malformed_values(self):
+        for raw in ("u32:garbage", "u32:-1", "u32:0x100000000"):
+            with self.assertRaises(ValueError):
+                extract.describe_original_adt_property({"nvme-linear-sq": raw},
+                                                       "nvme-linear-sq")
+
     def test_expected_physical_addresses_and_irqs(self):
         data = extract.collect(fake_raw_tree())
         self.assertEqual(data["nodes"]["arm-io/ans"]["reg_windows"][0]

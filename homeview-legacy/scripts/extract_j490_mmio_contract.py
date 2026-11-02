@@ -7,6 +7,7 @@ The layout matches jprx/qemu-sptm's arm-io/ranges[1] + adt_io_reg.base.
 """
 import argparse
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import struct
@@ -20,6 +21,14 @@ TARGETS = (
 )
 TRACE_TARGETS = ("arm-io/ans", "arm-io/sart-ans", "arm-io/dcp",
                  "arm-io/dcp0-expert", "arm-io/sgx")
+ANS_PROPERTIES = (
+    "nvme-linear-sq", "nvme-num-sl", "nvme-queue-entries",
+    "nvme-interrupt-idx", "nvme-secure-bar", "nvme-tl-wa",
+    "iommu-parent", "namespaces", "iop-version",
+    "role", "nvme-boot-min-nvmever",
+)
+# These are original Apple ADT values, not Linux values. Never substitute
+# QEMU guessed capabilities for the detected hardware identity.
 
 
 def get_node(root, path):
@@ -78,6 +87,45 @@ def first_compatible(value):
     return value if isinstance(value, str) else None
 
 
+def describe_original_adt_property(props, key):
+    """Preserve type, original scalar and bounded opaque fingerprint only."""
+    if key not in props:
+        return {"present": False}
+    value = props[key]
+    if isinstance(value, str):
+        if value.startswith(("u32:", "u64:")):
+            field_type, raw = value.split(":", 1)
+            try:
+                num = int(raw, 0)
+            except ValueError:
+                raise ValueError("Malformed Apple integer property: " + key)
+            if num < 0 or num >= (1 << (32 if field_type == "u32" else 64)):
+                raise ValueError("Apple integer out of range: " + key)
+            return {"present": True, "kind": field_type, "unsigned": num,
+                    "hex": hex(num)}
+        if len(value) > 128:
+            raise ValueError("Oversize text Apple ADT property: " + key)
+        return {"present": True, "kind": "text", "value": value}
+    if isinstance(value, bytes):
+        if len(value) == 4:
+            number = struct.unpack("<I", value)[0]
+            return {"present": True, "kind": "raw-u32", "unsigned": number,
+                    "hex": hex(number)}
+        if len(value) == 8:
+            number = struct.unpack("<Q", value)[0]
+            return {"present": True, "kind": "raw-u64", "unsigned": number,
+                    "hex": hex(number)}
+        return {"present": True, "kind": "opaque-bytes",
+                "length": len(value),
+                "sha256": hashlib.sha256(value).hexdigest()}
+    if isinstance(value, bool):
+        return {"present": True, "kind": "boolean", "value": value}
+    if isinstance(value, int):
+        return {"present": True, "kind": "number", "unsigned": value,
+                "hex": hex(value)}
+    raise ValueError("Unsupported Apple ADT property type: " + key)
+
+
 def collect(root):
     iobase, raw_ranges = parse_ranges(root)
     nodes = {}
@@ -105,6 +153,9 @@ def collect(root):
         }
     if not nodes["arm-io/ans"]["reg_windows"]:
         raise ValueError("Original Apple ANS register mapping missing")
+    ans_node = get_node(root, "arm-io/ans")
+    original_caps = {key: describe_original_adt_property(ans_node.props, key)
+                     for key in ANS_PROPERTIES}
     return {
         "source": "original Apple J490AP DeviceTree from HomeView 24V514",
         "device": "HomeAccessory17,1",
@@ -114,6 +165,12 @@ def collect(root):
         "qemu_reference": "jprx/qemu-sptm bad6336f hw/arm/darwin.c: arm_io_ranges[1]",
         "nodes": nodes,
         "trace_targets": list(TRACE_TARGETS),
+        "ANS_original_firmware_capabilities": original_caps,
+        "ANS_device_stack_components_required_not_emulated": [
+            "ASC_mailbox", "RTKit", "SART_DMA_authorization",
+            "NVMe_admin_and_io_queue", "NVMMU_tag_translation",
+            "controller_interrupts", "backing_storage_image",
+        ],
         "driver_binding_verified": False,
         "controller_emulation_implemented": False,
         "native_homeview_display_verified": False,
