@@ -45,6 +45,9 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
                 "software-update-dock-removed-pumpkin",
                 "software-update-ans-binding-probe"):
         env["HOMEVIEW_MMIO_TRACE"] = "1"
+    # Only the ANS diagnostic uses all original physical register windows.
+    if name == "software-update-ans-binding-probe":
+        env["HOMEVIEW_MMIO_ALL_WINDOWS"] = "1"
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     chunks = bytearray()
     screen_result = None
@@ -91,6 +94,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         chunks.extend(rest or b"")
         monitor.unlink(missing_ok=True)
     output = bytes(chunks).decode("utf-8", "replace")
+    answer["experimental_multi_window_ANS_trace"] = name == "software-update-ans-binding-probe"
     answer["qemu_exit_status"] = proc.returncode
     answer["observation_stop_reason"] = stop_reason
     answer["experimental_ans_dcp_mmio_trace"] = name in (
