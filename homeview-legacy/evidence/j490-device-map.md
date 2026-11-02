@@ -73,3 +73,23 @@ Missing values remain explicitly absent; no default is substituted.
 This is metadata only: the QEMU guest will still not see a hardware-backed
 Apple ANS device until ASC/RTKit, SART, NVMMU, queues, interrupts, and
 persistent block storage are implemented.
+
+## Original J490 ANS2 matching-driver provenance
+
+The original 24V514 kernelcache contains AppleANS2, AppleANS3, AppleNVMe,
+AppleDCP, RTBuddy and SART string markers. The decoded J490 ADT's
+`/arm-io/ans` declares `role=ANS2`, `nvme-num-sl=2`,
+`nvme-queue-entries=64`, `nvme-interrupt-idx=4`, `iommu-parent=93`.
+A new pinned-firmware workflow now runs the documented
+`ipsw kernel kexts --json` against the **original decrypted Mach-O**,
+and emits `homeview-original-kext-iokit-personalities.json`: genuine
+KEXT bundle IDs, versions, and bounded IOKit match selectors such as
+`IOProviderClass`, `IONameMatch`, and `IOPropertyMatch`.
+That is materially stronger driver-identification evidence than searching
+for arbitrary substring matches, but it still cannot prove an Apple driver
+matches/starts in QEMU or that any NAND, NVMe, RTKit or DCP functionality works.
+
+The pinned QEMU source's TLBI page-granule error is logged with
+`LOG_GUEST_ERROR` and returns a zero-length range, not a direct
+emulator fatal assertion. Preserve the error in diagnostics; don't infer
+it caused an observed guest shutdown without corroborating runtime evidence.

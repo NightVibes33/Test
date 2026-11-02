@@ -13,6 +13,8 @@ on:
       - 'homeview-legacy/scripts/verify_j490_mmio_log.py'
       - 'homeview-legacy/scripts/scan_original_kernelcache.py'
       - 'homeview-legacy/tests/test_original_kernelcache.py'
+      - 'homeview-legacy/scripts/analyze_j490_kexts.py'
+      - 'homeview-legacy/tests/test_j490_kexts.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
       - 'homeview-legacy/tests/test_homeview_ota_layout.py'
       - 'homeview-legacy/tests/test_j490_mmio_contract.py'
@@ -57,6 +59,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans_adt_probe.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_j490_mmio_contract.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_kernelcache.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_j490_kexts.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
@@ -245,6 +248,24 @@ jobs:
           pathlib.Path('out/genuine-darwin-boot-inputs.json').write_text(json.dumps(files,indent=2)+'\n')
           print(json.dumps(files,indent=2))
           PY
+      - name: Inventory genuine HomeView kernelcache KEXT IDs and IOKit personalities
+        if: always()
+        run: |
+          STATUS=125
+          KEXTS="$RUNNER_TEMP/homeview-kexts.json"
+          if [[ -s "$RUNNER_TEMP/hv-firmware/bootkc" ]]; then
+            set +e
+            ipsw kernel kexts --json "$RUNNER_TEMP/hv-firmware/bootkc" \
+              > "$KEXTS" 2> "$RUNNER_TEMP/homeview-kexts-errors.txt"
+            STATUS=$?
+            set -e
+          fi
+          python3 homeview-legacy/scripts/analyze_j490_kexts.py \
+            --kext-json "$KEXTS" \
+            --contract out/homeview-j490-mmio-contract.json \
+            --list-exit-code "$STATUS" \
+            --output out/homeview-original-kext-iokit-personalities.json
+          rm -f "$KEXTS" "$RUNNER_TEMP/homeview-kexts-errors.txt"
       - name: Compare original and patched J490 device trees with real XNU
         run: python3 homeview-legacy/scripts/probe_homeview_boot.py
       - name: Report observed Pumpkin/HomeAccessory queries and shell selections
@@ -298,6 +319,7 @@ jobs:
           path: |
             out/genuine-darwin-boot-inputs.json
             out/homeview-original-kernelcache-driver-markers.json
+            out/homeview-original-kext-iokit-personalities.json
             out/homeview-original-ota-layout.json
             out/homeview-j490-hardware-inventory.json
             out/homeview-j490-mmio-contract.json
