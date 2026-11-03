@@ -46,3 +46,6 @@ Source credits: [AirCard-iOS by Mak5er](https://github.com/Mak5er/AirCard-iOS) a
 
 ## Exact NFCARD AirLift transport
 Pinned NFCARD revision `16f8bfd20a88a474f59c2d6eda291164a1cc015f`, AirCard upstream revision `097a058c984ffc33ccb697b9dfe8058be3e86244`, with NFCARD `scripts/patch-upstream.py` Rust patch. Uses the unchanged NFCARD `RemotePairingPortDiscovery.swift` and its `al_connection_endpoint_set` FFI, instead of OTA27 previous `40640c4` prebuilt FFI. Builds the Rust library from source. Bonjour `_remotepairing._tcp` supplies the live port before the canary or syslog call.
+
+## Cinder27 archive inventory
+The app includes a read-only, searchable inventory of the 31 CVE-labelled PoC folders and the additional `arc.rr` RockRidge probe (32 entries total) supplied in `cinder27-main.zip`. This inventory does not execute the PoC code or claim a verified vulnerability.

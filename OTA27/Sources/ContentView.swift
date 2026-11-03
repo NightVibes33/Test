@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var shareItems: [Any] = []
     @State private var connectivity = "Not checked"
     @State private var checking = false
+    @State private var showCinderInventory = false
 
     var body: some View {
         NavigationStack {
@@ -166,6 +167,17 @@ struct ContentView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    GroupBox("5 · Cinder27 PoC inventory") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Browse the 31 CVE-labelled PoCs and the separate RockRidge probe from your Cinder27 archive.")
+                                .font(.subheadline)
+                            Button("View all 32 PoC records") { showCinderInventory = true }
+                                .buttonStyle(.borderedProminent)
+                            Text("Read-only inventory. No PoC runs automatically.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     Text("Manual fallback: Settings → General → Software Update → Automatic Updates → disable automatic downloads/installations where available. Deleting this app does not remove an installed profile.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -184,6 +196,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showShare) {
             ShareController(items: shareItems)
+        }
+        .sheet(isPresented: $showCinderInventory) {
+            Cinder27POCIndexView()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             diagnostics.refreshTunnelStatus()
