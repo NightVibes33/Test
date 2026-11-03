@@ -37,6 +37,7 @@ jobs:
           git -C "$RUNNER_TEMP/aircard-upstream" remote add origin https://github.com/Mak5er/AirCard-iOS.git
           git -C "$RUNNER_TEMP/aircard-upstream" fetch --depth 1 origin "$SHA"
           test "$(git -C "$RUNNER_TEMP/aircard-upstream" rev-parse FETCH_HEAD)" = "$SHA"
+          git -C "$RUNNER_TEMP/aircard-upstream" checkout --detach FETCH_HEAD
           mkdir -p OTA27/Dependencies
           ditto "$RUNNER_TEMP/aircard-upstream/AirliftFFI.xcframework" OTA27/Dependencies/AirliftFFI.xcframework
           test -f OTA27/Dependencies/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a
