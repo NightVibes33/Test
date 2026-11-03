@@ -149,6 +149,7 @@ jobs:
         run: |
           set -e
           brew install blacktop/tap/ipsw || brew install ipsw
+          brew install glib pixman capstone dtc libslirp gnutls pkg-config
           mkdir -p out emulator/build
       - name: Restore reproducible Darwin QEMU build cache
         id: vphone-qemu-cache
