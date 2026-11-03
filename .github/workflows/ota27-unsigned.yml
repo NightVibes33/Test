@@ -100,6 +100,19 @@ jobs:
           python3 -c 'from pathlib import Path; p=Path("OTA27/CinderLab/Sources/Views.swift"); s=p.read_text(); assert s.count("@main\nstruct Cinder27App: App {")==1; p.write_text(s.replace("@main\nstruct Cinder27App: App {", "struct Cinder27App: App {", 1))'
           grep -q 'enum Catalog' OTA27/CinderLab/Sources/Catalog.swift
           grep -q 'struct LabView' OTA27/CinderLab/Sources/LabView.swift
+          # Build the five original parser seeds; without them several modules silently
+          # return 'seed missing' even though the lab UI is present.
+          python3 "$SRC/scripts/gen_seeds.py"
+          mkdir -p OTA27/CinderLab/Seeds
+          for seed in joliet_path_oob.iso deep_nest.usda stack_bomb.cff ktx2_bad_dims.ktx2 bc7_short.dds; do
+            test -s "$SRC/seeds/$seed"
+            cp "$SRC/seeds/$seed" "OTA27/CinderLab/Seeds/$seed"
+          done
+          # Include original standalone Swift/C/Python PoCs for inspectable export.
+          test "$(find "$SRC" -mindepth 1 -maxdepth 1 -type d -name 'CVE-*' | wc -l | tr -d ' ')" = 31
+          (cd "$SRC" && zip -q -r "$GITHUB_WORKSPACE/OTA27/CinderLab/CinderPOCs.zip" CVE-* arc.rr kern.baseline probe.privset sbx.toctou tool.backup tool.container tool.hex tool.macho tool.paths tool.zip)
+          unzip -tq OTA27/CinderLab/CinderPOCs.zip
+          test -s OTA27/CinderLab/CinderPOCs.zip
 
       - name: Generate Xcode project
         run: xcodegen generate --spec OTA27/project.yml --project OTA27

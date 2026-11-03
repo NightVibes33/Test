@@ -44,3 +44,11 @@ assert "ALGetGrappaToken" in (root / "Sources/GrappaHelper.m").read_text()
 assert "-u,_ALGetGrappaToken" in (root / "project.yml").read_text()
 assert "-exported_symbol,_ALGetGrappaToken" in (root / "project.yml").read_text()
 print("AirTraffic Grappa bridge verified for linking.")
+
+# Build-time seed packaging is required for the original 51-module harness.
+project = (root / "project.yml").read_text()
+assert "CinderLab/Sources" in project
+for name in ("joliet_path_oob.iso", "deep_nest.usda", "stack_bomb.cff", "ktx2_bad_dims.ktx2", "bc7_short.dds"):
+    assert "CinderLab/Seeds/" + name in project
+assert "CinderLab/CinderPOCs.zip" in project
+print("All five PoC payload seeds and original source archive declared as app resources.")

@@ -78,6 +78,11 @@ struct Cinder27POCIndexView: View {
                         .font(.footnote)
                     Button("Open executable PoC lab") { showExecutableLab = true }
                         .font(.headline)
+                    if let sourceArchive = Bundle.main.url(forResource: "CinderPOCs", withExtension: "zip") {
+                        ShareLink(item: sourceArchive) {
+                            Label("Export original PoC source files", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 }
                 Section("PoC inventory") {
                     ForEach(matches) { record in
