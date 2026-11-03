@@ -29,6 +29,8 @@ on:
       - 'homeview-legacy/tests/test_tcg_plugin_smoke.py'
       - 'homeview-legacy/scripts/original_pc_signatures.py'
       - 'homeview-legacy/tests/test_original_pc_signatures.py'
+      - 'homeview-legacy/scripts/summarize_ota_payload_index.py'
+      - 'homeview-legacy/tests/test_ota_payload_index.py'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -87,6 +89,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_pc_signatures.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_restore_ramdisk_inventory.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ota_payload_index.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
       - name: Compile real QEMU API v7 observer before expensive Apple firmware download
@@ -438,6 +441,80 @@ jobs:
           python3 homeview-legacy/scripts/inventory_restore_ramdisk.py \
             --listing "$LIST" --output out/homeview-restore-ramdisk-contents.json
           rm -f "$LIST"
+      - name: Index payloadv2 and build a system ramdisk only when SpringBoard fits
+        if: always()
+        run: |
+          set +e
+          set +x
+          KEY="$(cat "$RUNNER_TEMP/hv-key" 2>/dev/null || true)"
+          if [[ -n "$KEY" ]]; then echo "::add-mask::$KEY"; fi
+          AEA="$RUNNER_TEMP/HomeView.aea"
+          LIST="$RUNNER_TEMP/ota-payload-index.txt"
+          DEST="$RUNNER_TEMP/hv-firmware"
+          : > "$LIST"
+          if [[ -s "$AEA" && -n "$KEY" ]]; then
+            ipsw ota ls --key-val "$KEY" "$AEA" > "$LIST" 2>out/ota-payload-index.err
+          else
+            echo "OTA_OR_KEY_MISSING" > "$LIST"
+          fi
+          python3 homeview-legacy/scripts/summarize_ota_payload_index.py \
+            --listing "$LIST" --output out/homeview-payloadv2-index.json
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          index = json.loads(pathlib.Path("out/homeview-payloadv2-index.json").read_text())
+          dest = pathlib.Path(os.environ["RUNNER_TEMP"]) / "hv-firmware"
+          decision = dest / "system-volume-decision.txt"
+          if index.get("fits_qemu_ramdisk_slot") and index.get("system_trustcache_paths"):
+              decision.write_text(index["system_trustcache_paths"][0] + "\n")
+          else:
+              decision.write_text("")
+              print("SYSTEM_IMAGE_NOT_BUILT", json.dumps({
+                  "springboard_listed": index.get("springboard_listed"),
+                  "fits_qemu_ramdisk_slot": index.get("fits_qemu_ramdisk_slot"),
+                  "system_trustcaches": len(index.get("system_trustcache_paths") or []),
+                  "listed_boot_bytes": index.get("listed_boot_bytes"),
+              }))
+          PY
+          TC_PATH="$(cat "$DEST/system-volume-decision.txt" 2>/dev/null || true)"
+          if [[ -n "$TC_PATH" && -s "$AEA" && -n "$KEY" ]]; then
+            EXTRACT="$RUNNER_TEMP/system-root"
+            rm -rf "$EXTRACT"
+            mkdir -p "$EXTRACT"
+            ipsw ota extract --key-val "$KEY" --output "$EXTRACT" "$AEA" \
+              'SpringBoard|BreadBoard|sbin/launchd|usr/lib/dyld' \
+              > out/system-volume-extract.log 2>&1
+            SB="$(find "$EXTRACT" -name SpringBoard -type f | head -1)"
+            if [[ -n "$SB" ]]; then
+              hdiutil create -fs APFS -srcfolder "$EXTRACT" -volname System \
+                "$DEST/system-volume.dmg" > out/system-volume-create.log 2>&1
+              ./aeota/aastuff_standalone -i "$AEA" -o "$RUNNER_TEMP/system-tc" \
+                -r "$(printf '%s' "$TC_PATH" | sed 's/[.[\*^$()+?{|]/\\&/g')$" \
+                -k "$KEY" > out/system-trustcache-extract.log 2>&1
+              FOUND_TC="$(find "$RUNNER_TEMP/system-tc" -name '*.trustcache' -type f | head -1)"
+              if [[ -s "$DEST/system-volume.dmg" && -n "$FOUND_TC" ]]; then
+                cp "$FOUND_TC" "$DEST/system-volume.tc"
+                python3 - <<PY
+          import json, pathlib, os
+          dest = pathlib.Path(os.environ["RUNNER_TEMP"]) / "hv-firmware"
+          manifest = {
+            "springboard_file_present": True,
+            "trustcache_from_ota": True,
+            "trustcache_is_restore_ramdisk": False,
+            "trustcache_ota_path": """$TC_PATH""",
+            "image_bytes": (dest / "system-volume.dmg").stat().st_size,
+            "root_slot": "qemu-sptm ramdisk",
+            "nand_block_device_present": False,
+            "springboard_boot_proven": False,
+          }
+          (dest / "system-volume-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          pathlib.Path("out/homeview-system-volume-manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n")
+          PY
+              fi
+            fi
+            rm -rf "$EXTRACT" "$RUNNER_TEMP/system-tc"
+          fi
+          rm -f "$LIST" "$DEST/system-volume-decision.txt"
       - name: Delete Apple system binaries and key from ephemeral runner
         if: always()
         run: |
@@ -457,6 +534,10 @@ jobs:
             out/homeview-ans2-runtime-matching.json
             out/homeview-original-ota-layout.json
             out/homeview-restore-ramdisk-contents.json
+            out/homeview-payloadv2-index.json
+            out/homeview-system-volume-manifest.json
+            out/system-volume-extract.log
+            out/system-volume-create.log
             out/su-ramdisk-attach.txt
             out/homeview-j490-hardware-inventory.json
             out/homeview-j490-mmio-contract.json

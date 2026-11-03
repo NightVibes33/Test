@@ -58,9 +58,14 @@ class KernelcacheMatchingTests(unittest.TestCase):
     def test_afkresource_personality_is_kept_without_calling_it_registered(self):
         raw = [
             {"id": "com.apple.driver.Unrelated", "io_kit_personalities": {}},
-            {"id": "com.apple.driver.AppleFirmwareKit", "io_kit_personalities": {
+            {"id": "com.apple.driver.AppleFirmwareKit",
+             "executable": "AppleFirmwareKit",
+             "info": {"OSBundleRequired": "Root", "OSBundleLibraries": {
+                 "com.apple.driver.RTBuddy": "1.0.0"}},
+             "io_kit_personalities": {
                 "AFKResource": {"IOClass": "AFKResource",
-                                "IOProviderClass": "IOResources"}}},
+                                "IOProviderClass": "IOResources",
+                                "IOResourceMatch": "IOBSD"}}},
         ]
         result = a.summarize(raw)
         self.assertEqual(result["matched_KEXT_count"], 0)
@@ -71,6 +76,11 @@ class KernelcacheMatchingTests(unittest.TestCase):
         self.assertFalse(found[0]["guest_start_observed"])
         self.assertEqual(found[0]["personalities"][0]["selectors"]["IOProviderClass"],
                          "IOResources")
+        self.assertEqual(found[0]["personalities"][0]["selectors"]["IOResourceMatch"],
+                         "IOBSD")
+        self.assertEqual(found[0]["OSBundleRequired"], "Root")
+        self.assertTrue(found[0]["executable_name_present"])
+        self.assertIn("com.apple.driver.RTBuddy", found[0]["OSBundleLibraries"])
 
     def test_documented_json_envelope_and_missing_metadata(self):
         result = a.summarize({"kexts": [{"id": "com.apple.driver.AppleDCP"}]})

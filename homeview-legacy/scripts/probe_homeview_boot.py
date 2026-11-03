@@ -26,14 +26,21 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         "-dtree", str(device_tree), "-sptm", str(firmware / "sptm"),
         "-txm", str(firmware / "txm"), "-tc", str(trustcache),
         "-ramdisk", str(ramdisk),
-        "-args", "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1"
-                 + (" kextlog=0xff" if name == "software-update-ans-binding-probe" else ""),
-        "-m", "2G", "-display", "none", "-serial", "stdio",
+        "-args", (
+            "rd=md0 serial=3 -v -noprogress wdt=-1 cpus=1"
+            if name == "installed-system"
+            else "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1"
+                 + (" kextlog=0xff" if name == "software-update-ans-binding-probe" else "")
+        ),
+        "-m", "6G" if name == "installed-system" else "2G",
+        "-display", "none", "-serial", "stdio",
         "-monitor", "unix:"+str(monitor)+",server=on,wait=off",
         "-d", "guest_errors,unimp", "-D", str(debug)
     ]
     answer = {
         "variant": name, "real_homeview_firmware": True,
+        "root_is_ota_payload_image": name == "installed-system",
+        "qemu_root_slot": "ramdisk",
         "boot_reached_userspace": False,
         "breadboard_gui_rendered": False,
         "homeview_setup_gui_rendered": False
@@ -195,14 +202,25 @@ def main():
     output_dir = pathlib.Path("out")
     machine = pathlib.Path("emulator/build/qemu-system-aarch64").resolve()
     attempts = []
-    for name, path, ramdisk, trustcache in [
+    variants = []
+    manifest_path = root / "system-volume-manifest.json"
+    system_image = root / "system-volume.dmg"
+    system_tc = root / "system-volume.tc"
+    if (manifest_path.is_file() and system_image.is_file() and system_tc.is_file()
+            and system_image.stat().st_size > 1024 and system_tc.stat().st_size > 16):
+        meta = json.loads(manifest_path.read_text())
+        if (meta.get("springboard_file_present") and meta.get("trustcache_from_ota")
+                and not meta.get("trustcache_is_restore_ramdisk")):
+            variants.append(("installed-system", root / "dtree", system_image, system_tc))
+    variants.extend([
         ("software-update-dock-removed-control", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("software-update-dock-removed-pumpkin", root / "dtree.pumpkin", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("software-update-ans-binding-probe", root / "dtree.ans-probe", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("software-update-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("baseline-software-update", root / "dtree.baseline", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
         ("baseline-restore", root / "dtree.baseline", root / "ramdisk.dmg", root / "ramdisk.tc"),
-    ]:
+    ])
+    for name, path, ramdisk, trustcache in variants:
         if not path.exists() or not path.stat().st_size:
             raise SystemExit("Missing real device-tree variant " + str(path))
         for required in (ramdisk, trustcache):

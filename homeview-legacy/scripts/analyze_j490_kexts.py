@@ -173,6 +173,8 @@ def afk_census(raw):
             libraries = item.get("os_bundle_libraries") if isinstance(
                 item.get("os_bundle_libraries"), dict) else {}
         library_ids = [name for name in libraries if isinstance(name, str)][:16]
+        required = info.get("OSBundleRequired")
+        executable = item.get("executable") or info.get("CFBundleExecutable")
         for name, raw_personality in personality_map(item).items():
             if not isinstance(raw_personality, dict) or not isinstance(name, str):
                 continue
@@ -195,6 +197,8 @@ def afk_census(raw):
                 "personalities": personalities[:8],
                 "declares_IOClass_AFKResource": "AFKResource" in classes,
                 "OSBundleLibraries": library_ids,
+                "OSBundleRequired": required[:64] if isinstance(required, str) else None,
+                "executable_name_present": isinstance(executable, str) and bool(executable),
                 "metaclass_registered_in_guest": False,
                 "guest_start_observed": False,
             })
