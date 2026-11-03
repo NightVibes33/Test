@@ -459,60 +459,75 @@ jobs:
           fi
           python3 homeview-legacy/scripts/summarize_ota_payload_index.py \
             --listing "$LIST" --output out/homeview-payloadv2-index.json
+          head -100 "$LIST" > out/ota-payload-index-head.txt
           python3 - <<'PY'
-          import json, os, pathlib, shutil
+          import json, os, pathlib
           index = json.loads(pathlib.Path("out/homeview-payloadv2-index.json").read_text())
           dest = pathlib.Path(os.environ["RUNNER_TEMP"]) / "hv-firmware"
-          decision = dest / "system-volume-decision.txt"
-          if index.get("fits_qemu_ramdisk_slot") and index.get("system_trustcache_paths"):
-              decision.write_text(index["system_trustcache_paths"][0] + "\n")
-          else:
-              decision.write_text("")
-              print("SYSTEM_IMAGE_NOT_BUILT", json.dumps({
-                  "springboard_listed": index.get("springboard_listed"),
-                  "fits_qemu_ramdisk_slot": index.get("fits_qemu_ramdisk_slot"),
-                  "system_trustcaches": len(index.get("system_trustcache_paths") or []),
-                  "listed_boot_bytes": index.get("listed_boot_bytes"),
-              }))
+          dmgs = [path for path in index.get("candidate_system_dmgs") or [] if path.endswith(".dmg")]
+          (dest / "system-volume-decision.txt").write_text((dmgs[0] if dmgs else "") + "\n")
+          print("SYSTEM_DMG_CANDIDATE", dmgs[:4], "payload_lines", index.get("payload_line_count"))
           PY
-          TC_PATH="$(cat "$DEST/system-volume-decision.txt" 2>/dev/null || true)"
-          if [[ -n "$TC_PATH" && -s "$AEA" && -n "$KEY" ]]; then
-            EXTRACT="$RUNNER_TEMP/system-root"
-            rm -rf "$EXTRACT"
-            mkdir -p "$EXTRACT"
-            ipsw ota extract --key-val "$KEY" --output "$EXTRACT" "$AEA" \
-              'SpringBoard|BreadBoard|sbin/launchd|usr/lib/dyld' \
-              > out/system-volume-extract.log 2>&1
-            SB="$(find "$EXTRACT" -name SpringBoard -type f | head -1)"
-            if [[ -n "$SB" ]]; then
-              hdiutil create -fs APFS -srcfolder "$EXTRACT" -volname System \
-                "$DEST/system-volume.dmg" > out/system-volume-create.log 2>&1
-              ./aeota/aastuff_standalone -i "$AEA" -o "$RUNNER_TEMP/system-tc" \
-                -r "$(printf '%s' "$TC_PATH" | sed 's/[.[\*^$()+?{|]/\\&/g')$" \
-                -k "$KEY" > out/system-trustcache-extract.log 2>&1
-              FOUND_TC="$(find "$RUNNER_TEMP/system-tc" -name '*.trustcache' -type f | head -1)"
-              if [[ -s "$DEST/system-volume.dmg" && -n "$FOUND_TC" ]]; then
-                cp "$FOUND_TC" "$DEST/system-volume.tc"
-                python3 - <<PY
-          import json, pathlib, os
+          DMG_PATH="$(cat "$DEST/system-volume-decision.txt" 2>/dev/null || true)"
+          if [[ -n "$DMG_PATH" && -s "$AEA" && -n "$KEY" ]]; then
+            NAME="$(basename "$DMG_PATH")"
+            SAFE="$(printf '%s' "$NAME" | sed 's/[.[\*^$()+?{|]/\\&/g')"
+            ./aeota/aastuff_standalone -i "$AEA" -o "$RUNNER_TEMP/system-dmg" \
+              -r "${SAFE}$" -k "$KEY" > out/system-volume-extract.log 2>&1
+            FOUND="$(find "$RUNNER_TEMP/system-dmg" -name "$NAME" -type f | head -1)"
+            if [[ -n "$FOUND" ]]; then
+              file "$FOUND" >> out/system-volume-extract.log
+              if head -c 4 "$FOUND" | grep -q IM4P; then
+                ipsw img4 im4p extract "$FOUND" -o "$DEST/system-volume.dmg" >> out/system-volume-extract.log 2>&1
+              else
+                cp "$FOUND" "$DEST/system-volume.dmg"
+              fi
+            fi
+            TC_NAME="${NAME}.trustcache"
+            TC_SAFE="$(printf '%s' "$TC_NAME" | sed 's/[.[\*^$()+?{|]/\\&/g')"
+            ./aeota/aastuff_standalone -i "$AEA" -o "$RUNNER_TEMP/system-tc" \
+              -r "${TC_SAFE}$" -k "$KEY" > out/system-trustcache-extract.log 2>&1
+            FOUND_TC="$(find "$RUNNER_TEMP/system-tc" -name "$TC_NAME" -type f | head -1)"
+            IMG_BYTES=0
+            if [[ -s "$DEST/system-volume.dmg" ]]; then IMG_BYTES="$(stat -f %z "$DEST/system-volume.dmg")"; fi
+            HAS_SB=0
+            if [[ -s "$DEST/system-volume.dmg" ]]; then
+              ATTACH="$(hdiutil attach -readonly -nobrowse "$DEST/system-volume.dmg" 2>&1)" || true
+              MOUNT="$(printf '%s\n' "$ATTACH" | awk '/\/Volumes\// { print $NF; exit }')"
+              if [[ -n "$MOUNT" && -d "$MOUNT" ]]; then
+                if find "$MOUNT" -name SpringBoard -type f | head -1 | grep -q SpringBoard; then HAS_SB=1; fi
+                hdiutil detach "$MOUNT" >/dev/null 2>&1 || true
+              fi
+            fi
+            python3 - <<PY
+          import json, os, pathlib
           dest = pathlib.Path(os.environ["RUNNER_TEMP"]) / "hv-firmware"
+          image = dest / "system-volume.dmg"
+          size = image.stat().st_size if image.is_file() else 0
+          has_sb = "$HAS_SB" == "1"
+          has_tc = bool("$FOUND_TC")
+          fits = has_sb and has_tc and 0 < size <= 1400 * 1024 * 1024
           manifest = {
-            "springboard_file_present": True,
-            "trustcache_from_ota": True,
+            "springboard_file_present": has_sb,
+            "trustcache_from_ota": has_tc,
             "trustcache_is_restore_ramdisk": False,
-            "trustcache_ota_path": """$TC_PATH""",
-            "image_bytes": (dest / "system-volume.dmg").stat().st_size,
+            "source_dmg": """$DMG_PATH""",
+            "image_bytes": size,
+            "fits_qemu_ramdisk_slot": fits,
             "root_slot": "qemu-sptm ramdisk",
             "nand_block_device_present": False,
             "springboard_boot_proven": False,
           }
-          (dest / "system-volume-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-          pathlib.Path("out/homeview-system-volume-manifest.json").write_text(
-              json.dumps(manifest, indent=2) + "\n")
+          pathlib.Path("out/homeview-system-volume-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          if fits:
+              (dest / "system-volume-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+              import shutil
+              shutil.copy("$FOUND_TC", dest / "system-volume.tc")
+          else:
+              image.unlink(missing_ok=True)
+          print("SYSTEM_IMAGE", json.dumps(manifest))
           PY
-              fi
-            fi
-            rm -rf "$EXTRACT" "$RUNNER_TEMP/system-tc"
+            rm -rf "$RUNNER_TEMP/system-dmg" "$RUNNER_TEMP/system-tc"
           fi
           rm -f "$LIST" "$DEST/system-volume-decision.txt"
       - name: Delete Apple system binaries and key from ephemeral runner
@@ -535,8 +550,11 @@ jobs:
             out/homeview-original-ota-layout.json
             out/homeview-restore-ramdisk-contents.json
             out/homeview-payloadv2-index.json
+            out/ota-payload-index-head.txt
+            out/ota-payload-index.err
             out/homeview-system-volume-manifest.json
             out/system-volume-extract.log
+            out/system-trustcache-extract.log
             out/system-volume-create.log
             out/su-ramdisk-attach.txt
             out/homeview-j490-hardware-inventory.json

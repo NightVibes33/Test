@@ -11,6 +11,10 @@ RAMDISK_TRUSTCACHE = (
     "141-21782-189.dmg.trustcache",
     "arm64eSURamDisk.dmg.trustcache",
 )
+RAMDISK_DMG = (
+    "141-21782-189.dmg",
+    "arm64eSURamDisk.dmg",
+)
 # qemu-sptm presents the root as a ramdisk in guest RAM. A larger image cannot
 # be attached: this machine has no NAND block device.
 GUEST_RAMDISK_LIMIT = 1400 * 1024 * 1024
@@ -52,6 +56,7 @@ def summarize(text):
         interesting = (
             any(marker in path for marker in MARKERS)
             or path.endswith(".trustcache")
+            or path.endswith(".dmg")
             or "dyld_shared_cache" in path
         )
         if not interesting:
@@ -72,6 +77,13 @@ def summarize(text):
     trust = [item for item in hits if item["path"].endswith(".trustcache")]
     system_trust = [item for item in trust
                     if not any(name in item["path"] for name in RAMDISK_TRUSTCACHE)]
+    dmg_paths = [item["path"] for item in hits if item["path"].endswith(".dmg")]
+    for item in system_trust:
+        derived = item["path"][:-len(".trustcache")] if item["path"].endswith(".dmg.trustcache") else None
+        if derived and derived not in dmg_paths:
+            dmg_paths.append(derived)
+    candidate_dmgs = [path for path in dmg_paths
+                      if not any(name in path for name in RAMDISK_DMG)]
     boot_parts = spring + bread + launchd + dyld
     known = [item["listed_bytes"] for item in boot_parts]
     total = sum(known) if known and all(size is not None for size in known) else None
@@ -84,7 +96,10 @@ def summarize(text):
         "applefirmwarekit_listed": bool(firmware),
         "launchd_listed": bool(launchd),
         "dyld_listed": bool(dyld),
+        "listing_line_count": len(text.splitlines()),
+        "payload_line_count": sum(1 for line in text.splitlines() if "payload" in line.lower()),
         "system_trustcache_paths": [item["path"] for item in system_trust[:12]],
+        "candidate_system_dmgs": candidate_dmgs[:12],
         "listed_boot_bytes": total,
         "fits_qemu_ramdisk_slot": fits,
         "guest_ramdisk_limit_bytes": GUEST_RAMDISK_LIMIT,
