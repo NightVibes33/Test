@@ -14,6 +14,7 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+      - path: CinderLab/Sources
       - path: Resources/blockota.mobileconfig
         buildPhase: resources
     dependencies:

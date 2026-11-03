@@ -84,6 +84,23 @@ jobs:
           ditto "$SRC/AirliftFFI.xcframework" "$OUT"
           grep -q al_connection_endpoint_set "$OUT/ios-arm64/Headers/airlift.h"
 
+      - name: Stage pinned Cinder27 executable test harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          CINDER_COMMIT=7949c7ce9fab8139e961058d8ddd60b2bae47a09
+          SRC="$RUNNER_TEMP/cinder27-pinned"
+          git init -q "$SRC"
+          git -C "$SRC" remote add origin https://git.jbjflab.top/admin/cinder27.git
+          git -C "$SRC" fetch --depth 1 origin "$CINDER_COMMIT"
+          git -C "$SRC" checkout --detach FETCH_HEAD
+          test "$(git -C "$SRC" rev-parse HEAD)" = "$CINDER_COMMIT"
+          mkdir -p OTA27/CinderLab
+          cp -R "$SRC/Sources" OTA27/CinderLab/Sources
+          python3 -c 'from pathlib import Path; p=Path("OTA27/CinderLab/Sources/Views.swift"); s=p.read_text(); assert s.count("@main\nstruct Cinder27App: App {")==1; p.write_text(s.replace("@main\nstruct Cinder27App: App {", "struct Cinder27App: App {", 1))'
+          grep -q 'enum Catalog' OTA27/CinderLab/Sources/Catalog.swift
+          grep -q 'struct LabView' OTA27/CinderLab/Sources/LabView.swift
+
       - name: Generate Xcode project
         run: xcodegen generate --spec OTA27/project.yml --project OTA27
 
@@ -92,30 +109,12 @@ jobs:
           set -euo pipefail
           xcodebuild -project OTA27/OTA27Blocker.xcodeproj -scheme OTA27Blocker -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/OTA27Derived" CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO build
 
-      - name: Verify dynamically exported Grappa callback
+      - name: Verify exported Grappa callback
         run: |
           set -euo pipefail
           BIN="$RUNNER_TEMP/OTA27Derived/Build/Products/Release-iphoneos/OTA27Blocker.app/OTA27Blocker"
           test -f "$BIN"
-          # The Rust FFI resolves ALGetGrappaToken via dlsym(RTLD_DEFAULT).
-          # Undefined references alone cannot prove a callable export exists.
-          xcrun nm -gU "$BIN" | grep -E '[[:space:]]_ALGetGrappaToken        run: |
-          set -euo pipefail
-          APP="$RUNNER_TEMP/OTA27Derived/Build/Products/Release-iphoneos/OTA27Blocker.app"
-          test -d "$APP"
-          mkdir -p "$RUNNER_TEMP/OTA27Payload/Payload"
-          ditto "$APP" "$RUNNER_TEMP/OTA27Payload/Payload/OTA27Blocker.app"
-          (cd "$RUNNER_TEMP/OTA27Payload" && ditto -c -k --keepParent Payload "$GITHUB_WORKSPACE/OTA27Blocker-unsigned.ipa")
-          unzip -tq OTA27Blocker-unsigned.ipa
-          unzip -l OTA27Blocker-unsigned.ipa | grep -E 'Payload/OTA27Blocker.app/(OTA27Blocker|blockota.mobileconfig)'
-
-      - name: Upload unsigned IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: OTA27Blocker-unsigned-ipa
-          path: OTA27Blocker-unsigned.ipa
-          if-no-files-found: error
-
+          xcrun nm -gU "$BIN" | grep -q '_ALGetGrappaToken'
 
       - name: Package unsigned IPA
         run: |

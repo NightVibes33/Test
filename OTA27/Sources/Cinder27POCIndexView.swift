@@ -54,6 +54,7 @@ private enum CinderInventory {
 struct Cinder27POCIndexView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var filter = ""
+    @State private var showExecutableLab = false
 
     private var matches: [CinderRecord] {
         let q = filter.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -72,6 +73,12 @@ struct Cinder27POCIndexView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                Section("Run the supplied PoCs") {
+                    Text("Open the complete 51-module Cinder27 test harness. Individual PoCs require manual execution; some are designed to crash the application.")
+                        .font(.footnote)
+                    Button("Open executable PoC lab") { showExecutableLab = true }
+                        .font(.headline)
+                }
                 Section("PoC inventory") {
                     ForEach(matches) { record in
                         VStack(alignment: .leading, spacing: 4) {
@@ -85,6 +92,9 @@ struct Cinder27POCIndexView: View {
                         .padding(.vertical, 4)
                     }
                 }
+            }
+            .fullScreenCover(isPresented: $showExecutableLab) {
+                CinderLabHost()
             }
             .searchable(text: $filter)
             .navigationTitle("Cinder27 inventory")
