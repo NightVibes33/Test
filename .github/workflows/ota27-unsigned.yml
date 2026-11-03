@@ -55,7 +55,15 @@ jobs:
       - name: Build NFCARD-patched AirLift FFI from its exact pinned source and patch
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuxo pipefail
+          trap 'rc=$?; echo "::error file=.github/workflows/ota27-unsigned.yml::AirLift preparation failed at line ${LINENO} (${BASH_COMMAND}); exit ${rc}";' ERR
+          echo "::group::AirLift NFCARD source preflight"
+          command -v python3
+          command -v cargo
+          command -v rustup
+          cargo --version
+          rustc --version
+          echo "::endgroup::"
           PIN=097a058c984ffc33ccb697b9dfe8058be3e86244
           NFCARD_COMMIT=16f8bfd20a88a474f59c2d6eda291164a1cc015f
           OUT=OTA27/Dependencies/AirliftFFI.xcframework
@@ -76,14 +84,36 @@ jobs:
           git -C "$NFC" fetch --depth 1 origin "$NFCARD_COMMIT"
           git -C "$NFC" checkout --detach FETCH_HEAD
           test "$(git -C "$NFC" rev-parse HEAD)" = "$NFCARD_COMMIT"
+          echo "::group::Copy pinned NFCARD integration files"
           for file in AirCardLibrary.swift RemotePairingPortDiscovery.swift NFCARDNativeShell.swift; do
-            cp "$NFC/Sources/$file" "$SRC/ios-app/$file"
+            test -s "$NFC/Sources/$file"
+            cp -v "$NFC/Sources/$file" "$SRC/ios-app/$file"
           done
-          python3 "$NFC/scripts/patch-upstream.py" "$SRC"
-          grep -q al_connection_endpoint_set "$SRC/rust-core/include/airlift.h"
-          grep -q 'using discovered Remote Pairing endpoint' "$SRC/rust-core/src/exploit.rs"
+          echo "::endgroup::"
+          echo "::group::Patch pinned upstream AirLift source"
+          test -s "$NFC/scripts/patch-upstream.py"
+          PYTHONUNBUFFERED=1 python3 "$NFC/scripts/patch-upstream.py" "$SRC"
+          python3 - "$SRC" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1])
+          header = (root / "rust-core/include/airlift.h").read_text()
+          exploit = (root / "rust-core/src/exploit.rs").read_text()
+          lib = (root / "rust-core/src/lib.rs").read_text()
+          for check, name in (
+              ("al_connection_endpoint_set" in header, "FFI header"),
+              ("using discovered Remote Pairing endpoint" in exploit, "Rust transport"),
+              ("al_connection_endpoint_set" in lib, "Rust C-ABI export"),
+          ):
+              if not check:
+                  raise SystemExit(f"::error::NFCARD patch missing {name}")
+              print(f"Verified NFCARD patch: {name}", flush=True)
+          PY
+          echo "::endgroup::"
           export PATH="$HOME/.cargo/bin:$PATH"
-          (cd "$SRC" && bash ./build-ios.sh)
+          echo "::group::Compile pinned AirLift for iOS device and simulator"
+          (cd "$SRC" && bash -x ./build-ios.sh)
+          echo "::endgroup::"
           test -s "$SRC/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a"
           rm -rf "$OUT"
           mkdir -p OTA27/Dependencies
