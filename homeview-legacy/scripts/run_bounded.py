@@ -5,21 +5,32 @@ The log receives the combined output. A timeout exits 124 and appends
 TIMED_OUT. The command's arguments are not copied into the report.
 """
 import argparse
+import os
+import signal
 import subprocess
 from pathlib import Path
 
 
 def run_bounded(argv, log_path, timeout):
+    """Stop the command and every process it starts when the deadline hits."""
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as log:
+        proc = subprocess.Popen(
+            list(argv), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
-            completed = subprocess.run(
-                list(argv), stdout=log, stderr=subprocess.STDOUT, timeout=timeout)
+            return proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
             log.write(("\nTIMED_OUT after %s seconds\n" % timeout).encode())
             return 124
-    return completed.returncode
 
 
 def main():

@@ -39,6 +39,7 @@ on:
       - 'homeview-legacy/scripts/record_volume_image.py'
       - 'homeview-legacy/scripts/run_bounded.py'
       - 'homeview-legacy/scripts/stage_fitting_image.py'
+      - 'homeview-legacy/scripts/trustcache_mounted_root.sh'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -474,6 +475,23 @@ jobs:
           python3 homeview-legacy/scripts/inventory_restore_ramdisk.py \
             --listing "$LIST" --output out/homeview-restore-ramdisk-contents.json
           rm -f "$LIST"
+      - name: Publish boot evidence before the payload extract
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genuine-homeview-j490-pre-payload
+          path: |
+            out/homeview-firmwarekit-linkage.json
+            out/firmwarekit-extract.log
+            out/homeview-ans2-runtime-matching.json
+            out/homeview-*-driver-lines.log
+            out/native-homeview-*-serial.log
+            out/qemu-*.log
+            out/homeview-tcg-pc-*.log
+            out/native-homeview-guest-frame-*.png
+            out/native-homeview-kernel-result.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Index payloadv2 and build a system ramdisk only when SpringBoard fits
         if: always()
         run: |
@@ -527,30 +545,14 @@ jobs:
             --max-bytes 6442450944 --output out/homeview-cryptex-stage.json || true
           rm -rf "$CRYPTEX"
           if [[ -s "$DEST/cryptex-system.dmg" ]]; then
-            ATTACH="$(hdiutil attach -readonly -nobrowse "$DEST/cryptex-system.dmg" 2>&1)" || true
-            printf '%s\n' "$ATTACH" | head -20 > out/cryptex-attach.txt
-            MOUNT="$(printf '%s\n' "$ATTACH" | awk '/\/Volumes\// { print $NF; exit }')"
-            if [[ -n "$MOUNT" && -d "$MOUNT" ]] && find "$MOUNT" -name BreadBoard -type f | grep -q .; then
-              FILE_COUNT="$(find "$MOUNT" -type f | wc -l | tr -d ' ')"
-              LINK_COUNT="$(find "$MOUNT" -type l | wc -l | tr -d ' ')"
-              echo "CRYPTEX_FILE_COUNT=$FILE_COUNT CRYPTEX_LINK_COUNT=$LINK_COUNT"
-              if [[ -x "$TCBIN" ]]; then
-                python3 homeview-legacy/scripts/static_trustcache.py \
-                  --build-root "$MOUNT" --tool "$TCBIN" \
-                  --trustcache "$DEST/system-volume.tc" \
-                  --output out/homeview-static-trustcache.json \
-                  >> out/trustcache-build.log 2>&1 || true
-              fi
-              cp "$DEST/cryptex-system.dmg" "$DEST/system-volume.dmg"
-              python3 homeview-legacy/scripts/static_trustcache.py \
-                --trustcache "$DEST/system-volume.tc" \
-                --image "$DEST/system-volume.dmg" \
-                --firmware-dir "$DEST" \
-                --extracted-files "${FILE_COUNT:-0}" \
-                --output out/homeview-static-trustcache.json || true
-            fi
-            if [[ -n "$MOUNT" ]]; then
-              hdiutil detach "$MOUNT" >/dev/null 2>&1 || true
+            python3 homeview-legacy/scripts/run_bounded.py --timeout 180 --log out/cryptex-attach.txt -- \
+              hdiutil attach -readonly -nobrowse "$DEST/cryptex-system.dmg" || true
+            MOUNT="$(awk '/\/Volumes\// { print $NF; exit }' out/cryptex-attach.txt)"
+            if [[ -n "$MOUNT" && -d "$MOUNT" ]]; then
+              python3 homeview-legacy/scripts/run_bounded.py --timeout 480 --log out/cryptex-walk.log -- \
+                bash homeview-legacy/scripts/trustcache_mounted_root.sh "$MOUNT" "$DEST" "$TCBIN" out || true
+              python3 homeview-legacy/scripts/run_bounded.py --timeout 60 --log out/cryptex-detach.log -- \
+                hdiutil detach "$MOUNT" || true
             fi
             rm -f "$DEST/cryptex-system.dmg"
           fi
@@ -720,6 +722,8 @@ jobs:
             out/dyld-cache-extract.log
             out/homeview-cryptex-stage.json
             out/cryptex-attach.txt
+            out/cryptex-walk.log
+            out/cryptex-detach.log
             out/homeview-system-mtree-hits.txt
             out/system-volume-extract.log
             out/system-trustcache-extract.log
