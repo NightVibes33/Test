@@ -95,6 +95,11 @@ jobs:
           git -C "$SRC" fetch --depth 1 origin "$CINDER_COMMIT"
           git -C "$SRC" checkout --detach FETCH_HEAD
           test "$(git -C "$SRC" rev-parse HEAD)" = "$CINDER_COMMIT"
+          # Byte-for-byte provenance checks against the uploaded cinder27 v2.0 archive.
+          test "$(shasum -a 256 "$SRC/README.md" | awk '{print $1}')" = "3249076c7fbb820e7429cfd72470f5510b80d52a9006d621d3bc299df17317d3"
+          test "$(shasum -a 256 "$SRC/Sources/Catalog.swift" | awk '{print $1}')" = "66d2dc58ac80e622e874135dc11358ee0fe35b998e998676d43d3599a7ba4657"
+          test "$(shasum -a 256 "$SRC/Sources/Views.swift" | awk '{print $1}')" = "fe4c63dd8f60c272ceca821d86fd0196037c57751aae064c0786abda263d1284"
+          test "$(shasum -a 256 "$SRC/CVE-2026-112522/CVE-2026-112522.c" | awk '{print $1}')" = "539e03eca09454bb132b45efd6a8f3796de671e50ef28f4d990daf394bdff1f1"
           mkdir -p OTA27/CinderLab
           cp -R "$SRC/Sources" OTA27/CinderLab/Sources
           python3 -c 'from pathlib import Path; p=Path("OTA27/CinderLab/Sources/Views.swift"); s=p.read_text(); assert s.count("@main\nstruct Cinder27App: App {")==1; p.write_text(s.replace("@main\nstruct Cinder27App: App {", "struct Cinder27App: App {", 1))'
@@ -108,6 +113,14 @@ jobs:
             test -s "$SRC/seeds/$seed"
             cp "$SRC/seeds/$seed" "OTA27/CinderLab/Seeds/$seed"
           done
+          # Each of the 31 CVE families must include an executable Swift and C POC,
+          # and RockRidge is the 32nd independent family.
+          test "$(find "$SRC" -mindepth 2 -maxdepth 2 -name 'CVE-*.swift' | wc -l | tr -d ' ')" = 31
+          test "$(find "$SRC" -mindepth 2 -maxdepth 2 -name 'CVE-*.c' | wc -l | tr -d ' ')" = 31
+          test -f "$SRC/arc.rr/arc.rr.swift"
+          test -f "$SRC/arc.rr/arc.rr.py"
+          test -f OTA27/Sources/CinderLabHost.swift
+          grep -q 'ModuleDetailView(module: module)' OTA27/Sources/Cinder27POCIndexView.swift
           # Include original standalone Swift/C/Python PoCs for inspectable export.
           test "$(find "$SRC" -mindepth 1 -maxdepth 1 -type d -name 'CVE-*' | wc -l | tr -d ' ')" = 31
           (cd "$SRC" && zip -q -r "$GITHUB_WORKSPACE/OTA27/CinderLab/CinderPOCs.zip" CVE-* arc.rr kern.baseline probe.privset sbx.toctou tool.backup tool.container tool.hex tool.macho tool.paths tool.zip)
