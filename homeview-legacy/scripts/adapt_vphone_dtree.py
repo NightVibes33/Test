@@ -60,6 +60,11 @@ def adapt(raw, output, upstream_path, nvram_path):
     defaults = root["defaults"] if "defaults" in root else None
     if defaults is not None and "vmm-present" not in defaults.props:
         defaults.props["vmm-present"] = "u32:1"
+    skipped = tolerate_missing_children(mod.ADTNode)
+    if "memory-map" in chosen:
+        # qemu-sptm exits if these SPTM regions are absent. vphone600 has no sgx.
+        mod.fixup_sptm(root)
+        filled.append("chosen/memory-map SPTM regions")
     Path(output).write_bytes(mod.encode_node(root))
     arm_children = []
     if "arm-io" in root:
@@ -68,6 +73,7 @@ def adapt(raw, output, upstream_path, nvram_path):
         "fixup": "firmware-version and missing dram",
         "firmware_version": chosen.props.get("firmware-version"),
         "filled_missing_properties": filled,
+        "skipped_missing_children": skipped,
         "chosen_properties": sorted(chosen.props)[:40],
         "arm_io_children": [str(name) for name in arm_children],
         "vmm_present": None if defaults is None else defaults.props.get("vmm-present"),
