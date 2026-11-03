@@ -26,7 +26,7 @@ targets:
         INFOPLIST_FILE: Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
-        OTHER_LDFLAGS: "-lc++ -Wl,-u,_ALGetGrappaToken"
+        OTHER_LDFLAGS: "-lc++ -Wl,-u,_ALGetGrappaToken -Wl,-exported_symbol,_ALGetGrappaToken"
         IPHONEOS_DEPLOYMENT_TARGET: "18.0"
 schemes:
   OTA27Blocker:

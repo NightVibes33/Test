@@ -52,3 +52,5 @@ The app includes a read-only, searchable inventory of the 31 CVE-labelled PoC fo
 
 ### Grappa symbol bridge
 The missing `ALGetGrappaToken` callback is supplied by NFCARD's pinned upstream `GrappaHelper.m`/`.h` and explicitly retained by the linker. This fixes the missing-symbol packaging error, not a guarantee of successful device sync.
+
+Build integrity: the main executable explicitly exports `_ALGetGrappaToken` for AirLift’s runtime `dlsym(RTLD_DEFAULT)` lookup; CI checks the symbol with `nm -gU`. A linked callback does not prove that Apple Books will accept the sync token.
