@@ -53,6 +53,10 @@ on:
       - 'homeview-legacy/scripts/probe_vphone_pv_boot.py'
       - 'homeview-legacy/scripts/adapt_vphone_dtree.py'
       - 'homeview-legacy/tests/test_adapt_vphone_dtree.py'
+      - 'homeview-legacy/scripts/vphone600_board.py'
+      - 'homeview-legacy/tests/test_vphone600_board.py'
+      - 'homeview-legacy/scripts/probe_vresearch_machine.py'
+      - 'homeview-legacy/tests/test_vresearch_machine.py'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -119,6 +123,8 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_qemu_disk.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_vphone_homeview_path.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_adapt_vphone_dtree.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_vphone600_board.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_vresearch_machine.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
       - name: Compile real QEMU API v7 observer before expensive Apple firmware download
@@ -243,6 +249,83 @@ jobs:
             out/qemu-vphone600.log
             out/native-homeview-guest-frame-vphone600.ppm
             out/native-homeview-guest-frame-vphone600.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+  vresearch-qemu:
+    needs: fast-evidence-validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record the vphone600 board and build qemu-vphone's vresearch101 machine
+        run: |
+          set +e
+          mkdir -p out
+          python3 homeview-legacy/scripts/vphone600_board.py \
+            --output out/homeview-vphone600-board.json
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential ninja-build pkg-config \
+            python3-venv flex bison libglib2.0-dev libpixman-1-dev \
+            zlib1g-dev libslirp-dev
+          git clone --depth 1 --branch vphone https://github.com/YahiaAngelo/qemu-vphone.git \
+            "$RUNNER_TEMP/qemu-vphone" > out/qemu-vphone-clone.log 2>&1
+          git -C "$RUNNER_TEMP/qemu-vphone" submodule update --init --depth 1 util/mlib \
+            >> out/qemu-vphone-clone.log 2>&1
+          if [[ ! -f "$RUNNER_TEMP/qemu-vphone/hw/vmapple/vresearch101.c" ]]; then
+            echo "VRESEARCH101_SOURCE_MISSING" | tee out/qemu-vphone-build.log
+            exit 1
+          fi
+          grep -n "create_root_virtio_blk\|apple-gfx\|GICv3\|gicv3\|gfx-device" \
+            "$RUNNER_TEMP/qemu-vphone/hw/vmapple/vresearch101.c" \
+            | head -40 > out/qemu-vphone-machine-markers.txt || true
+          ROM="$RUNNER_TEMP/open-roms"
+          mkdir -p "$ROM"
+          curl -fsSL --retry 3 -o "$ROM/OpenAVB.bin" \
+            "https://github.com/Lakr233/vphone-cli/raw/main/VPhoneExecutable/VPhoneVirtualization/Resources/OpenAVB/OpenAVB.bin"
+          curl -fsSL --retry 3 -o "$ROM/OpenSEP.bin" \
+            "https://github.com/Lakr233/vphone-cli/raw/main/VPhoneExecutable/VPhoneVirtualization/Resources/OpenSEP/OpenSEP.bin"
+          cd "$RUNNER_TEMP/qemu-vphone"
+          ./configure --target-list=aarch64-softmmu --disable-werror \
+            --disable-docs --disable-gtk --disable-sdl --disable-vnc \
+            --disable-curses --disable-pvg --disable-tools \
+            > "$GITHUB_WORKSPACE/out/qemu-vphone-configure.log" 2>&1
+          CONFIG_STATUS=$?
+          if [[ $CONFIG_STATUS -ne 0 ]]; then
+            echo "CONFIGURE_FAILED $CONFIG_STATUS" | tee -a "$GITHUB_WORKSPACE/out/qemu-vphone-build.log"
+            exit 1
+          fi
+          make -j"$(nproc)" qemu-system-aarch64 \
+            > "$GITHUB_WORKSPACE/out/qemu-vphone-build.log" 2>&1
+          QEMU="$RUNNER_TEMP/qemu-vphone/build/qemu-system-aarch64"
+          if [[ ! -x "$QEMU" ]]; then
+            echo "VRESEARCH_BINARY_MISSING" >> "$GITHUB_WORKSPACE/out/qemu-vphone-build.log"
+            exit 1
+          fi
+          echo "VRESEARCH_BINARY_BUILT" >> "$GITHUB_WORKSPACE/out/qemu-vphone-build.log"
+          "$QEMU" -M help > "$GITHUB_WORKSPACE/out/qemu-vphone-machines.txt" 2>&1
+          cd "$GITHUB_WORKSPACE"
+          VRESEARCH_QEMU="$QEMU" \
+            VRESEARCH_BIOS="$ROM/OpenAVB.bin" \
+            VRESEARCH_SEP="$ROM/OpenSEP.bin" \
+            python3 homeview-legacy/scripts/probe_vresearch_machine.py
+          exit $?
+      - name: Publish the vresearch build log, never Apple binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-vresearch-qemu-build
+          path: |
+            out/homeview-vphone600-board.json
+            out/qemu-vphone-clone.log
+            out/qemu-vphone-configure.log
+            out/qemu-vphone-build.log
+            out/qemu-vphone-machine-markers.txt
+            out/qemu-vphone-machines.txt
+            out/homeview-vresearch-boot.json
+            out/vresearch-serial.log
+            out/vresearch-qemu.log
+            out/vresearch-screendump.ppm
           if-no-files-found: ignore
           retention-days: 7
 
