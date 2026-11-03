@@ -486,33 +486,14 @@ jobs:
             EXTRACT="$RUNNER_TEMP/system-root"
             rm -rf "$EXTRACT"
             mkdir -p "$EXTRACT"
-            ipsw ota extract -y -p 'SpringBoard.app/SpringBoard$|sbin/launchd$|usr/lib/dyld$|AppleFirmwareKit' \
+            ipsw ota extract -y -p 'CoreServices/BreadBoard.app/|SpringBoard.app/SpringBoard$|sbin/launchd$|usr/lib/dyld$|AppleFirmwareKit' \
               -o "$EXTRACT" --key-val "$KEY" "$AEA" > out/system-root-extract.log 2>&1 || true
-            if find "$EXTRACT" -name SpringBoard -type f | grep -q .; then
+            if find "$EXTRACT" \( -name SpringBoard -o -name BreadBoard \) -type f | grep -q .; then
               hdiutil create -fs APFS -srcfolder "$EXTRACT" -volname System \
                 "$DEST/system-volume.dmg" > out/system-volume-create.log 2>&1 || true
-              python3 - <<'PY'
-              import json, os, pathlib
-              dest = pathlib.Path(os.environ["RUNNER_TEMP"]) / "hv-firmware"
-              image = dest / "system-volume.dmg"
-              size = image.stat().st_size if image.is_file() else 0
-              # Trustcache for this partial extract does not exist; do not borrow a ramdisk trustcache.
-              manifest = {
-                "springboard_file_present": True,
-                "trustcache_from_ota": False,
-                "trustcache_is_restore_ramdisk": False,
-                "source": "ipsw ota extract payloadv2",
-                "image_bytes": size,
-                "fits_qemu_ramdisk_slot": 0 < size <= 8 * 1024 * 1024 * 1024,
-                "root_slot": "qemu-sptm ramdisk",
-                "nand_block_device_present": False,
-                "springboard_boot_proven": False,
-                "note": "Partial payload extract is not a bootable system and is not booted without its trustcache.",
-              }
-              pathlib.Path("out/homeview-system-volume-manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
-              if not manifest["fits_qemu_ramdisk_slot"]:
-                  image.unlink(missing_ok=True)
-              PY
+              python3 homeview-legacy/scripts/summarize_ota_payload_index.py \
+                --partial-image "$DEST/system-volume.dmg" \
+                --output out/homeview-system-volume-manifest.json
             fi
             rm -rf "$EXTRACT"
           fi

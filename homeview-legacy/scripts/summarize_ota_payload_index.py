@@ -116,11 +116,40 @@ def summarize(text):
     }
 
 
+def write_partial_manifest(image, output):
+    image = Path(image)
+    size = image.stat().st_size if image.is_file() else 0
+    present = image.is_file() and size > 1024
+    fits = present and size <= GUEST_RAMDISK_LIMIT
+    manifest = {
+        "springboard_file_present": present,
+        "trustcache_from_ota": False,
+        "trustcache_is_restore_ramdisk": False,
+        "source": "ipsw ota extract payloadv2",
+        "image_bytes": size,
+        "fits_qemu_ramdisk_slot": fits,
+        "root_slot": "qemu-sptm ramdisk",
+        "nand_block_device_present": False,
+        "springboard_boot_proven": False,
+        "note": "Partial payload extract is not booted without its own trustcache.",
+    }
+    Path(output).write_text(json.dumps(manifest, indent=2) + "\n")
+    if present and not fits:
+        image.unlink()
+    return manifest
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--listing", required=True)
+    parser.add_argument("--listing")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--partial-image")
     args = parser.parse_args()
+    if args.partial_image:
+        manifest = write_partial_manifest(args.partial_image, args.output)
+        print(json.dumps({"partial_image_bytes": manifest["image_bytes"],
+                          "fits": manifest["fits_qemu_ramdisk_slot"]}))
+        return
     listing = Path(args.listing)
     text = listing.read_text(encoding="utf-8", errors="replace") if listing.is_file() else ""
     result = summarize(text)
