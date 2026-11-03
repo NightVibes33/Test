@@ -67,7 +67,7 @@ print("Cinder27 resource staging and postbuild seed checks validated.")
 # rather than being a static inventory with dummy action buttons.
 import re
 index = (root / "Sources/Cinder27POCIndexView.swift").read_text()
-families = re.findall(r"^\\s*(CVE-2026-[0-9]+|arc\\.rr)\\|", index, re.MULTILINE)
+families = re.findall(r"^\s*(CVE-2026-[0-9]+|arc\.rr)\|", index, re.MULTILINE)
 assert len(families) == 32, f"Expected 32 source families, saw {len(families)}"
 assert len(set(families)) == 32
 assert sum(family.startswith("CVE-2026-") for family in families) == 31
