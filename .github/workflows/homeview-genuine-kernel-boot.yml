@@ -268,7 +268,7 @@ jobs:
           sudo apt-get install -y -qq build-essential ninja-build pkg-config \
             python3-venv python3-pip flex bison libglib2.0-dev \
             libpixman-1-dev zlib1g-dev libslirp-dev libtasn1-dev \
-            libpng-dev liblzfse-dev
+            libpng-dev liblzfse-dev nettle-dev libgnutls28-dev
           python3 -m venv "$RUNNER_TEMP/meson-venv"
           "$RUNNER_TEMP/meson-venv/bin/pip" install -q 'meson>=1.5,<2'
           export PATH="$RUNNER_TEMP/meson-venv/bin:$PATH"
