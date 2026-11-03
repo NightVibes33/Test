@@ -31,8 +31,8 @@ class SignatureTests(unittest.TestCase):
         self.assertNotEqual(records[0]["signature_hex"], records[1]["signature_hex"])
         args = mod.plugin_args({"targets": [first, second]})
         self.assertEqual(sum(item.startswith("sig=") for item in args), 2)
-        self.assertEqual(sum(item.startswith("id=") for item in args), 2)
-        self.assertIn("id=0xfffffff009b1d1e4:AppleANS2CGv2Controller:85", args)
+        self.assertEqual(sum(item.startswith("who=") for item in args), 2)
+        self.assertIn("who=0xfffffff009b1d1e4:AppleANS2CGv2Controller:85", args)
 
     def test_duplicate_or_truncated_fingerprints_not_used(self):
         words = [bytes([0xff, 0x03, 0x02, 0xd1])] * 12

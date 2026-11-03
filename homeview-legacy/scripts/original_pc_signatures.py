@@ -54,5 +54,5 @@ def plugin_args(report):
         klass = item.get("class") or ""
         slot = item.get("slot")
         if isinstance(klass, str) and klass.isidentifier() and isinstance(slot, int):
-            args.append(f"id={item['static_vaddr']}:{klass}:{slot}")
+            args.append(f"who={item['static_vaddr']}:{klass}:{slot}")
     return args

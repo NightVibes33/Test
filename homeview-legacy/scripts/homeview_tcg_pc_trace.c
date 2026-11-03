@@ -477,9 +477,10 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
                 s->bytes[k] = (uint8_t)((high << 4) | low);
             }
             ++signature_count;
-        } else if (!strncmp(argv[i], "id=", 3)) {
+        } else if (!strncmp(argv[i], "who=", 4)) {
+            /* "id=" is reserved by QEMU's plugin loader and rejects addresses. */
             if (ident_count == MAX_SIGNATURES ||
-                parse_address(argv[i] + 3, &end, &addr) || *end != ':') return -1;
+                parse_address(argv[i] + 4, &end, &addr) || *end != ':') return -1;
             PCIdent *ident = &idents[ident_count];
             memset(ident, 0, sizeof(*ident));
             ident->address = addr;

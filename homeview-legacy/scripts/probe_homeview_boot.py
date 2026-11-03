@@ -68,7 +68,8 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
                 options = ["addr=" + address for address in addresses]
                 options.extend(fingerprint_args)
                 argv.extend(["-plugin", str(plugin) + "," + ",".join(options)])
-                answer["experimental_original_code_fingerprints"] = len(fingerprint_args)
+                answer["experimental_original_code_fingerprints"] = sum(
+                    1 for item in fingerprint_args if item.startswith("sig="))
                 env["HOMEVIEW_TCG_PC_TRACE_FILE"] = str(pc_trace.resolve())
                 answer["pc_trace_artifact"] = pc_trace.name
                 # qemu_plugin_outs uses CPU_LOG_PLUGIN, which is filtered
