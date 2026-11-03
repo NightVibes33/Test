@@ -1,0 +1,51 @@
+name: Cancel outdated OTA27 runs (one-shot)
+
+on:
+  push:
+    branches:
+      - temp/ios27-airlift-ota-research
+    paths:
+      - ".github/workflows/ota27-cancel-older-runs.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cancel-outdated-ota27:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEEP_RUN_ID: "41577217740"
+    steps:
+      - name: Cancel all older OTA27 runs, preserve latest macOS 27
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Preserving OTA27 workflow run ${KEEP_RUN_ID}"
+          mapfile -t OLD_IDS < <(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/ota27-unsigned.yml/runs?branch=temp%2Fios27-airlift-ota-research&per_page=100" \
+              --jq '.workflow_runs[] | select(.id < 41577217740) | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .id'
+          )
+          printf "Found %s outdated active OTA27 runs.\n" "${#OLD_IDS[@]}"
+          failed=0
+          for run_id in "${OLD_IDS[@]}"; do
+            if [[ "${run_id}" == "${KEEP_RUN_ID}" ]]; then
+              echo "::error::Refusing to cancel newest run"
+              exit 1
+            fi
+            echo "Canceling old OTA27 run ${run_id}"
+            if ! gh api --method POST --silent \
+                 "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel"; then
+              echo "::warning::Cancel request failed for run ${run_id}"
+              failed=$((failed + 1))
+            fi
+          done
+          if [[ "${failed}" -ne 0 ]]; then
+            echo "::error::${failed} cancellation requests failed."
+            exit 1
+          fi
+          echo "Requested cancellation of all earlier active OTA27 runs."
