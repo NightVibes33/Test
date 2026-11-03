@@ -167,6 +167,12 @@ def afk_census(raw):
             continue
         classes = []
         personalities = []
+        info = item.get("info") if isinstance(item.get("info"), dict) else {}
+        libraries = info.get("OSBundleLibraries")
+        if not isinstance(libraries, dict):
+            libraries = item.get("os_bundle_libraries") if isinstance(
+                item.get("os_bundle_libraries"), dict) else {}
+        library_ids = [name for name in libraries if isinstance(name, str)][:16]
         for name, raw_personality in personality_map(item).items():
             if not isinstance(raw_personality, dict) or not isinstance(name, str):
                 continue
@@ -188,6 +194,7 @@ def afk_census(raw):
                 "afk_ioclasses": sorted(set(classes))[:12],
                 "personalities": personalities[:8],
                 "declares_IOClass_AFKResource": "AFKResource" in classes,
+                "OSBundleLibraries": library_ids,
                 "metaclass_registered_in_guest": False,
                 "guest_start_observed": False,
             })
