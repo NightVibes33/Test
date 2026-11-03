@@ -1,4 +1,4 @@
-name: Cancel outdated OTA27 runs (one-shot)
+name: Cancel obsolete research-branch build runs
 
 on:
   push:
@@ -13,54 +13,55 @@ permissions:
   contents: read
 
 jobs:
-  cancel-outdated-ota27:
+  cancel-stale-branch-runs:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       GH_TOKEN: ${{ github.token }}
       KEEP_RUN_ID: "41577217740"
     steps:
-      - name: Cancel all older OTA27 runs, preserve latest macOS 27
+      - name: Cancel obsolete LiveContainer and OTA27 runs on OTA27 branch
         shell: bash
         run: |
           set -euo pipefail
-          echo "Preserving OTA27 workflow run ${KEEP_RUN_ID}"
-          mapfile -t OLD_IDS < <(
-            gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/actions/workflows/ota27-unsigned.yml/runs?branch=temp%2Fios27-airlift-ota-research&per_page=100" \
-              --jq '.workflow_runs[] | select(.id < 41577217740) | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .id'
-          )
-          printf "Found %s outdated active OTA27 runs.\n" "${#OLD_IDS[@]}"
-          failed=0
-          for run_id in "${OLD_IDS[@]}"; do
-            if [[ "${run_id}" == "${KEEP_RUN_ID}" ]]; then
-              echo "::error::Refusing to cancel newest run"
+          # Scope is ONLY the OTA27 research branch; do not touch HomeView,
+          # unrelated branches, finished runs, or the latest OTA27 build.
+          for workflow in ios-build.yml ota27-unsigned.yml; do
+            echo "Checking ${workflow} on temp/ios27-airlift-ota-research"
+            mapfile -t old < <(
+              gh api --paginate \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs?branch=temp%2Fios27-airlift-ota-research&per_page=100" \
+                --jq '.workflow_runs[] | select(.id != 41577217740) | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .id'
+            )
+            echo "Found ${#old[@]} active obsolete ${workflow} runs"
+            failed=0
+            for run_id in "${old[@]}"; do
+              [[ "${run_id}" != "${KEEP_RUN_ID}" ]] || exit 1
+              echo "Canceling ${workflow} run ${run_id}"
+              if ! gh api --method POST --silent \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel"; then
+                echo "::warning::Could not cancel ${run_id} normally"
+                failed=$((failed + 1))
+              fi
+            done
+            if [[ "${failed}" -ne 0 ]]; then
+              echo "::error::${failed} normal cancellation requests failed for ${workflow}"
               exit 1
             fi
-            echo "Canceling old OTA27 run ${run_id}"
-            if ! gh api --method POST --silent \
-                 "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel"; then
-              echo "::warning::Cancel request failed for run ${run_id}"
-              failed=$((failed + 1))
-            fi
           done
-          if [[ "${failed}" -ne 0 ]]; then
-            echo "::error::${failed} cancellation requests failed."
-            exit 1
-          fi
-          echo "Requested cancellation of all earlier active OTA27 runs."
-          # For a Rust build that ignores graceful cancellation, use GitHub's
-          # documented force-cancel endpoint. Never touch the preserved run.
           sleep 8
-          mapfile -t STILL_ACTIVE < <(
-            gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/actions/workflows/ota27-unsigned.yml/runs?branch=temp%2Fios27-airlift-ota-research&per_page=100" \
-              --jq '.workflow_runs[] | select(.id < 41577217740) | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .id'
-          )
-          for run_id in "${STILL_ACTIVE[@]}"; do
-            [[ "${run_id}" != "${KEEP_RUN_ID}" ]] || exit 1
-            echo "Force-canceling still-active obsolete OTA27 run ${run_id}"
-            gh api --method POST --silent \
-              "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/force-cancel"
+          # Force cancellation for any runners that did not honor graceful stop.
+          for workflow in ios-build.yml ota27-unsigned.yml; do
+            mapfile -t remaining < <(
+              gh api --paginate \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs?branch=temp%2Fios27-airlift-ota-research&per_page=100" \
+                --jq '.workflow_runs[] | select(.id != 41577217740) | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .id'
+            )
+            for run_id in "${remaining[@]}"; do
+              [[ "${run_id}" != "${KEEP_RUN_ID}" ]] || exit 1
+              echo "Force-canceling stuck ${workflow} run ${run_id}"
+              gh api --method POST --silent \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/force-cancel"
+            done
           done
-          echo "No older OTA27 run was intentionally preserved."
+          echo "All cancellation requests completed for obsolete branch runs."
