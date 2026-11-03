@@ -220,7 +220,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/hv-extracted" "$RUNNER_TEMP/hv-firmware"
           ./aeota/aastuff_standalone -i "$RUNNER_TEMP/HomeView.aea" \
             -o "$RUNNER_TEMP/hv-extracted" \
-            -r '^AssetData/boot/(kernelcache\.release\.homeaccessory17|Firmware/all_flash/DeviceTree\.j490ap\.im4p|Firmware/sptm\.t8140\.release\.im4p|Firmware/txm\.appletvos\.release\.im4p|141-21782-189\.dmg|Firmware/141-21782-189\.dmg\.trustcache|Firmware/arm64eSURamDisk\.dmg\.trustcache)$|^AssetData/payload/replace/usr/standalone/update/ramdisk/arm64eSURamDisk\.dmg$' \
+            -r '^AssetData/boot/(kernelcache\.release\.homeaccessory17|Firmware/all_flash/DeviceTree\.j490ap\.im4p|Firmware/sptm\.t8140\.release\.im4p|Firmware/txm\.appletvos\.release\.im4p|Firmware/ansf\.t8140\.release\.im4p|Firmware/141-21962-183\.dmg\.mtree|141-21782-189\.dmg|Firmware/141-21782-189\.dmg\.trustcache|Firmware/arm64eSURamDisk\.dmg\.trustcache)$|^AssetData/payload/replace/usr/standalone/update/ramdisk/arm64eSURamDisk\.dmg$' \
             -k "$KEY" > out/selective-extraction.log 2>&1
           BASE="$RUNNER_TEMP/hv-extracted/AssetData/boot"
           DEST="$RUNNER_TEMP/hv-firmware"
@@ -239,6 +239,15 @@ jobs:
           ipsw img4 im4p extract "$BASE/Firmware/all_flash/DeviceTree.j490ap.im4p" -o "$DEST/dtree"
           ipsw img4 im4p extract "$BASE/Firmware/sptm.t8140.release.im4p" -o "$DEST/sptm"
           ipsw img4 im4p extract "$BASE/Firmware/txm.appletvos.release.im4p" -o "$DEST/txm"
+          if [[ -s "$BASE/Firmware/ansf.t8140.release.im4p" ]]; then
+            ipsw img4 im4p extract "$BASE/Firmware/ansf.t8140.release.im4p" -o "$DEST/ansf.bin"
+          fi
+          if [[ -s "$BASE/Firmware/141-21962-183.dmg.mtree" ]]; then
+            rg -n -i "SpringBoard|BreadBoard|AppleFirmwareKit" \
+              "$BASE/Firmware/141-21962-183.dmg.mtree" | head -40 \
+              > out/homeview-system-mtree-hits.txt || true
+            rm -f "$BASE/Firmware/141-21962-183.dmg.mtree"
+          fi
           ipsw img4 im4p extract "$BASE/Firmware/141-21782-189.dmg.trustcache" -o "$DEST/ramdisk.tc"
           cp "$BASE/141-21782-189.dmg" "$DEST/ramdisk.dmg"
           ipsw img4 im4p extract "$BASE/Firmware/arm64eSURamDisk.dmg.trustcache" -o "$DEST/ramdisk-su.tc"
@@ -553,6 +562,7 @@ jobs:
             out/ota-payload-index-head.txt
             out/ota-payload-index.err
             out/homeview-system-volume-manifest.json
+            out/homeview-system-mtree-hits.txt
             out/system-volume-extract.log
             out/system-trustcache-extract.log
             out/system-volume-create.log

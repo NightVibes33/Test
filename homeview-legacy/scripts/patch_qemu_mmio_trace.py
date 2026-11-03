@@ -101,6 +101,45 @@ static void hv_trace_device(MachineState *ms, struct dtree_node *root,
             " length=0x%" HWADDR_PRIx " index=%zu\\n", name, base, len, i);
     }
 }
+
+static void hv_load_ans_firmware(struct dtree_node *dt_root) {
+    const char *path = g_getenv("HOMEVIEW_ANS_FIRMWARE");
+    if (!path || !path[0]) return;
+    struct dtree_node *nub = adt_find_node(dt_root, "arm-io/ans/iop-ans-nub");
+    uint64_t *basep = nub ? adt_get_prop_val(nub, "region-base") : NULL;
+    uint64_t *sizep = nub ? adt_get_prop_val(nub, "region-size") : NULL;
+    if (!basep || !sizep || !*basep || !*sizep) {
+        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW region_missing\\n");
+        return;
+    }
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW open_failed\\n");
+        return;
+    }
+    size_t cap = *sizep > 0x4000000 ? 0x4000000 : (size_t)*sizep;
+    void *buf = g_malloc(cap);
+    ssize_t got = 0;
+    while (got < (ssize_t)cap) {
+        ssize_t n = read(fd, (uint8_t *)buf + got, cap - got);
+        if (n < 0) { got = -1; break; }
+        if (n == 0) break;
+        got += n;
+    }
+    close(fd);
+    if (got <= 0) {
+        g_free(buf);
+        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW read_failed\\n");
+        return;
+    }
+    MemTxResult tx = address_space_write(&address_space_memory, *basep,
+        MEMTXATTRS_UNSPECIFIED, buf, got);
+    g_free(buf);
+    qemu_log_mask(LOG_UNIMP,
+        "HOMEVIEW_ANS_FW loaded bytes=%zd region_base=0x%" PRIx64
+        " region_size=0x%" PRIx64 " write_ok=%d\\n",
+        got, *basep, *sizep, tx == MEMTX_OK);
+}
 '''
 CALL = '''\
     // Instrument Apple ANS/DCP probes only when explicitly requested.
@@ -112,6 +151,7 @@ CALL = '''\
         hv_trace_device(ms, dt_root, "arm-io/dcp0-expert", iobase);
         hv_trace_device(ms, dt_root, "arm-io/sgx", iobase);
     }
+    hv_load_ans_firmware(dt_root);
 '''
 
 def patch(text):

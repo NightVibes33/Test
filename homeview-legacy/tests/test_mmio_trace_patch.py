@@ -28,6 +28,9 @@ class TraceTests(unittest.TestCase):
         self.assertIn('index=%zu\\n"',changed)
         self.assertIn('arm-io/dcp',changed)
         self.assertIn('arm-io/ans',changed)
+        self.assertIn('hv_load_ans_firmware', changed)
+        self.assertIn('HOMEVIEW_ANS_FW', changed)
+        self.assertIn('region-base', changed)
         self.assertEqual(module.patch(changed),changed)
     def test_unknown_source_rejected(self):
         with self.assertRaises(ValueError):

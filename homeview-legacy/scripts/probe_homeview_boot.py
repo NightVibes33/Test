@@ -58,6 +58,9 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
     if name == "software-update-ans-binding-probe":
         env["HOMEVIEW_MMIO_ALL_WINDOWS"] = "1"
         env["HOMEVIEW_MMIO_FULL_ANS"] = "1"
+        ans_fw = firmware / "ansf.bin"
+        if ans_fw.is_file() and ans_fw.stat().st_size > 64:
+            env["HOMEVIEW_ANS_FIRMWARE"] = str(ans_fw.resolve())
     if name == "software-update-ans-binding-probe":
         path = os.environ.get("HOMEVIEW_TCG_PC_PLUGIN")
         classes_path = dest / "homeview-original-iokit-cpp-methods.json"
