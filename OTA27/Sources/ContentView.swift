@@ -167,13 +167,13 @@ struct ContentView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    GroupBox("5 · Cinder27 PoC inventory") {
+                    GroupBox("5 · Cinder27 PoC lab") {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Browse the 31 CVE-labelled PoCs and the separate RockRidge probe from your Cinder27 archive.")
+                            Text("Browse and test the 31 CVE-labelled PoCs and the separate RockRidge probe supplied in your Cinder27 archive.")
                                 .font(.subheadline)
-                            Button("View all 32 PoC records") { showCinderInventory = true }
+                            Button("Open 32 executable PoCs") { showCinderInventory = true }
                                 .buttonStyle(.borderedProminent)
-                            Text("Read-only inventory. No PoC runs automatically.")
+                            Text("Each family opens its original runner, result evidence and crash journal. Nothing runs automatically; some tests can crash the app or device.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
