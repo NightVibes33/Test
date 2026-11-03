@@ -209,7 +209,7 @@ jobs:
           unwrap "$DEST/sptm.vresearch1.release.im4p" "$DEST/sptm"
           unwrap "$DEST/txm.iphoneos.research.im4p" "$DEST/txm"
           unwrap "$DEST/094-39914-031.dmg.trustcache" "$DEST/ramdisk.tc"
-          cp "$DEST/094-39914-031.dmg" "$DEST/ramdisk.dmg"
+          unwrap "$DEST/094-39914-031.dmg" "$DEST/ramdisk.dmg"
           git clone --depth 1 https://github.com/jprx/darwin-vm.git darwin-tools
           python3 homeview-legacy/scripts/adapt_vphone_dtree.py \
             "$DEST/dtree.raw" "$DEST/dtree" \
