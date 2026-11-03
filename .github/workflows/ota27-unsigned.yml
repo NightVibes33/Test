@@ -111,6 +111,28 @@ jobs:
           PY
           echo "::endgroup::"
           export PATH="$HOME/.cargo/bin:$PATH"
+          # Xcode 27 is installed at Xcode_27.1.app on the hosted macOS 27 runner.
+          # Upstream build-ios.sh otherwise defaults to a nonexistent Xcode-beta path.
+          export DEVELOPER_DIR="$(xcode-select -p)"
+          test -d "$DEVELOPER_DIR"
+          # On macOS 27 the runner already provides working cargo/rustup in PATH.
+          # Sourcing ~/.cargo/env can exit the shell instead of returning a status;
+          # remove only that line in the temporary checked-out build script.
+          python3 - "$SRC/build-ios.sh" <<'PY'
+          from pathlib import Path
+          import sys
+          p = Path(sys.argv[1])
+          script = p.read_text()
+          old = 'source "$HOME/.cargo/env" 2>/dev/null || true'
+          if script.count(old) != 1:
+              raise SystemExit("::error::Upstream build-ios.sh Cargo env line changed")
+          p.write_text(script.replace(
+              old,
+              '# Cargo and rustup were checked on the runner; no shell sourcing required.',
+              1
+          ))
+          print("macOS 27 toolchain: Xcode selected by xcode-select; safe Cargo PATH", flush=True)
+          PY
           echo "::group::Compile pinned AirLift for iOS device and simulator"
           (cd "$SRC" && bash -x ./build-ios.sh)
           echo "::endgroup::"
