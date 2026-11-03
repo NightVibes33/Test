@@ -42,9 +42,12 @@ git clone --depth 1 https://github.com/CRKatri/trustcache.git "$RUNNER_TEMP/trus
   > out/trustcache-build.log 2>&1 || true
 OPENSSL_PREFIX="$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null || true)"
 if [[ -n "$OPENSSL_PREFIX" && -d "$OPENSSL_PREFIX/include/openssl" ]]; then
+  # macOS make does not append -DOPENSSL onto a command-line CFLAGS value,
+  # so the cdhash file kept including libmd's sha.h.
   make -C "$RUNNER_TEMP/trustcache-src" OPENSSL=1 \
-    CFLAGS="-I${OPENSSL_PREFIX}/include" \
+    CPPFLAGS="-DVERSION=2.0 -DOPENSSL -I${OPENSSL_PREFIX}/include" \
     LDFLAGS="-L${OPENSSL_PREFIX}/lib" \
+    LIBS="-lcrypto" \
     >> out/trustcache-build.log 2>&1 || true
 else
   echo "OPENSSL_HEADERS_MISSING" >> out/trustcache-build.log
@@ -123,8 +126,8 @@ if [[ -d "$EXTRACT" ]] && find "$EXTRACT" -name BreadBoard -type f | grep -q .; 
   python3 homeview-legacy/scripts/static_trustcache.py \
     --trustcache "$DEST/system-volume.tc" --output out/homeview-static-trustcache.json || true
   sudo chown -R root:wheel "$EXTRACT" >/dev/null 2>&1 || true
-  python3 homeview-legacy/scripts/run_bounded.py --timeout 180 --log out/system-volume-create.log -- \
-    hdiutil create -fs APFS -srcfolder "$EXTRACT" -volname System "$DEST/system-volume.dmg" || true
+  python3 homeview-legacy/scripts/run_bounded.py --timeout 600 --log out/system-volume-create.log -- \
+    sudo hdiutil create -fs APFS -srcfolder "$EXTRACT" -volname System "$DEST/system-volume.dmg" || true
   python3 homeview-legacy/scripts/static_trustcache.py \
     --trustcache "$DEST/system-volume.tc" \
     --image "$DEST/system-volume.dmg" \
