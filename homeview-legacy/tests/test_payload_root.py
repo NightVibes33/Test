@@ -94,6 +94,33 @@ class PayloadRootTests(unittest.TestCase):
         self.assertFalse(report["booted"])
         self.assertFalse(report["nand_block_device_present"])
 
+    def test_bounded_command_times_out(self):
+        import tempfile
+        bounded = load("run_bounded.py")
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / "log.txt"
+            code = bounded.run_bounded(["sleep", "5"], log, 0.2)
+            self.assertEqual(code, 124)
+            self.assertIn(b"TIMED_OUT", log.read_bytes())
+
+    def test_oversized_image_is_not_staged(self):
+        import tempfile
+        stage = load("stage_fitting_image.py")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "src"
+            root.mkdir()
+            (root / "System.dmg").write_bytes(b"x" * 50)
+            dest = Path(temp) / "out.dmg"
+            report = stage.stage(root, dest, 10)
+            self.assertFalse(report["staged"])
+            self.assertFalse(dest.exists())
+            self.assertFalse(report["booted"])
+            (root / "System.dmg").write_bytes(b"y" * 2000)
+            report = stage.stage(root, dest, 3000)
+            self.assertTrue(report["staged"])
+            self.assertEqual(dest.stat().st_size, 2000)
+            self.assertFalse(report["nand_block_device_present"])
+
 
 if __name__ == "__main__":
     unittest.main()

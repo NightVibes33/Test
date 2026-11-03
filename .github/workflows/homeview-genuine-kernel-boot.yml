@@ -37,6 +37,8 @@ on:
       - 'homeview-legacy/scripts/probe_firmwarekit_linkage.py'
       - 'homeview-legacy/tests/test_firmwarekit_linkage.py'
       - 'homeview-legacy/scripts/record_volume_image.py'
+      - 'homeview-legacy/scripts/run_bounded.py'
+      - 'homeview-legacy/scripts/stage_fitting_image.py'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -502,48 +504,76 @@ jobs:
           (dest / "system-volume-decision.txt").write_text((dmgs[0] if dmgs else "") + "\n")
           print("SYSTEM_DMG_CANDIDATE", dmgs[:4], "payload_lines", index.get("payload_line_count"))
           PY
-          # Full payloadv2 extract. BreadBoard is the home UI; do not require a
-          # file named SpringBoard. Skip when the runner cannot hold the tree.
-          # Cryptex and dyld are separate from payloadv2. Record sizes, then
-          # delete the bytes so the full payload extract still has disk.
+          # The unbounded payloadv2 extract ran past the 85-minute job and
+          # never uploaded evidence. Keep the system cryptex and a BreadBoard
+          # pattern, each with a deadline. Do not cache Apple binaries.
+          echo "FULL_PAYLOAD_EXTRACT_OMITTED unbounded_extract_exceeded_job_timeout" > out/system-root-extract.log
+          git clone --depth 1 https://github.com/CRKatri/trustcache.git "$RUNNER_TEMP/trustcache-src" \
+            > out/trustcache-build.log 2>&1 || true
+          make -C "$RUNNER_TEMP/trustcache-src" >> out/trustcache-build.log 2>&1 || true
+          TCBIN="$RUNNER_TEMP/trustcache-src/trustcache"
           CRYPTEX="$RUNNER_TEMP/cryptex-system"
           rm -rf "$CRYPTEX"
           mkdir -p "$CRYPTEX"
           if [[ -s "$AEA" && -n "$KEY" ]]; then
-            ipsw ota extract --cryptex system -o "$CRYPTEX" --key-val "$KEY" "$AEA" \
-              > out/cryptex-system-extract.log 2>&1 || echo "CRYPTEX_EXTRACT_FAILED" >> out/cryptex-system-extract.log
+            python3 homeview-legacy/scripts/run_bounded.py --timeout 720 --log out/cryptex-system-extract.log -- \
+              ipsw ota extract --cryptex system -o "$CRYPTEX" --key-val "$KEY" "$AEA" || true
           fi
           python3 homeview-legacy/scripts/record_volume_image.py \
             --dir "$CRYPTEX" --label system-cryptex \
             --output out/homeview-cryptex-system.json || true
+          python3 homeview-legacy/scripts/stage_fitting_image.py \
+            --dir "$CRYPTEX" --dest "$DEST/cryptex-system.dmg" \
+            --max-bytes 6442450944 --output out/homeview-cryptex-stage.json || true
           rm -rf "$CRYPTEX"
+          if [[ -s "$DEST/cryptex-system.dmg" ]]; then
+            ATTACH="$(hdiutil attach -readonly -nobrowse "$DEST/cryptex-system.dmg" 2>&1)" || true
+            printf '%s\n' "$ATTACH" | head -20 > out/cryptex-attach.txt
+            MOUNT="$(printf '%s\n' "$ATTACH" | awk '/\/Volumes\// { print $NF; exit }')"
+            if [[ -n "$MOUNT" && -d "$MOUNT" ]] && find "$MOUNT" -name BreadBoard -type f | grep -q .; then
+              FILE_COUNT="$(find "$MOUNT" -type f | wc -l | tr -d ' ')"
+              LINK_COUNT="$(find "$MOUNT" -type l | wc -l | tr -d ' ')"
+              echo "CRYPTEX_FILE_COUNT=$FILE_COUNT CRYPTEX_LINK_COUNT=$LINK_COUNT"
+              if [[ -x "$TCBIN" ]]; then
+                python3 homeview-legacy/scripts/static_trustcache.py \
+                  --build-root "$MOUNT" --tool "$TCBIN" \
+                  --trustcache "$DEST/system-volume.tc" \
+                  --output out/homeview-static-trustcache.json \
+                  >> out/trustcache-build.log 2>&1 || true
+              fi
+              cp "$DEST/cryptex-system.dmg" "$DEST/system-volume.dmg"
+              python3 homeview-legacy/scripts/static_trustcache.py \
+                --trustcache "$DEST/system-volume.tc" \
+                --image "$DEST/system-volume.dmg" \
+                --firmware-dir "$DEST" \
+                --extracted-files "${FILE_COUNT:-0}" \
+                --output out/homeview-static-trustcache.json || true
+            fi
+            if [[ -n "$MOUNT" ]]; then
+              hdiutil detach "$MOUNT" >/dev/null 2>&1 || true
+            fi
+            rm -f "$DEST/cryptex-system.dmg"
+          fi
           DYLD="$RUNNER_TEMP/dyld-cache"
           rm -rf "$DYLD"
           mkdir -p "$DYLD"
           if [[ -s "$AEA" && -n "$KEY" ]]; then
-            ipsw ota extract --dyld --dyld-arch arm64e --json -o "$DYLD" --key-val "$KEY" "$AEA" \
-              > out/homeview-dyld-cache.json 2> out/dyld-cache-extract.log \
+            python3 homeview-legacy/scripts/run_bounded.py --timeout 720 --log out/dyld-cache-extract.log -- \
+              ipsw ota extract --dyld --dyld-arch arm64e --json -o "$DYLD" --key-val "$KEY" "$AEA" \
               || echo "DYLD_EXTRACT_FAILED" >> out/dyld-cache-extract.log
           fi
           python3 homeview-legacy/scripts/record_volume_image.py \
             --dir "$DYLD" --label dyld-shared-cache \
             --output out/homeview-dyld-cache-volume.json || true
           rm -rf "$DYLD"
-          FREE_KB="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 { print $4 }')"
-          echo "PAYLOAD_FREE_KB=$FREE_KB"
           EXTRACT="$RUNNER_TEMP/system-root"
-          if [[ -s "$AEA" && -n "$KEY" && "$FREE_KB" -ge 12000000 ]]; then
-            rm -rf "$EXTRACT"
+          if [[ -f out/homeview-system-volume-manifest.json ]] && grep -q '"boot_payload_root": true' out/homeview-system-volume-manifest.json; then
+            echo "PATTERN_EXTRACT_SKIPPED payload_root_already_staged" >> out/system-root-extract.log
+          elif [[ -s "$AEA" && -n "$KEY" ]]; then
             mkdir -p "$EXTRACT"
-            ipsw ota extract -y -p '.*' -o "$EXTRACT" --key-val "$KEY" "$AEA" \
-              > out/system-root-extract.log 2>&1 || echo "FULL_PAYLOAD_EXTRACT_FAILED" >> out/system-root-extract.log
-          else
-            echo "FULL_PAYLOAD_EXTRACT_SKIPPED free_kb=$FREE_KB" > out/system-root-extract.log
-          fi
-          if [[ -s "$AEA" && -n "$KEY" ]] && { [[ ! -d "$EXTRACT" ]] || ! find "$EXTRACT" -name BreadBoard -type f | grep -q .; }; then
-            mkdir -p "$EXTRACT"
-            ipsw ota extract -y -p 'CoreServices/BreadBoard.app/|sbin/launchd$|usr/lib/dyld$|AppleFirmwareKit|dyld_shared_cache' \
-              -o "$EXTRACT" --key-val "$KEY" "$AEA" >> out/system-root-extract.log 2>&1 || true
+            python3 homeview-legacy/scripts/run_bounded.py --timeout 900 --log out/system-root-extract.log -- \
+              ipsw ota extract -y -p 'CoreServices/BreadBoard.app/|PrivateFrameworks/BreadBoard|sbin/launchd$|usr/lib/dyld$' \
+              -o "$EXTRACT" --key-val "$KEY" "$AEA" || true
             echo "BREADBOARD_PATTERN_EXTRACT" >> out/system-root-extract.log
           fi
           if [[ -d "$EXTRACT" ]] && find "$EXTRACT" -name BreadBoard -type f | grep -q .; then
@@ -556,10 +586,6 @@ jobs:
               --mtree "$MTREE" --files "$RUNNER_TEMP/payload-files.txt" \
               --symlink-count "$LINK_COUNT" \
               --output out/homeview-payload-mtree.json || true
-            git clone --depth 1 https://github.com/CRKatri/trustcache.git "$RUNNER_TEMP/trustcache-src" \
-              > out/trustcache-build.log 2>&1 || true
-            make -C "$RUNNER_TEMP/trustcache-src" >> out/trustcache-build.log 2>&1 || true
-            TCBIN="$RUNNER_TEMP/trustcache-src/trustcache"
             if [[ -x "$TCBIN" ]]; then
               python3 homeview-legacy/scripts/static_trustcache.py \
                 --build-root "$EXTRACT" --tool "$TCBIN" \
@@ -692,6 +718,8 @@ jobs:
             out/homeview-dyld-cache.json
             out/homeview-dyld-cache-volume.json
             out/dyld-cache-extract.log
+            out/homeview-cryptex-stage.json
+            out/cryptex-attach.txt
             out/homeview-system-mtree-hits.txt
             out/system-volume-extract.log
             out/system-trustcache-extract.log
