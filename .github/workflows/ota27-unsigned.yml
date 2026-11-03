@@ -9,10 +9,12 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     permissions:
       contents: read
-    timeout-minutes: 55
+    timeout-minutes: 120
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
@@ -21,26 +23,66 @@ jobs:
         with:
           xcode-version: "26.2"
 
-      - name: Validate original OTA profile
+      - name: Validate OTA profile and NFCARD transport integration
         run: |
           python3 OTA27/tests/profile_validation.py
           plutil -lint OTA27/Resources/blockota.mobileconfig
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: |
+          command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
 
-      - name: Acquire pinned third-party AirLift FFI
+      - name: Cache exact NFCARD-patched AirLift XCFramework
+        uses: actions/cache@v4
+        with:
+          path: OTA27/Dependencies/AirliftFFI.xcframework
+          key: ota27-airlift-nfcard-097a058-16f8bfd-ios-v1
+
+      - name: Cache Rust compilation artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ota27-rust-nfcard-097a058-16f8bfd-ios-v1
+
+      - name: Build NFCARD-patched AirLift FFI from its exact pinned source and patch
+        shell: bash
         run: |
           set -euo pipefail
-          SHA=40640c4d827aeab8d798285b57d24fcf6be070d0
-          git init "$RUNNER_TEMP/aircard-upstream"
-          git -C "$RUNNER_TEMP/aircard-upstream" remote add origin https://github.com/Mak5er/AirCard-iOS.git
-          git -C "$RUNNER_TEMP/aircard-upstream" fetch --depth 1 origin "$SHA"
-          test "$(git -C "$RUNNER_TEMP/aircard-upstream" rev-parse FETCH_HEAD)" = "$SHA"
-          git -C "$RUNNER_TEMP/aircard-upstream" checkout --detach FETCH_HEAD
+          PIN=097a058c984ffc33ccb697b9dfe8058be3e86244
+          NFCARD_COMMIT=16f8bfd20a88a474f59c2d6eda291164a1cc015f
+          OUT=OTA27/Dependencies/AirliftFFI.xcframework
+          if [ -s "$OUT/ios-arm64/libairlift_ffi.a" ] && grep -q al_connection_endpoint_set "$OUT/ios-arm64/Headers/airlift.h"; then
+            echo "Exact NFCARD-patched AirLift found in cache"
+            exit 0
+          fi
+          SRC="$RUNNER_TEMP/aircard-upstream"
+          NFC="$RUNNER_TEMP/nfcard-revision"
+          mkdir -p "$SRC" "$NFC"
+          git -C "$SRC" init -q
+          git -C "$SRC" remote add origin https://github.com/Mak5er/AirCard-iOS.git
+          git -C "$SRC" fetch --depth 1 origin "$PIN"
+          git -C "$SRC" checkout --detach FETCH_HEAD
+          test "$(git -C "$SRC" rev-parse HEAD)" = "$PIN"
+          git -C "$NFC" init -q
+          git -C "$NFC" remote add origin https://github.com/NightVibes33/NFCARD.git
+          git -C "$NFC" fetch --depth 1 origin "$NFCARD_COMMIT"
+          git -C "$NFC" checkout --detach FETCH_HEAD
+          test "$(git -C "$NFC" rev-parse HEAD)" = "$NFCARD_COMMIT"
+          for file in AirCardLibrary.swift RemotePairingPortDiscovery.swift NFCARDNativeShell.swift; do
+            cp "$NFC/Sources/$file" "$SRC/ios-app/$file"
+          done
+          python3 "$NFC/scripts/patch-upstream.py" "$SRC"
+          grep -q al_connection_endpoint_set "$SRC/rust-core/include/airlift.h"
+          grep -q 'using discovered Remote Pairing endpoint' "$SRC/rust-core/src/exploit.rs"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          (cd "$SRC" && bash ./build-ios.sh)
+          test -s "$SRC/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a"
+          rm -rf "$OUT"
           mkdir -p OTA27/Dependencies
-          ditto "$RUNNER_TEMP/aircard-upstream/AirliftFFI.xcframework" OTA27/Dependencies/AirliftFFI.xcframework
-          test -f OTA27/Dependencies/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a
+          ditto "$SRC/AirliftFFI.xcframework" "$OUT"
+          grep -q al_connection_endpoint_set "$OUT/ios-arm64/Headers/airlift.h"
 
       - name: Generate Xcode project
         run: xcodegen generate --spec OTA27/project.yml --project OTA27
@@ -48,11 +90,7 @@ jobs:
       - name: Compile without code signing
         run: |
           set -euo pipefail
-          xcodebuild -project OTA27/OTA27Blocker.xcodeproj -scheme OTA27Blocker \
-            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
-            -derivedDataPath "$RUNNER_TEMP/OTA27Derived" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            build
+          xcodebuild -project OTA27/OTA27Blocker.xcodeproj -scheme OTA27Blocker -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/OTA27Derived" CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO build
 
       - name: Package unsigned IPA
         run: |
@@ -62,6 +100,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/OTA27Payload/Payload"
           ditto "$APP" "$RUNNER_TEMP/OTA27Payload/Payload/OTA27Blocker.app"
           (cd "$RUNNER_TEMP/OTA27Payload" && ditto -c -k --keepParent Payload "$GITHUB_WORKSPACE/OTA27Blocker-unsigned.ipa")
+          unzip -tq OTA27Blocker-unsigned.ipa
           unzip -l OTA27Blocker-unsigned.ipa | grep -E 'Payload/OTA27Blocker.app/(OTA27Blocker|blockota.mobileconfig)'
 
       - name: Upload unsigned IPA

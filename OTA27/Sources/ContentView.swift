@@ -74,6 +74,10 @@ struct ContentView: View {
                             }
                             .buttonStyle(.bordered)
                             Button("Check local tunnel") { diagnostics.refreshTunnelStatus() }
+                            Button("Discover NFCARD Remote Pairing port") { diagnostics.discoverPairingPort() }
+                            Text(diagnostics.endpointStatus)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
                                 .buttonStyle(.bordered)
                             Text(diagnostics.tunnelStatus)
                                 .font(.caption)
@@ -91,13 +95,13 @@ struct ContentView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             if let pin = pairing.pairingPIN {
-                                Text("Pairing PIN: \\(pin)")
+                                Text("Pairing PIN: \(pin)")
                                     .font(.title2.monospacedDigit().bold())
                                     .textSelection(.enabled)
                             }
                             Text("While pairing: Settings → Privacy & Security → Developer Mode → Pair with OTA27 Blocker. Enter the PIN shown above. Return to OTA27 after approval.")
                                 .font(.footnote)
-                            Text(diagnostics.pairingPath == nil ? "Pairing record: not present" : "Pairing record: ready")
+                            Text(diagnostics.pairingPath == nil ? "Pairing record: not present" : "Pairing record saved; transport not verified")
                                 .font(.caption.weight(.medium))
                             Button("Import an existing pairing file (optional)") { showPairingImporter = true }
                                 .buttonStyle(.bordered)
@@ -142,6 +146,9 @@ struct ContentView: View {
                             }
                             .disabled(diagnostics.probing || diagnostics.monitoring)
                             .buttonStyle(.bordered)
+                            Text(diagnostics.transportStatus)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Text(diagnostics.canaryResult)
                                 .font(.caption)
                             Text(diagnostics.status)
@@ -194,7 +201,7 @@ struct ContentView: View {
             } catch is CancellationError {
                 diagnostics.status = "On-device pairing cancelled."
             } catch {
-                diagnostics.status = "On-device pairing failed: \\(error.localizedDescription)"
+                diagnostics.status = "On-device pairing failed: \(error.localizedDescription)"
             }
         }
     }

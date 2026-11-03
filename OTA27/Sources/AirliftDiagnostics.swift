@@ -13,6 +13,9 @@ final class AirliftDiagnostics: ObservableObject {
     @Published var pairingPath: String?
     @Published var targetHost = "10.7.0.1"
     @Published var tunnelStatus = "Tunnel status not checked"
+    @Published var remotePairingPort: UInt16? = nil
+    @Published var endpointStatus = "Remote Pairing port not discovered"
+    @Published var transportStatus = "Device service connection not verified"
     @Published var selectedTarget = "/var/mobile/Library/Caches"
     @Published var monitoring = false
     @Published var probing = false
@@ -43,8 +46,9 @@ final class AirliftDiagnostics: ObservableObject {
             return
         }
         pairingPath = PairingController.syncCanonicalPairingFile(from: path)
-        status = "On-device pairing complete. Start LocalDevVPN and scan OTA logs."
-        append("On-device RPPairing completed without a Mac (\\(bytes) bytes).")
+        transportStatus = "Pairing record saved, device connection unverified."
+        status = "Pairing saved. Discover the live Remote Pairing port after starting LocalDevVPN."
+        append("On-device RPPairing completed without a Mac (\(bytes) bytes).")
     }
 
     func refreshTunnelStatus() {
@@ -52,27 +56,25 @@ final class AirliftDiagnostics: ObservableObject {
         tunnelStatus = vpn
             ? "Tunnel interface detected — not proof LocalDevVPN is connected to device services."
             : "No tunnel interface detected. Activate LocalDevVPN in local-tunnel mode."
-        append("Tunnel check: \\(tunnelStatus) Interfaces: \\(detail)")
+        append("Tunnel check: \(tunnelStatus) Interfaces: \(detail)")
     }
 
-    /// Match AirCard's route setup: local VPN address first, then self-device candidate hosts.
-    nonisolated private static func configureTunnel(host input: String) {
-        let host = NetworkStatus.host(input)
-        if host.isEmpty {
-            al_clear_target_hosts()
-            return
-        }
-        host.withCString { _ = al_set_target_host($0) }
-        var candidates = [host]
-        for candidate in NetworkStatus.tunnelHostCandidates() where !candidates.contains(candidate) {
-            candidates.append(candidate)
-        }
-        let cStrings = candidates.map { strdup($0) }
-        defer { cStrings.forEach { free($0) } }
-        var ptrs = cStrings.map { UnsafePointer($0) }
-        ptrs.withUnsafeBufferPointer { buffer in
-            if let base = buffer.baseAddress {
-                _ = al_set_target_hosts(base, buffer.count)
+    /// NFCARD's Rust transport uses the advertised live Remote Pairing endpoint.
+    nonisolated private static func configureTunnel(host: String, port: UInt16) -> Bool {
+        host.withCString { al_connection_endpoint_set($0, port) } == 0
+    }
+
+    func discoverPairingPort() {
+        endpointStatus = "Discovering _remotepairing._tcp…"
+        RemotePairingPortDiscovery.shared.discover(timeout: 3.0) { [weak self] found in
+            guard let self else { return }
+            if let found {
+                self.remotePairingPort = found
+                self.endpointStatus = "Live Remote Pairing port: \(found)"
+                self.append("Live Remote Pairing port discovered: \(found)")
+            } else {
+                self.endpointStatus = "No Bonjour port found, using NFCARD fallback 49152"
+                self.append("No _remotepairing._tcp result; use NFCARD's fallback 49152.")
             }
         }
     }
@@ -112,6 +114,7 @@ final class AirliftDiagnostics: ObservableObject {
             else { return }
         }
         Task { @MainActor in
+            if onlyOTA { Self.active?.transportStatus = "Verified: receiving paired-device OTA syslog." }
             Self.active?.append(line)
         }
     }
@@ -123,9 +126,15 @@ final class AirliftDiagnostics: ObservableObject {
         }
         monitoring = true
         status = "Connecting to the paired device's syslog stream…"
-        let host = targetHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        DispatchQueue.global(qos: .userInitiated).async {
-            Self.configureTunnel(host: host)
+        let host = NetworkStatus.host(targetHost)
+        RemotePairingPortDiscovery.shared.discover(timeout: 3.0) { [weak self] discoveredPort in
+          guard let self else { return }
+          let selectedPort = discoveredPort ?? self.remotePairingPort ?? 49152
+          self.remotePairingPort = discoveredPort ?? self.remotePairingPort
+          self.endpointStatus = "NFCARD Remote Pairing: \(host):\(selectedPort)"
+          self.append("AirLift endpoint \(host):\(selectedPort) (\(discoveredPort == nil ? "fallback" : "live Bonjour")).")
+          DispatchQueue.global(qos: .userInitiated).async {
+            _ = Self.configureTunnel(host: host, port: selectedPort)
             var error: UnsafeMutablePointer<CChar>? = nil
             let rc = path.withCString { pairingCString in
                 al_syslog_stream_start(pairingCString, { _, line in
@@ -137,9 +146,11 @@ final class AirliftDiagnostics: ObservableObject {
             if let error { al_string_free(error) }
             Task { @MainActor in
                 self.monitoring = false
+                if rc != 0 { self.transportStatus = "Syslog connection failed: \(description ?? "code \(rc)")" }
                 self.status = rc == 0 ? "Log stream stopped." :
                     "Log stream error: \(description ?? "code \(rc)")"
             }
+          }
         }
     }
 
@@ -161,9 +172,15 @@ final class AirliftDiagnostics: ObservableObject {
         probing = true
         canaryResult = "Running AirTraffic canary (may temporarily touch Books sync metadata)…"
         let target = selectedTarget
-        let host = targetHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        DispatchQueue.global(qos: .userInitiated).async {
-            Self.configureTunnel(host: host)
+        let host = NetworkStatus.host(targetHost)
+        RemotePairingPortDiscovery.shared.discover(timeout: 3.0) { [weak self] discoveredPort in
+          guard let self else { return }
+          let selectedPort = discoveredPort ?? self.remotePairingPort ?? 49152
+          self.remotePairingPort = discoveredPort ?? self.remotePairingPort
+          self.endpointStatus = "NFCARD Remote Pairing: \(host):\(selectedPort)"
+          self.append("AirLift endpoint \(host):\(selectedPort) (\(discoveredPort == nil ? "fallback" : "live Bonjour")).")
+          DispatchQueue.global(qos: .userInitiated).async {
+            _ = Self.configureTunnel(host: host, port: selectedPort)
             var output: UnsafeMutablePointer<CChar>? = nil
             var error: UnsafeMutablePointer<CChar>? = nil
             let rc = path.withCString { pairingCString in
@@ -192,8 +209,12 @@ final class AirliftDiagnostics: ObservableObject {
                 } else {
                     self.canaryResult = "Canary not confirmed: \(description.isEmpty ? "code \(rc)" : description)"
                 }
+                if rc != 0 && (description.contains("RemoteXPC") || description.contains("RSD") || description.contains("Device connection")) {
+                    self.transportStatus = "Transport failure; pairing credentials are not necessarily invalid."
+                }
                 self.append("AirLift result: \(self.canaryResult)")
             }
+          }
         }
     }
 
@@ -201,6 +222,8 @@ final class AirliftDiagnostics: ObservableObject {
         ("OTA27 Blocker — AirLift research diagnostics\n" +
          "Target: \(selectedTarget)\n" +
          "Canary: \(canaryResult)\n" +
+         "NFCARD endpoint: \(endpointStatus)\n" +
+         "Transport: \(transportStatus)\n" +
          "No pairing credentials exported.\n\n" +
          logs.joined(separator: "\n"))
     }

@@ -22,6 +22,7 @@ print("Profile and source layout validated; runtime OTA blocking not tested.")
 info = plistlib.loads((root / "Resources/Info.plist").read_bytes())
 assert "_remotepairing-pairable-host._tcp" in info["NSBonjourServices"]
 assert "_ota27probe._tcp" in info["NSBonjourServices"]
+assert "_remotepairing._tcp" in info["NSBonjourServices"]
 assert "audio" in info["UIBackgroundModes"]
 assert "localdevvpn" in info["LSApplicationQueriesSchemes"]
 pairing_source = (root / "Sources/PairingController.swift").read_text()
@@ -30,3 +31,9 @@ assert "Pair with OTA27 Blocker" in pairing_source
 assert "OTA27 Blocker" in pairing_source
 assert "al_syslog_stream_start" in (root / "Sources/AirliftDiagnostics.swift").read_text()
 print("On-device RPPairing code and LocalDevVPN app metadata validated.")
+
+assert "al_connection_endpoint_set" in (root / "Sources/AirliftDiagnostics.swift").read_text()
+assert (root / "Sources/RemotePairingPortDiscovery.swift").is_file()
+assert r"\\(" not in (root / "Sources/AirliftDiagnostics.swift").read_text()
+assert r"\\(" not in (root / "Sources/ContentView.swift").read_text()
+print("NFCARD dynamic Remote Pairing endpoint wired correctly.")
