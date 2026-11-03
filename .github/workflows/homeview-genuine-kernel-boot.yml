@@ -51,6 +51,8 @@ on:
       - 'homeview-legacy/scripts/vphone_homeview_path.py'
       - 'homeview-legacy/tests/test_vphone_homeview_path.py'
       - 'homeview-legacy/scripts/probe_vphone_pv_boot.py'
+      - 'homeview-legacy/scripts/adapt_vphone_dtree.py'
+      - 'homeview-legacy/tests/test_adapt_vphone_dtree.py'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -116,6 +118,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_sibling_firmwares.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_qemu_disk.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_vphone_homeview_path.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_adapt_vphone_dtree.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
       - name: Compile real QEMU API v7 observer before expensive Apple firmware download
@@ -207,8 +210,12 @@ jobs:
           unwrap "$DEST/094-39914-031.dmg.trustcache" "$DEST/ramdisk.tc"
           cp "$DEST/094-39914-031.dmg" "$DEST/ramdisk.dmg"
           git clone --depth 1 https://github.com/jprx/darwin-vm.git darwin-tools
-          python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
-            "$DEST/dtree.raw" "$DEST/dtree" > out/vphone-dt-fixup.log 2>&1 || true
+          python3 homeview-legacy/scripts/adapt_vphone_dtree.py \
+            "$DEST/dtree.raw" "$DEST/dtree" \
+            --upstream darwin-tools/dt_fixup.py \
+            --nvram darwin-tools/nvram.bin \
+            --report out/vphone-dt-fixup.json \
+            > out/vphone-dt-fixup.log 2>&1 || true
           rm -f "$RUNNER_TEMP/cloudos264.zip"
           python3 - <<'PY'
           import json, os
@@ -230,6 +237,7 @@ jobs:
             out/homeview-vphone-pv-result.json
             out/vphone-component-sizes.json
             out/vphone-dt-fixup.log
+            out/vphone-dt-fixup.json
             out/native-homeview-vphone600-serial.log
             out/qemu-vphone600.log
             out/native-homeview-guest-frame-vphone600.ppm
