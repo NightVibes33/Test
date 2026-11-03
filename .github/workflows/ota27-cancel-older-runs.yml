@@ -49,3 +49,18 @@ jobs:
             exit 1
           fi
           echo "Requested cancellation of all earlier active OTA27 runs."
+          # For a Rust build that ignores graceful cancellation, use GitHub's
+          # documented force-cancel endpoint. Never touch the preserved run.
+          sleep 8
+          mapfile -t STILL_ACTIVE < <(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/ota27-unsigned.yml/runs?branch=temp%2Fios27-airlift-ota-research&per_page=100" \
+              --jq '.workflow_runs[] | select(.id < 41577217740) | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .id'
+          )
+          for run_id in "${STILL_ACTIVE[@]}"; do
+            [[ "${run_id}" != "${KEEP_RUN_ID}" ]] || exit 1
+            echo "Force-canceling still-active obsolete OTA27 run ${run_id}"
+            gh api --method POST --silent \
+              "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/force-cancel"
+          done
+          echo "No older OTA27 run was intentionally preserved."
