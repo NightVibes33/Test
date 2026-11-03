@@ -55,6 +55,8 @@ struct Cinder27POCIndexView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var filter = ""
     @State private var showExecutableLab = false
+    @StateObject private var engine = LabEngine()
+    @State private var selectedExecutable: ExploitModule?
 
     private var matches: [CinderRecord] {
         let q = filter.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -74,9 +76,9 @@ struct Cinder27POCIndexView: View {
                         .foregroundStyle(.secondary)
                 }
                 Section("Run the supplied PoCs") {
-                    Text("Open the complete 51-module Cinder27 test harness. Individual PoCs require manual execution; some are designed to crash the application.")
+                    Text("Tap any PoC below to open its original runnable module with evidence and persistent crash journal. The complete 51-module lab remains available for variant tests.")
                         .font(.footnote)
-                    Button("Open executable PoC lab") { showExecutableLab = true }
+                    Button("Open full Cinder27 lab (includes variants)") { showExecutableLab = true }
                         .font(.headline)
                     if let sourceArchive = Bundle.main.url(forResource: "CinderPOCs", withExtension: "zip") {
                         ShareLink(item: sourceArchive) {
@@ -86,20 +88,31 @@ struct Cinder27POCIndexView: View {
                 }
                 Section("PoC inventory") {
                     ForEach(matches) { record in
-                        VStack(alignment: .leading, spacing: 4) {
+                        Button {
+                            selectedExecutable = Catalog.byID[record.module]
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
                             Text(record.id).font(.headline.monospaced())
                             Text(record.module).font(.subheadline)
                             Text(record.component + " · " + record.primitive)
                                 .font(.caption).foregroundStyle(.secondary)
-                            Text("Status: not tested on this device")
+                            Text("Status: \(engine.journal.verdict(for: record.module).key) · Tap to open runner")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
-                        .padding(.vertical, 4)
+                            .padding(.vertical, 4)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(Catalog.byID[record.module] == nil)
                     }
                 }
             }
+            .sheet(item: $selectedExecutable) { module in
+                ModuleDetailView(module: module)
+                    .environmentObject(engine)
+            }
             .fullScreenCover(isPresented: $showExecutableLab) {
-                CinderLabHost()
+                CinderLabHost(engine: engine)
             }
             .searchable(text: $filter)
             .navigationTitle("Cinder27 inventory")
