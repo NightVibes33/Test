@@ -52,3 +52,12 @@ for name in ("joliet_path_oob.iso", "deep_nest.usda", "stack_bomb.cff", "ktx2_ba
     assert "CinderLab/Seeds/" + name in project
 assert "CinderLab/CinderPOCs.zip" in project
 print("All five PoC payload seeds and original source archive declared as app resources.")
+
+# Cinder27 modules read these files from Bundle.main; they must be build resources.
+project = (root / "project.yml").read_text()
+workflow = (root.parent / ".github/workflows/ota27-unsigned.yml").read_text()
+for seed in ["joliet_path_oob.iso", "deep_nest.usda", "stack_bomb.cff", "ktx2_bad_dims.ktx2", "bc7_short.dds"]:
+    assert f"CinderLab/seeds/{seed}" in project
+    assert seed in workflow
+assert "Generate and stage Cinder27 PoC seeds" in workflow
+print("Cinder27 external seed resources included in the Xcode build contract.")
