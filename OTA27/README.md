@@ -48,9 +48,11 @@ Source credits: [AirCard-iOS by Mak5er](https://github.com/Mak5er/AirCard-iOS) a
 Pinned NFCARD revision `16f8bfd20a88a474f59c2d6eda291164a1cc015f`, AirCard upstream revision `097a058c984ffc33ccb697b9dfe8058be3e86244`, with NFCARD `scripts/patch-upstream.py` Rust patch. Uses the unchanged NFCARD `RemotePairingPortDiscovery.swift` and its `al_connection_endpoint_set` FFI, instead of OTA27 previous `40640c4` prebuilt FFI. Builds the Rust library from source. Bonjour `_remotepairing._tcp` supplies the live port before the canary or syslog call.
 
 ## Cinder27 archive inventory
-The app includes a read-only, searchable inventory of the 31 CVE-labelled PoC folders and the additional `arc.rr` RockRidge probe (32 entries total) supplied in `cinder27-main.zip`. This inventory does not execute the PoC code or claim a verified vulnerability.
+The app includes **32 directly accessible executable PoC families**: 31 CVE-labelled source folders plus `arc.rr` RockRidge, from the user-supplied Cinder27 v2.0 archive. Tap any family to open its original native Cinder27 runner; choose Run manually to collect local results and a persistent crash journal. The full 51-module Cinder27 lab also exposes additional variants and tools. The original C, Swift, and Python PoC sources can be exported as a bundled ZIP. Tests do **not** prove a vulnerability merely because a module completes; some modules deliberately crash. There is no automatic execution.
 
 ### Grappa symbol bridge
 The missing `ALGetGrappaToken` callback is supplied by NFCARD's pinned upstream `GrappaHelper.m`/`.h` and explicitly retained by the linker. This fixes the missing-symbol packaging error, not a guarantee of successful device sync.
 
 Build integrity: the main executable explicitly exports `_ALGetGrappaToken` for AirLift’s runtime `dlsym(RTLD_DEFAULT)` lookup; CI checks the symbol with `nm -gU`. A linked callback does not prove that Apple Books will accept the sync token.
+
+Cinder27 source provenance is pinned to `7949c7ce9fab8139e961058d8ddd60b2bae47a09` from the public Cinder27 repository. CI compares SHA-256 fingerprints of the README, core catalog, app views and CVE-2026-112522 C twin to the user-supplied archive and requires 31 C/Swift CVE pairs plus the RockRidge variant. It stages the five original seed files and checks the compiled IPA resource payload. The independent NFCARD/AirLift component is unchanged by PoC execution.
