@@ -2,6 +2,11 @@ name: LiveContainer iOS build
 
 on:
   push:
+    # OTA27 research commits must not launch unrelated LiveContainer macOS builds.
+    paths-ignore:
+      - "OTA27/**"
+      - ".github/workflows/ota27-unsigned.yml"
+      - ".github/workflows/ota27-cancel-older-runs.yml"
   pull_request:
   workflow_dispatch:
 
