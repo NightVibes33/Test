@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>DNSSettings</key>
+      <dict>
+        <key>DNSProtocol</key><string>HTTPS</string>
+        <key>ServerURL</key><string>https://hi.frcoal</string>
+        <key>SupplementalMatchDomains</key>
+        <array><string>gdmf.apple.com</string></array>
+      </dict>
+      <key>OnDemandRules</key>
+      <array><dict><key>Action</key><string>Connect</string></dict></array>
+      <key>PayloadDisplayName</key><string>OTA Update Blocker</string>
+      <key>PayloadIdentifier</key><string>dev.mineek.otablocker.dns</string>
+      <key>PayloadOrganization</key><string>Mineek</string>
+      <key>PayloadType</key><string>com.apple.dnsSettings.managed</string>
+      <key>PayloadUUID</key><string>A3DC0777-E525-43C9-84E6-1E9C22D6D4DD</string>
+      <key>PayloadVersion</key><integer>1</integer>
+    </dict>
+  </array>
+  <key>PayloadDescription</key><string>Easily block OTA updates!</string>
+  <key>PayloadDisplayName</key><string>OTA Update Blocker</string>
+  <key>PayloadIdentifier</key><string>dev.mineek.otablocker</string>
+  <key>PayloadOrganization</key><string>Mineek</string>
+  <key>PayloadType</key><string>Configuration</string>
+  <key>PayloadUUID</key><string>2D0DFD96-D298-4C5F-8B58-99CCCE61BFED</string>
+  <key>PayloadVersion</key><integer>1</integer>
+</dict>
+</plist>

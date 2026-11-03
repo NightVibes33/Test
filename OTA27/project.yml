@@ -1,0 +1,35 @@
+name: OTA27Blocker
+options:
+  bundleIdPrefix: com.nightvibes33
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Manual
+targets:
+  OTA27Blocker:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources/blockota.mobileconfig
+        buildPhase: resources
+    dependencies:
+      - framework: Dependencies/AirliftFFI.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_NAME: OTA27Blocker
+        PRODUCT_BUNDLE_IDENTIFIER: com.nightvibes33.ota27blocker
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        OTHER_LDFLAGS: "-lc++"
+        IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+schemes:
+  OTA27Blocker:
+    build:
+      targets:
+        OTA27Blocker: all

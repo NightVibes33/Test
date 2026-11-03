@@ -1,0 +1,71 @@
+name: OTA27 unsigned IPA
+
+on:
+  push:
+    paths:
+      - "OTA27/**"
+      - ".github/workflows/ota27-unsigned.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
+
+      - name: Validate original OTA profile
+        run: |
+          python3 OTA27/tests/profile_validation.py
+          plutil -lint OTA27/Resources/blockota.mobileconfig
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Acquire pinned third-party AirLift FFI
+        run: |
+          set -euo pipefail
+          SHA=40640c4d827aeab8d798285b57d24fcf6be070d0
+          git init "$RUNNER_TEMP/aircard-upstream"
+          git -C "$RUNNER_TEMP/aircard-upstream" remote add origin https://github.com/Mak5er/AirCard-iOS.git
+          git -C "$RUNNER_TEMP/aircard-upstream" fetch --depth 1 origin "$SHA"
+          test "$(git -C "$RUNNER_TEMP/aircard-upstream" rev-parse FETCH_HEAD)" = "$SHA"
+          mkdir -p OTA27/Dependencies
+          ditto "$RUNNER_TEMP/aircard-upstream/AirliftFFI.xcframework" OTA27/Dependencies/AirliftFFI.xcframework
+          test -f OTA27/Dependencies/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec OTA27/project.yml --project OTA27
+
+      - name: Compile without code signing
+        run: |
+          set -euo pipefail
+          xcodebuild -project OTA27/OTA27Blocker.xcodeproj -scheme OTA27Blocker \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/OTA27Derived" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/OTA27Derived/Build/Products/Release-iphoneos/OTA27Blocker.app"
+          test -d "$APP"
+          mkdir -p "$RUNNER_TEMP/OTA27Payload/Payload"
+          ditto "$APP" "$RUNNER_TEMP/OTA27Payload/Payload/OTA27Blocker.app"
+          (cd "$RUNNER_TEMP/OTA27Payload" && ditto -c -k --keepParent Payload "$GITHUB_WORKSPACE/OTA27Blocker-unsigned.ipa")
+          unzip -l OTA27Blocker-unsigned.ipa | grep -E 'Payload/OTA27Blocker.app/(OTA27Blocker|blockota.mobileconfig)'
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OTA27Blocker-unsigned-ipa
+          path: OTA27Blocker-unsigned.ipa
+          if-no-files-found: error
