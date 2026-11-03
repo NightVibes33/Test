@@ -32,7 +32,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
             else "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1"
                  + (" kextlog=0xff" if name == "software-update-ans-binding-probe" else "")
         ),
-        "-m", "8G" if name == "installed-system" else "2G",
+        "-m", "12G" if name == "installed-system" else "2G",
         "-display", "none", "-serial", "stdio",
         "-monitor", "unix:"+str(monitor)+",server=on,wait=off",
         "-d", "guest_errors,unimp", "-D", str(debug)
@@ -212,8 +212,7 @@ def main():
     if (manifest_path.is_file() and system_image.is_file() and system_tc.is_file()
             and system_image.stat().st_size > 1024 and system_tc.stat().st_size > 16):
         meta = json.loads(manifest_path.read_text())
-        if (meta.get("springboard_file_present") and meta.get("trustcache_from_ota")
-                and not meta.get("trustcache_is_restore_ramdisk")):
+        if meta.get("boot_payload_root") and meta.get("trustcache_generated"):
             variants.append(("installed-system", root / "dtree", system_image, system_tc))
     variants.extend([
         ("software-update-dock-removed-control", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),

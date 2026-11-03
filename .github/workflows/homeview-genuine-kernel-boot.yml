@@ -31,6 +31,9 @@ on:
       - 'homeview-legacy/tests/test_original_pc_signatures.py'
       - 'homeview-legacy/scripts/summarize_ota_payload_index.py'
       - 'homeview-legacy/tests/test_ota_payload_index.py'
+      - 'homeview-legacy/scripts/compare_payload_mtree.py'
+      - 'homeview-legacy/scripts/static_trustcache.py'
+      - 'homeview-legacy/tests/test_payload_root.py'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -90,6 +93,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_restore_ramdisk_inventory.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ota_payload_index.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_payload_root.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
       - name: Compile real QEMU API v7 observer before expensive Apple firmware download
@@ -246,7 +250,6 @@ jobs:
             rg -n -i "SpringBoard|BreadBoard|AppleFirmwareKit" \
               "$BASE/Firmware/141-21962-183.dmg.mtree" | head -40 \
               > out/homeview-system-mtree-hits.txt || true
-            rm -f "$BASE/Firmware/141-21962-183.dmg.mtree"
           fi
           ipsw img4 im4p extract "$BASE/Firmware/141-21782-189.dmg.trustcache" -o "$DEST/ramdisk.tc"
           cp "$BASE/141-21782-189.dmg" "$DEST/ramdisk.dmg"
@@ -480,24 +483,58 @@ jobs:
           (dest / "system-volume-decision.txt").write_text((dmgs[0] if dmgs else "") + "\n")
           print("SYSTEM_DMG_CANDIDATE", dmgs[:4], "payload_lines", index.get("payload_line_count"))
           PY
-          # Payloadv2 is a YAA/pbzx archive. Extract SpringBoard itself when the
-          # payload listing names it; do not invent a root from an empty folder.
-          if [[ -s "$AEA" && -n "$KEY" ]] && grep -q SpringBoard "$LIST"; then
-            EXTRACT="$RUNNER_TEMP/system-root"
+          # Full payloadv2 extract. BreadBoard is the home UI; do not require a
+          # file named SpringBoard. Skip when the runner cannot hold the tree.
+          FREE_KB="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 { print $4 }')"
+          echo "PAYLOAD_FREE_KB=$FREE_KB"
+          EXTRACT="$RUNNER_TEMP/system-root"
+          if [[ -s "$AEA" && -n "$KEY" && "$FREE_KB" -ge 12000000 ]]; then
             rm -rf "$EXTRACT"
             mkdir -p "$EXTRACT"
-            ipsw ota extract -y -p 'CoreServices/BreadBoard.app/|SpringBoard.app/SpringBoard$|sbin/launchd$|usr/lib/dyld$|AppleFirmwareKit' \
-              -o "$EXTRACT" --key-val "$KEY" "$AEA" > out/system-root-extract.log 2>&1 || true
-            if find "$EXTRACT" \( -name SpringBoard -o -name BreadBoard \) -type f | grep -q .; then
-              hdiutil create -fs APFS -srcfolder "$EXTRACT" -volname System \
-                "$DEST/system-volume.dmg" > out/system-volume-create.log 2>&1 || true
-              python3 homeview-legacy/scripts/summarize_ota_payload_index.py \
-                --partial-image "$DEST/system-volume.dmg" \
-                --output out/homeview-system-volume-manifest.json
+            ipsw ota extract -y -p '.*' -o "$EXTRACT" --key-val "$KEY" "$AEA" \
+              > out/system-root-extract.log 2>&1 || echo "FULL_PAYLOAD_EXTRACT_FAILED" >> out/system-root-extract.log
+          else
+            echo "FULL_PAYLOAD_EXTRACT_SKIPPED free_kb=$FREE_KB" > out/system-root-extract.log
+          fi
+          if [[ -s "$AEA" && -n "$KEY" ]] && { [[ ! -d "$EXTRACT" ]] || ! find "$EXTRACT" -name BreadBoard -type f | grep -q .; }; then
+            mkdir -p "$EXTRACT"
+            ipsw ota extract -y -p 'CoreServices/BreadBoard.app/|sbin/launchd$|usr/lib/dyld$|AppleFirmwareKit|dyld_shared_cache' \
+              -o "$EXTRACT" --key-val "$KEY" "$AEA" >> out/system-root-extract.log 2>&1 || true
+            echo "BREADBOARD_PATTERN_EXTRACT" >> out/system-root-extract.log
+          fi
+          if [[ -d "$EXTRACT" ]] && find "$EXTRACT" -name BreadBoard -type f | grep -q .; then
+            find "$EXTRACT" -print | sed "s#^$EXTRACT/##" > "$RUNNER_TEMP/payload-files.txt"
+            MTREE="$RUNNER_TEMP/hv-extracted/AssetData/boot/Firmware/141-21962-183.dmg.mtree"
+            python3 homeview-legacy/scripts/compare_payload_mtree.py \
+              --mtree "$MTREE" --files "$RUNNER_TEMP/payload-files.txt" \
+              --output out/homeview-payload-mtree.json || true
+            git clone --depth 1 https://github.com/CRKatri/trustcache.git "$RUNNER_TEMP/trustcache-src" \
+              > out/trustcache-build.log 2>&1 || true
+            make -C "$RUNNER_TEMP/trustcache-src" >> out/trustcache-build.log 2>&1 || true
+            TCBIN="$RUNNER_TEMP/trustcache-src/trustcache"
+            if [[ -x "$TCBIN" ]]; then
+              python3 homeview-legacy/scripts/static_trustcache.py \
+                --build-root "$EXTRACT" --tool "$TCBIN" \
+                --trustcache "$DEST/system-volume.tc" \
+                --output out/homeview-static-trustcache.json \
+                >> out/trustcache-build.log 2>&1 || true
             fi
+            python3 homeview-legacy/scripts/static_trustcache.py \
+              --trustcache "$DEST/system-volume.tc" --output out/homeview-static-trustcache.json || true
+            sudo chown -R root:wheel "$EXTRACT" >/dev/null 2>&1 || true
+            hdiutil create -fs APFS -srcfolder "$EXTRACT" -volname System \
+              "$DEST/system-volume.dmg" > out/system-volume-create.log 2>&1 || true
+            python3 homeview-legacy/scripts/static_trustcache.py \
+              --trustcache "$DEST/system-volume.tc" \
+              --image "$DEST/system-volume.dmg" \
+              --firmware-dir "$DEST" \
+              --output out/homeview-static-trustcache.json || true
             rm -rf "$EXTRACT"
           fi
           DMG_PATH="$(cat "$DEST/system-volume-decision.txt" 2>/dev/null || true)"
+          if [[ -f out/homeview-system-volume-manifest.json ]] && grep -q '"breadboard_extracted": true' out/homeview-system-volume-manifest.json; then
+            DMG_PATH=""
+          fi
           if [[ -n "$DMG_PATH" && -s "$AEA" && -n "$KEY" ]]; then
             NAME="$(basename "$DMG_PATH")"
             SAFE="$(printf '%s' "$NAME" | sed 's/[.[\*^$()+?{|]/\\&/g')"
@@ -584,6 +621,9 @@ jobs:
             out/system-root-extract.log
             out/ota-payload-index.err
             out/homeview-system-volume-manifest.json
+            out/homeview-payload-mtree.json
+            out/homeview-static-trustcache.json
+            out/trustcache-build.log
             out/homeview-system-mtree-hits.txt
             out/system-volume-extract.log
             out/system-trustcache-extract.log
