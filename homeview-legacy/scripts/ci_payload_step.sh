@@ -34,20 +34,25 @@ git clone --depth 1 https://github.com/CRKatri/trustcache.git "$RUNNER_TEMP/trus
   > out/trustcache-build.log 2>&1 || true
 make -C "$RUNNER_TEMP/trustcache-src" >> out/trustcache-build.log 2>&1 || true
 TCBIN="$RUNNER_TEMP/trustcache-src/trustcache"
-CRYPTEX="$RUNNER_TEMP/cryptex-system"
-rm -rf "$CRYPTEX"
-mkdir -p "$CRYPTEX"
-if [[ -s "$AEA" && -n "$KEY" ]]; then
-  python3 homeview-legacy/scripts/run_bounded.py --timeout 600 --log out/cryptex-system-extract.log -- \
-    ipsw ota extract --cryptex system -o "$CRYPTEX" --key-val "$KEY" "$AEA" || true
-fi
-python3 homeview-legacy/scripts/record_volume_image.py \
-  --dir "$CRYPTEX" --label system-cryptex \
-  --output out/homeview-cryptex-system.json || true
-python3 homeview-legacy/scripts/stage_fitting_image.py \
-  --dir "$CRYPTEX" --dest "$DEST/cryptex-system.dmg" \
-  --max-bytes 6442450944 --output out/homeview-cryptex-stage.json || true
-rm -rf "$CRYPTEX"
+for CRYPTEX_NAME in system app; do
+  CRYPTEX="$RUNNER_TEMP/cryptex-$CRYPTEX_NAME"
+  rm -rf "$CRYPTEX"
+  mkdir -p "$CRYPTEX"
+  if [[ -s "$AEA" && -n "$KEY" ]]; then
+    python3 homeview-legacy/scripts/run_bounded.py --timeout 600 --log "out/cryptex-${CRYPTEX_NAME}-extract.log" -- \
+      ipsw ota extract --cryptex "$CRYPTEX_NAME" -o "$CRYPTEX" --key-val "$KEY" "$AEA" || true
+  fi
+  python3 homeview-legacy/scripts/record_volume_image.py \
+    --dir "$CRYPTEX" --label "${CRYPTEX_NAME}-cryptex" \
+    --output "out/homeview-cryptex-${CRYPTEX_NAME}.json" || true
+  python3 homeview-legacy/scripts/stage_fitting_image.py \
+    --dir "$CRYPTEX" --dest "$DEST/cryptex-${CRYPTEX_NAME}.dmg" \
+    --max-bytes 6442450944 --output "out/homeview-cryptex-${CRYPTEX_NAME}-stage.json" || true
+  rm -rf "$CRYPTEX"
+  if [[ -s "$DEST/cryptex-${CRYPTEX_NAME}.dmg" && ! -s "$DEST/cryptex-system.dmg" ]]; then
+    cp "$DEST/cryptex-${CRYPTEX_NAME}.dmg" "$DEST/cryptex-system.dmg"
+  fi
+done
 if [[ -s "$DEST/cryptex-system.dmg" ]]; then
   python3 homeview-legacy/scripts/run_bounded.py --timeout 180 --log out/cryptex-attach.txt -- \
     hdiutil attach -readonly -nobrowse "$DEST/cryptex-system.dmg" || true
@@ -58,7 +63,7 @@ if [[ -s "$DEST/cryptex-system.dmg" ]]; then
     python3 homeview-legacy/scripts/run_bounded.py --timeout 60 --log out/cryptex-detach.log -- \
       hdiutil detach "$MOUNT" || true
   fi
-  rm -f "$DEST/cryptex-system.dmg"
+  rm -f "$DEST/cryptex-system.dmg" "$DEST/cryptex-app.dmg"
 fi
 DYLD="$RUNNER_TEMP/dyld-cache"
 rm -rf "$DYLD"

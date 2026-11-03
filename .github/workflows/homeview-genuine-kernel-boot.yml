@@ -547,6 +547,10 @@ jobs:
             out/homeview-static-trustcache.json
             out/trustcache-build.log
             out/homeview-cryptex-system.json
+            out/homeview-cryptex-system-stage.json
+            out/cryptex-app-extract.log
+            out/homeview-cryptex-app.json
+            out/homeview-cryptex-app-stage.json
             out/cryptex-system-extract.log
             out/homeview-dyld-cache.json
             out/homeview-dyld-cache-volume.json
