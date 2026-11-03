@@ -191,8 +191,11 @@ jobs:
           unwrap() {
             local src="$1" dest="$2"
             if [[ ! -s "$src" ]]; then return 0; fi
-            if head -c 4 "$src" | grep -q IM4P; then
-              ipsw img4 im4p extract "$src" -o "$dest"
+            local magic
+            magic="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).read_bytes()[:4].decode("latin1"))' "$src")"
+            echo "UNWRAP $src magic=$magic"
+            if [[ "$magic" == IM4P || "$magic" == IMG4 || "$src" == *.im4p ]]; then
+              ipsw img4 im4p extract "$src" -o "$dest" || cp "$src" "$dest"
             else
               cp "$src" "$dest"
             fi
