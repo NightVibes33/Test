@@ -55,6 +55,21 @@ class KernelcacheMatchingTests(unittest.TestCase):
         self.assertEqual(fields["IOPropertyMatch"], {"name": "ans"})
         self.assertNotIn("do-not-publish", str(fields))
 
+    def test_afkresource_personality_is_kept_without_calling_it_registered(self):
+        raw = [
+            {"id": "com.apple.driver.Unrelated", "io_kit_personalities": {}},
+            {"id": "com.apple.driver.AppleFirmwareKit", "io_kit_personalities": {
+                "AFKResource": {"IOClass": "AFKResource",
+                                "IOProviderClass": "IOResources"}}},
+        ]
+        result = a.summarize(raw)
+        self.assertEqual(result["matched_KEXT_count"], 0)
+        self.assertTrue(result["AFKResource_IOClass_declared_in_kernelcache_personalities"])
+        self.assertFalse(result["AFKResource_metaclass_registered_in_guest"])
+        found = result["AFK_and_firmware_kit_bundles"]
+        self.assertEqual(found[0]["bundle_id"], "com.apple.driver.AppleFirmwareKit")
+        self.assertFalse(found[0]["guest_start_observed"])
+
     def test_documented_json_envelope_and_missing_metadata(self):
         result = a.summarize({"kexts": [{"id": "com.apple.driver.AppleDCP"}]})
         self.assertEqual(result["matched_KEXT_count"], 1)

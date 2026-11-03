@@ -125,7 +125,10 @@ class ANS2BootTests(unittest.TestCase):
             "guest=0xfffffff029b1d1e4 cpu=0\n"
             "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b0dabc "
             "guest=0xfffffff029b0dabc cpu=0\n")
-        report = a.compare("no service", PROBES + "unable to get framebuffer\n", log)
+        report = a.compare(
+            "no service",
+            PROBES + "unable to get framebuffer\nCouldn't alloc class \"AFKResource\"\n",
+            log)
         qemu = report["experimental_QEMU_MMIO"]
         self.assertEqual(qemu["kernelcache_slide_consensus"], "0x20000000")
         self.assertEqual(qemu["original_code_fingerprint_hit_count"], 4)
@@ -139,6 +142,8 @@ class ANS2BootTests(unittest.TestCase):
                          "userspace_display_service_missing_no_DCP_MMIO")
         self.assertFalse(report["functional_ANS2_device_verified"])
         self.assertFalse(report["normal_installed_HomeView_or_BreadBoard_boot_verified"])
+        self.assertTrue(report["AFKResource_alloc_failed_before_controller_start"])
+        self.assertEqual(report["display_provider_stop"], "DCP_RTBuddy_start_not_logged")
 
     def test_active_instrumentation_with_no_hit_is_not_a_storage_success(self):
         trace = (

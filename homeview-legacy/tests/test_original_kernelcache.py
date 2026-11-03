@@ -18,6 +18,11 @@ class KernelcacheTests(unittest.TestCase):
         self.assertEqual(data["RTBuddy"]["sample_file_offsets"], ["0x1c"])
         self.assertFalse(data["AppleANS"]["kext_driver_present_or_loaded_proven"])
         self.assertFalse(data["AppleNVMe"]["literal_bytes_found"])
+        self.assertFalse(data["AFKResource"]["literal_bytes_found"])
+        present = module.scan_bytes(b"AFKResource\0AppleFirmwareKit")
+        self.assertEqual(present["AFKResource"]["match_count"], 1)
+        self.assertTrue(present["AppleFirmwareKit"]["literal_bytes_found"])
+        self.assertFalse(present["AFKResource"]["kext_driver_present_or_loaded_proven"])
 
     def test_scans_readonly_file_no_kernel_binary_copied(self):
         with tempfile.TemporaryDirectory() as d:

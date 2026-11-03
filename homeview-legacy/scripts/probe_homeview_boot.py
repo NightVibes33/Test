@@ -26,7 +26,8 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         "-dtree", str(device_tree), "-sptm", str(firmware / "sptm"),
         "-txm", str(firmware / "txm"), "-tc", str(trustcache),
         "-ramdisk", str(ramdisk),
-        "-args", "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1",
+        "-args", "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1"
+                 + (" kextlog=0xff" if name == "software-update-ans-binding-probe" else ""),
         "-m", "2G", "-display", "none", "-serial", "stdio",
         "-monitor", "unix:"+str(monitor)+",server=on,wait=off",
         "-d", "guest_errors,unimp", "-D", str(debug)
@@ -157,6 +158,14 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         "apple_setup_or_breadboard_verified": False,
         "reason": "No Apple restore boot stage observed"
     }
+    driver_lines = [
+        line for line in output.splitlines()
+        if any(token in line for token in (
+            "AFK", "Couldn't alloc class", "RTBuddy", "kext", "Kext",
+            "framebuffer", "NAND", "::start", "::probe", "dependency"))
+    ]
+    (dest / ("homeview-" + name + "-driver-lines.log")).write_text(
+        "\n".join(driver_lines[:2500]) + "\n", encoding="utf-8")
     serial.write_text(output[-250000:], encoding="utf-8")
     answer["serial_bytes"] = len(output.encode("utf-8"))
     # Native Apple bootstrapper logs use com.apple.xpc.launchd|, not launchd[PID].

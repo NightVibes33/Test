@@ -19,3 +19,18 @@ class CaptureTests(unittest.TestCase):
             dest=pathlib.Path(t)/"out.ppm"
             mod.capture(pathlib.Path(t)/"missing.sock",dest)
             self.assertFalse(dest.exists())
+
+    def test_existing_screendump_is_kept_and_not_called_apple(self):
+        with tempfile.TemporaryDirectory() as t:
+            dest = pathlib.Path(t) / "frame.ppm"
+            width, height = 64, 64
+            header = f"P6\n{width} {height}\n255\n".encode()
+            dest.write_bytes(header + bytes([1, 2, 3]) * (width * height))
+            result = mod.capture(pathlib.Path(t) / "missing.sock", dest)
+            png = dest.with_suffix(".png")
+            self.assertTrue(result["qemu_monitor_surface_captured"])
+            self.assertFalse(result["guest_framebuffer_captured"])
+            self.assertFalse(result["apple_setup_or_breadboard_verified"])
+            self.assertFalse(result["surface_is_apple_display_service"])
+            self.assertTrue(png.is_file())
+            self.assertGreater(png.stat().st_size, 32)

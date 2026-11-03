@@ -11,10 +11,35 @@ import struct
 import time
 import zlib
 
+# Short path: QEMU's HMP readline redraws and can drop a long workspace path.
+STAGE = pathlib.Path("/tmp/hv-screendump.ppm")
+
+
 def _valid_ppm(dest):
-    if not dest.exists() or dest.stat().st_size < 4096:
+    dest = pathlib.Path(dest)
+    if not dest.is_file() or dest.stat().st_size < 4096:
         return False
     return dest.read_bytes()[:3] == b"P6\n"
+
+
+def wait_for_ppm(path, timeout=8.0):
+    """Wait until a screendump is a stable P6 file. Does not invent pixels."""
+    path = pathlib.Path(path)
+    deadline = time.monotonic() + timeout
+    last = -1
+    stable = 0
+    while time.monotonic() < deadline:
+        if path.is_file():
+            size = path.stat().st_size
+            if size >= 4096 and size == last and path.read_bytes()[:3] == b"P6\n":
+                stable += 1
+                if stable >= 2:
+                    return True
+            else:
+                stable = 0
+            last = size
+        time.sleep(0.15)
+    return _valid_ppm(path)
 
 
 def write_png(ppm_path, png_path):
@@ -57,56 +82,20 @@ def write_png(ppm_path, png_path):
     return {"width": width, "height": height, "png_bytes": len(png)}
 
 
-def capture(monitor, dest):
-    monitor, dest = pathlib.Path(monitor), pathlib.Path(dest)
-    result = {"source": "qemu-sptm live guest HMP screendump",
-              "guest_framebuffer_captured": False,
-              "apple_setup_or_breadboard_verified": False}
-    if not monitor.exists():
-        result["reason"] = "QEMU monitor socket not available"
-        return result
-    dest.unlink(missing_ok=True)
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
-            conn.settimeout(5)
-            conn.connect(str(monitor))
-            try:
-                conn.recv(4096)
-            except socket.timeout:
-                pass
-            path = dest.resolve().as_posix()
-            if any(char.isspace() for char in path):
-                raise ValueError("path contains whitespace")
-            conn.sendall(("screendump "+path+"\r\n").encode("ascii"))
-            conn.settimeout(0.25)
-            answer = bytearray()
-            deadline = time.monotonic() + 2.0
-            while time.monotonic() < deadline and len(answer) < 8192:
-                try:
-                    chunk = conn.recv(4096)
-                except socket.timeout:
-                    chunk = b""
-                if chunk:
-                    answer.extend(chunk)
-                if _valid_ppm(dest):
-                    break
-                if not chunk:
-                    time.sleep(0.05)
-    except (OSError, ValueError) as err:
-        result["reason"] = "HMP error: " + str(err)
-        return result
-    result["monitor_response"] = bytes(answer).decode("utf-8", "replace")[-1000:]
-    result["apple_setup_or_breadboard_verified"] = False
-    result["surface_is_apple_display_service"] = False
+def publish_surface(dest, monitor_response=""):
+    """Keep a real screendump. Never label it as an Apple framebuffer."""
+    dest = pathlib.Path(dest)
+    result = {
+        "source": "qemu-sptm live guest HMP screendump",
+        "guest_framebuffer_captured": False,
+        "apple_setup_or_breadboard_verified": False,
+        "surface_is_apple_display_service": False,
+        "qemu_monitor_surface_captured": False,
+        "monitor_response": monitor_response[-1000:],
+    }
     if not _valid_ppm(dest):
-        dest.unlink(missing_ok=True)
-        result["guest_framebuffer_captured"] = False
-        result["qemu_monitor_surface_captured"] = False
         result["reason"] = "Apple guest did not expose a QEMU RGB video surface"
         return result
-    # A QEMU HMP surface can be the default parallel console. Keep the bytes,
-    # and do not promote them to an Apple framebuffer or HomeView GUI.
-    result["guest_framebuffer_captured"] = False
     result["qemu_monitor_surface_captured"] = True
     result["filename"] = dest.name
     result["reason"] = (
@@ -120,3 +109,46 @@ def capture(monitor, dest):
     except (OSError, ValueError) as err:
         result["png_error"] = str(err)
     return result
+
+
+def capture(monitor, dest):
+    monitor, dest = pathlib.Path(monitor), pathlib.Path(dest)
+    if _valid_ppm(dest):
+        return publish_surface(dest, "existing screendump kept")
+    if not monitor.exists():
+        return publish_surface(dest, "QEMU monitor socket not available")
+    stage = STAGE
+    if not _valid_ppm(stage):
+        stage.unlink(missing_ok=True)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            conn.settimeout(5)
+            conn.connect(str(monitor))
+            try:
+                conn.recv(4096)
+            except socket.timeout:
+                pass
+            path = stage.as_posix()
+            if any(char.isspace() for char in path):
+                raise ValueError("path contains whitespace")
+            conn.sendall(("screendump " + path + "\n").encode("ascii"))
+            conn.settimeout(0.25)
+            answer = bytearray()
+            deadline = time.monotonic() + 8.0
+            while time.monotonic() < deadline and len(answer) < 16384:
+                try:
+                    chunk = conn.recv(4096)
+                except socket.timeout:
+                    chunk = b""
+                if chunk:
+                    answer.extend(chunk)
+                if _valid_ppm(stage):
+                    break
+                time.sleep(0.1)
+            if _valid_ppm(stage):
+                wait_for_ppm(stage, timeout=1.5)
+    except (OSError, ValueError) as err:
+        return publish_surface(dest, "HMP error: " + str(err))
+    if _valid_ppm(stage):
+        dest.write_bytes(stage.read_bytes())
+    return publish_surface(dest, bytes(answer).decode("utf-8", "replace"))

@@ -142,6 +142,49 @@ def hardware_identity_graph(matched, contract):
         }
     return graph
 
+AFK_BUNDLE = re.compile(r"AFK|FirmwareKit|ConvergedIPC|ConvergedPCI", re.I)
+
+
+def personality_map(item):
+    personalities = item.get("io_kit_personalities")
+    if personalities is None and isinstance(item.get("info"), dict):
+        personalities = item["info"].get("IOKitPersonalities")
+    return personalities if isinstance(personalities, dict) else {}
+
+
+def afk_census(raw):
+    """Record FirmwareKit/AFK bundle IDs and whether AFKResource is an IOClass.
+
+    A personality name is not a registered metaclass and not a guest start().
+    """
+    bundles = []
+    declared = False
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        bundle = item.get("id")
+        if not isinstance(bundle, str) or not BUNDLE_RE.fullmatch(bundle):
+            continue
+        classes = []
+        for raw_personality in personality_map(item).values():
+            if not isinstance(raw_personality, dict):
+                continue
+            io_class = raw_personality.get("IOClass")
+            if isinstance(io_class, str) and io_class.startswith("AFK"):
+                classes.append(io_class[:64])
+                if io_class == "AFKResource":
+                    declared = True
+        if (AFK_BUNDLE.search(bundle) or classes) and len(bundles) < 40:
+            bundles.append({
+                "bundle_id": bundle,
+                "afk_ioclasses": sorted(set(classes))[:12],
+                "declares_IOClass_AFKResource": "AFKResource" in classes,
+                "metaclass_registered_in_guest": False,
+                "guest_start_observed": False,
+            })
+    return bundles, declared
+
+
 def summarize(raw, contract=None):
     if isinstance(raw, dict):
         raw = raw.get("kexts") or raw.get("extensions")
@@ -156,10 +199,7 @@ def summarize(raw, contract=None):
         if not isinstance(bundle, str) or not BUNDLE_RE.fullmatch(bundle):
             continue
         parsed += 1
-        personalities = item.get("io_kit_personalities")
-        if personalities is None and isinstance(item.get("info"), dict):
-            personalities = item["info"].get("IOKitPersonalities")
-        selected = matching_personalities(personalities)
+        selected = matching_personalities(personality_map(item))
         if not DRIVER_RE.search(bundle) and not selected:
             continue
         version = item.get("version")
@@ -175,6 +215,7 @@ def summarize(raw, contract=None):
             break
     if parsed == 0:
         raise ValueError("no KEXT bundle IDs parsed from original kernelcache")
+    afk_bundles, afk_declared = afk_census(raw)
     caps = (contract or {}).get("ANS_original_firmware_capabilities") or {}
     identity = {k: caps[k] for k in
                 ("role", "nvme-num-sl", "nvme-queue-entries",
@@ -186,6 +227,9 @@ def summarize(raw, contract=None):
         "parsed_KEXT_records": parsed,
         "matching_storage_graphics_RTKit_KEXTs": matched,
         "matched_KEXT_count": len(matched),
+        "AFK_and_firmware_kit_bundles": afk_bundles,
+        "AFKResource_IOClass_declared_in_kernelcache_personalities": afk_declared,
+        "AFKResource_metaclass_registered_in_guest": False,
         "original_Apple_J490_ANS_identity": identity,
         "source_backed_IOKit_service_dependency_graph":
             hardware_identity_graph(matched, contract),

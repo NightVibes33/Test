@@ -90,6 +90,7 @@ def observe_serial(text):
         "framebuffer_missing_count": text.lower().count("unable to get framebuffer"),
         "display_list_missing_logged": "unable to get display list" in text.lower(),
         "AFKResource_allocation_error_count": text.count('Couldn\'t alloc class "AFKResource"'),
+        "DCP_RTBuddy_start_logged": "RTBuddy(DCP)" in text,
         "Apple_runtime_RTBuddy_or_probe_evidence": bool(buddy_starts or ranked),
         "RTKit_mailbox_handshake_completed_proven": False,
         "NVMe_block_device_operational_proven": False,
@@ -206,6 +207,15 @@ def compare(control_text, experiment_text, qemu_text="", pc_trace_text=""):
             else "DCP_MMIO_observed_display_not_implemented"
             if qemu["DCP_or_SGX_MMIO_access_count"]
             else "framebuffer_error_not_logged"),
+        "display_provider_stop": (
+            "DCP_RTBuddy_start_not_logged"
+            if trial["framebuffer_missing_count"] and not trial["DCP_RTBuddy_start_logged"]
+            else "DCP_RTBuddy_start_logged"
+            if trial["DCP_RTBuddy_start_logged"]
+            else "display_provider_not_observed"),
+        "AFKResource_alloc_failed_before_controller_start": (
+            trial["AFKResource_allocation_error_count"] > 0 and
+            not trial["ANS_controller_start_observed"]),
         "normal_installed_HomeView_or_BreadBoard_boot_verified": False,
         "interpretation": (
             "Apple RTBuddy start() and ANS2 controller probe() scores demonstrate "
