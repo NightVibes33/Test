@@ -11,20 +11,30 @@ import subprocess
 from pathlib import Path
 
 
+def kill_tree(pid):
+    """Kill pid and its descendants. A new session would hide them from the caller."""
+    try:
+        listed = subprocess.check_output(["pgrep", "-P", str(pid)], text=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        listed = ""
+    for child in listed.split():
+        kill_tree(int(child))
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
 def run_bounded(argv, log_path, timeout):
     """Stop the command and every process it starts when the deadline hits."""
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as log:
-        proc = subprocess.Popen(
-            list(argv), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        proc = subprocess.Popen(list(argv), stdout=log, stderr=subprocess.STDOUT)
         try:
             return proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            kill_tree(proc.pid)
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
