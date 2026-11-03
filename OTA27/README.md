@@ -49,3 +49,6 @@ Pinned NFCARD revision `16f8bfd20a88a474f59c2d6eda291164a1cc015f`, AirCard upstr
 
 ## Cinder27 archive inventory
 The app includes a read-only, searchable inventory of the 31 CVE-labelled PoC folders and the additional `arc.rr` RockRidge probe (32 entries total) supplied in `cinder27-main.zip`. This inventory does not execute the PoC code or claim a verified vulnerability.
+
+### Grappa symbol bridge
+The missing `ALGetGrappaToken` callback is supplied by NFCARD's pinned upstream `GrappaHelper.m`/`.h` and explicitly retained by the linker. This fixes the missing-symbol packaging error, not a guarantee of successful device sync.
