@@ -96,7 +96,7 @@ struct Cinder27POCIndexView: View {
                             Text(record.module).font(.subheadline)
                             Text(record.component + " · " + record.primitive)
                                 .font(.caption).foregroundStyle(.secondary)
-                            Text("Status: \(engine.journal.verdict(for: record.module).key) · Tap to open runner")
+                            Text("Status: \(engine.journal.verdict(for: record.module).label) · Tap to open runner")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                             .padding(.vertical, 4)
