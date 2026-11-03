@@ -308,6 +308,7 @@ jobs:
           ./configure --target-list=aarch64-softmmu \
             --disable-gtk --disable-sdl --disable-vnc \
             --disable-curses --disable-pvg --disable-tools \
+            --extra-ldflags='-L/usr/local/lib -Wl,-rpath,/usr/local/lib -lhogweed -lnettle -lgmp' \
             -Dwerror=false \
             > "$GITHUB_WORKSPACE/out/qemu-vphone-configure.log" 2>&1
           CONFIG_STATUS=$?
