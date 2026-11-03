@@ -62,3 +62,21 @@ for seed in ("joliet_path_oob.iso", "deep_nest.usda", "stack_bomb.cff", "ktx2_ba
     assert "CinderLab/Seeds/" + seed in project
     assert seed in workflow
 print("Cinder27 resource staging and postbuild seed checks validated.")
+
+# All 32 uploaded PoC families must link to their original executable runners,
+# rather than being a static inventory with dummy action buttons.
+import re
+index = (root / "Sources/Cinder27POCIndexView.swift").read_text()
+families = re.findall(r"^\\s*(CVE-2026-[0-9]+|arc\\.rr)\\|", index, re.MULTILINE)
+assert len(families) == 32, f"Expected 32 source families, saw {len(families)}"
+assert len(set(families)) == 32
+assert sum(family.startswith("CVE-2026-") for family in families) == 31
+assert families[-1] == "arc.rr"
+assert "Catalog.byID[record.module]" in index
+assert "ModuleDetailView(module: module)" in index
+assert ".environmentObject(engine)" in index
+assert "CinderLabHost(engine: engine)" in index
+host = (root / "Sources/CinderLabHost.swift").read_text()
+assert "@ObservedObject var engine: LabEngine" in host
+assert "@StateObject private var engine = LabEngine()" not in host
+print("Cinder27 executable PoC navigation validated (31 CVE families + arc.rr).")
