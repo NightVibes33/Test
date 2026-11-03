@@ -15,16 +15,6 @@ targets:
     sources:
       - path: Sources
       - path: CinderLab/Sources
-      - path: CinderLab/seeds/joliet_path_oob.iso
-        buildPhase: resources
-      - path: CinderLab/seeds/deep_nest.usda
-        buildPhase: resources
-      - path: CinderLab/seeds/stack_bomb.cff
-        buildPhase: resources
-      - path: CinderLab/seeds/ktx2_bad_dims.ktx2
-        buildPhase: resources
-      - path: CinderLab/seeds/bc7_short.dds
-        buildPhase: resources
       - path: CinderLab/Seeds/joliet_path_oob.iso
         buildPhase: resources
       - path: CinderLab/Seeds/deep_nest.usda
