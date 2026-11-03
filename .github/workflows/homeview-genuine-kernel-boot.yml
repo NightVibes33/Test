@@ -41,6 +41,13 @@ on:
       - 'homeview-legacy/scripts/stage_fitting_image.py'
       - 'homeview-legacy/scripts/trustcache_mounted_root.sh'
       - 'homeview-legacy/scripts/ci_payload_step.sh'
+      - 'homeview-legacy/scripts/payload_cache_key.txt'
+      - 'homeview-legacy/scripts/scan_fileset_symbols.py'
+      - 'homeview-legacy/tests/test_fileset_symbols.py'
+      - 'homeview-legacy/scripts/catalog_sibling_firmwares.py'
+      - 'homeview-legacy/tests/test_sibling_firmwares.py'
+      - 'homeview-legacy/scripts/assess_qemu_disk.py'
+      - 'homeview-legacy/tests/test_qemu_disk.py'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -102,6 +109,9 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ota_payload_index.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_payload_root.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_firmwarekit_linkage.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_fileset_symbols.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_sibling_firmwares.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_qemu_disk.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
       - name: Compile real QEMU API v7 observer before expensive Apple firmware download
@@ -122,8 +132,97 @@ jobs:
           nm -D "$RUNNER_TEMP/homeview-tcg-pc-trace.so" | grep -q 'qemu_plugin_install'
           echo 'TCG_PLUGIN_API7_COMPILED_FAST: signature and headers verified'
 
-  original-apple-kernel:
+  payload-root:
     needs: fast-evidence-validation
+    runs-on: xcode-27
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore a previously built payload root
+        id: payload-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: out/payload-cache
+          key: homeview-payload-${{ hashFiles('homeview-legacy/scripts/payload_cache_key.txt') }}
+      - name: Build the payload root when the cache is empty
+        id: payload-build
+        if: steps.payload-cache.outputs.cache-hit != 'true'
+        run: |
+          set +e
+          set +x
+          mkdir -p out "$RUNNER_TEMP/hv-firmware"
+          brew install blacktop/tap/ipsw || brew install ipsw
+          brew install openssl
+          python3 - <<'PY'
+          import base64, os, pathlib, re, urllib.request, urllib.parse
+          with urllib.request.urlopen('https://raw.githubusercontent.com/Lakr233/vphone-cli/main/VPhoneKit/VPhoneCoreKit/Firmware/VPhoneFirmwareCatalog.swift', timeout=30) as handle:
+              text = handle.read(1000000).decode()
+          match = re.search(r'productType:\s*"HomeAccessory17,1",\s*version:\s*"27\.2",\s*build:\s*"24V514",\s*url:\s*"([^"]+)",\s*size:\s*([\d_]+),\s*key:\s*"([^"]+)"', text)
+          assert match, 'Official HomeView OTA missing'
+          url, size, key = match.group(1), int(match.group(2).replace('_', '')), match.group(3)
+          assert size == 6509559808 and urllib.parse.urlsplit(url).hostname == 'updates.cdn-apple.com'
+          assert len(base64.b64decode(key, validate=True)) == 32
+          tmp = pathlib.Path(os.environ['RUNNER_TEMP'])
+          (tmp / 'hv-url').write_text(url)
+          (tmp / 'hv-key').write_text(key)
+          print('Verified HomeView 27.2/24V514 source and official AEA key')
+          PY
+          KEY="$(cat "$RUNNER_TEMP/hv-key")"
+          echo "::add-mask::$KEY"
+          curl -fL --retry 3 --connect-timeout 30 --max-time 2400 \
+            -o "$RUNNER_TEMP/HomeView.aea" "$(cat "$RUNNER_TEMP/hv-url")"
+          test "$(stat -f %z "$RUNNER_TEMP/HomeView.aea")" = 6509559808
+          export KEY HOMEVIEW_FULL_PAYLOAD=1
+          python3 homeview-legacy/scripts/run_bounded.py --timeout 14400 --log out/payload-step-deadline.log -- \
+            bash homeview-legacy/scripts/ci_payload_step.sh || true
+          mkdir -p out/payload-cache
+          cp -f out/homeview-system-volume-manifest.json out/homeview-static-trustcache.json \
+            out/homeview-cryptex-system.json out/homeview-cryptex-app.json \
+            out/system-root-extract.log out/trustcache-build.log out/payload-step-deadline.log \
+            out/payload-cache/ 2>/dev/null || true
+          cp -f "$RUNNER_TEMP/hv-firmware/system-volume.tc" out/payload-cache/ 2>/dev/null || true
+          cp -f "$RUNNER_TEMP/hv-firmware/system-volume.dmg" out/payload-cache/ 2>/dev/null || true
+          cp -f out/homeview-system-volume-manifest.json out/payload-cache/system-volume-manifest.json 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/HomeView.aea" "$RUNNER_TEMP/hv-key" "$RUNNER_TEMP/hv-url"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = Path("out/homeview-system-volume-manifest.json")
+          save = False
+          if manifest.is_file():
+              data = json.loads(manifest.read_text())
+              save = bool(data.get("boot_payload_root") or int(data.get("extracted_file_count") or 0) >= 1000)
+          Path("out/payload-save.txt").write_text("true\n" if save else "false\n")
+          print("CACHE_SAVE", save)
+          PY
+          echo "save=$(tr -d '\n' < out/payload-save.txt)" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Save the payload root for later boot jobs
+        if: steps.payload-cache.outputs.cache-hit != 'true' && steps.payload-build.outputs.save == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/payload-cache
+          key: homeview-payload-${{ hashFiles('homeview-legacy/scripts/payload_cache_key.txt') }}
+      - name: Publish payload metadata only, never the Apple disk image
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-payload-root-evidence
+          path: |
+            out/payload-cache/*.json
+            out/payload-cache/*.log
+            out/homeview-system-volume-manifest.json
+            out/homeview-static-trustcache.json
+            out/system-root-extract.log
+            out/trustcache-build.log
+            out/payload-step-deadline.log
+            out/homeview-cryptex-system.json
+            out/homeview-cryptex-app.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  original-apple-kernel:
+    needs: [fast-evidence-validation, payload-root]
     runs-on: xcode-27
     timeout-minutes: 85
     steps:
@@ -370,7 +469,18 @@ jobs:
           fi
           python3 homeview-legacy/scripts/probe_firmwarekit_linkage.py \
             --kext-dir "$OUT" --output out/homeview-firmwarekit-linkage.json
-          rm -rf "$OUT"
+          ALL="$RUNNER_TEMP/all-kexts"
+          rm -rf "$ALL"
+          mkdir -p "$ALL"
+          if [[ -s "$RUNNER_TEMP/hv-firmware/bootkc" ]]; then
+            ipsw kernel extract --output "$ALL" "$RUNNER_TEMP/hv-firmware/bootkc" \
+              > out/fileset-extract.log 2>&1 || true
+            python3 homeview-legacy/scripts/scan_fileset_symbols.py \
+              --kernelcache "$RUNNER_TEMP/hv-firmware/bootkc" \
+              --kext-dir "$ALL" \
+              --output out/homeview-afkresource-symbols.json
+          fi
+          rm -rf "$OUT" "$ALL"
       - name: Inspect original Apple ANS2 RTBuddy and DCP C++ vtables and methods
         if: always()
         run: |
@@ -483,6 +593,10 @@ jobs:
           name: genuine-homeview-j490-pre-payload
           path: |
             out/homeview-firmwarekit-linkage.json
+            out/homeview-afkresource-symbols.json
+            out/fileset-extract.log
+            out/homeview-sibling-firmwares.json
+            out/homeview-qemu-disk.json
             out/firmwarekit-extract.log
             out/homeview-ans2-runtime-matching.json
             out/homeview-*-driver-lines.log
@@ -493,17 +607,42 @@ jobs:
             out/native-homeview-kernel-result.json
           if-no-files-found: ignore
           retention-days: 7
-      - name: Index payloadv2 and build a system ramdisk only when SpringBoard fits
+      - name: Restore the cached payload root
+        if: always()
+        uses: actions/cache/restore@v4
+        with:
+          path: out/payload-cache
+          key: homeview-payload-${{ hashFiles('homeview-legacy/scripts/payload_cache_key.txt') }}
+      - name: Install the cached payload root for the ramdisk slot
         if: always()
         run: |
           set +e
-          set +x
-          KEY="$(cat "$RUNNER_TEMP/hv-key" 2>/dev/null || true)"
-          if [[ -n "$KEY" ]]; then echo "::add-mask::$KEY"; fi
-          export KEY
-          python3 homeview-legacy/scripts/run_bounded.py --timeout 2700 --log out/payload-step-deadline.log -- \
-            bash homeview-legacy/scripts/ci_payload_step.sh || true
-          echo "PAYLOAD_STEP_RETURNED"
+          DEST="$RUNNER_TEMP/hv-firmware"
+          mkdir -p "$DEST" out
+          if [[ -f out/payload-cache/system-volume-manifest.json ]]; then
+            cp -f out/payload-cache/system-volume-manifest.json out/homeview-system-volume-manifest.json
+            cp -f out/payload-cache/system-volume-manifest.json "$DEST/system-volume-manifest.json"
+            cp -f out/payload-cache/system-volume.tc "$DEST/system-volume.tc"
+            cp -f out/payload-cache/system-volume.dmg "$DEST/system-volume.dmg"
+            echo "USED_CACHED_PAYLOAD_ROOT"
+          else
+            echo "PAYLOAD_CACHE_MISS"
+          fi
+      - name: Record sibling firmwares and whether qemu-sptm has a disk
+        if: always()
+        run: |
+          set +e
+          python3 homeview-legacy/scripts/catalog_sibling_firmwares.py \
+            --fetch --output out/homeview-sibling-firmwares.json
+          curl -fsSL --retry 2 --max-time 60 \
+            -o "$RUNNER_TEMP/pinned-darwin.c" \
+            "https://raw.githubusercontent.com/jprx/qemu-sptm/bad6336fb24211f8c4e8e946c259bd5b12417340/hw/arm/darwin.c" || true
+          if [[ -s "$RUNNER_TEMP/pinned-darwin.c" ]]; then
+            python3 homeview-legacy/scripts/assess_qemu_disk.py \
+              --source "$RUNNER_TEMP/pinned-darwin.c" \
+              --output out/homeview-qemu-disk.json
+          fi
+          rm -f "$RUNNER_TEMP/pinned-darwin.c"
       - name: Boot the payload root when its trustcache and image are real
         if: always()
         env:
@@ -530,6 +669,10 @@ jobs:
             out/homeview-original-kernelcache-driver-markers.json
             out/homeview-original-kext-iokit-personalities.json
             out/homeview-firmwarekit-linkage.json
+            out/homeview-afkresource-symbols.json
+            out/fileset-extract.log
+            out/homeview-sibling-firmwares.json
+            out/homeview-qemu-disk.json
             out/firmwarekit-extract.log
             out/homeview-original-iokit-cpp-methods.json
             out/homeview-original-ans2-vtable-disassembly.json

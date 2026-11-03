@@ -28,11 +28,27 @@ dmgs = [path for path in index.get("candidate_system_dmgs") or [] if path.endswi
 print("SYSTEM_DMG_CANDIDATE", dmgs[:4], "payload_lines", index.get("payload_line_count"))
 PY
 # 141-21962-183.dmg is not a file in the OTA. Do not scan the archive for it.
-echo "FULL_PAYLOAD_EXTRACT_OMITTED unbounded_extract_exceeded_job_timeout" > out/system-root-extract.log
-echo "PHANTOM_DMG_SCAN_OMITTED 141-21962-183.dmg is not an OTA member" >> out/system-root-extract.log
+echo "PHANTOM_DMG_SCAN_OMITTED 141-21962-183.dmg is not an OTA member" > out/system-root-extract.log
+EXTRACT="$RUNNER_TEMP/system-root"
+if [[ "${HOMEVIEW_FULL_PAYLOAD:-0}" == 1 && -s "$AEA" && -n "$KEY" ]]; then
+  mkdir -p "$EXTRACT"
+  python3 homeview-legacy/scripts/run_bounded.py --timeout 10800 --log out/system-root-extract.log -- \
+    ipsw ota extract -y -p '.*' -o "$EXTRACT" --key-val "$KEY" "$AEA" \
+    || echo "FULL_PAYLOAD_EXTRACT_FAILED" >> out/system-root-extract.log
+else
+  echo "FULL_PAYLOAD_EXTRACT_OMITTED not_requested_in_this_job" >> out/system-root-extract.log
+fi
 git clone --depth 1 https://github.com/CRKatri/trustcache.git "$RUNNER_TEMP/trustcache-src" \
   > out/trustcache-build.log 2>&1 || true
-make -C "$RUNNER_TEMP/trustcache-src" >> out/trustcache-build.log 2>&1 || true
+OPENSSL_PREFIX="$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null || true)"
+if [[ -n "$OPENSSL_PREFIX" && -d "$OPENSSL_PREFIX/include/openssl" ]]; then
+  make -C "$RUNNER_TEMP/trustcache-src" OPENSSL=1 \
+    CFLAGS="-I${OPENSSL_PREFIX}/include" \
+    LDFLAGS="-L${OPENSSL_PREFIX}/lib" \
+    >> out/trustcache-build.log 2>&1 || true
+else
+  echo "OPENSSL_HEADERS_MISSING" >> out/trustcache-build.log
+fi
 TCBIN="$RUNNER_TEMP/trustcache-src/trustcache"
 for CRYPTEX_NAME in system app; do
   CRYPTEX="$RUNNER_TEMP/cryptex-$CRYPTEX_NAME"
