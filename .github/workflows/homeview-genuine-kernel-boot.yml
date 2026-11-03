@@ -273,6 +273,20 @@ jobs:
           "$RUNNER_TEMP/meson-venv/bin/pip" install -q 'meson>=1.5,<2'
           export PATH="$RUNNER_TEMP/meson-venv/bin:$PATH"
           meson --version | tee out/qemu-vphone-meson.txt
+          # Ubuntu 24.04 nettle is 3.9 and has no drbg-ctr.h. sep.h requires 3.10.
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/nettle-3.10.2.tar.gz" \
+            https://ftp.gnu.org/gnu/nettle/nettle-3.10.2.tar.gz
+          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/nettle-3.10.2.tar.gz"
+          (
+            cd "$RUNNER_TEMP/nettle-3.10.2"
+            ./configure --prefix=/usr/local --libdir=/usr/local/lib
+            make -j"$(nproc)"
+            sudo make install
+          ) > out/nettle-build.log 2>&1 || { echo NETTLE_BUILD_FAILED | tee -a out/qemu-vphone-build.log; exit 1; }
+          sudo ldconfig
+          test -f /usr/local/include/nettle/drbg-ctr.h || { echo NETTLE_HEADER_MISSING | tee -a out/qemu-vphone-build.log; exit 1; }
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          pkg-config --modversion nettle | tee -a out/qemu-vphone-meson.txt
           git clone --depth 1 --branch vphone https://github.com/YahiaAngelo/qemu-vphone.git \
             "$RUNNER_TEMP/qemu-vphone" > out/qemu-vphone-clone.log 2>&1
           git -C "$RUNNER_TEMP/qemu-vphone" submodule update --init --depth 1 util/mlib \
@@ -324,6 +338,7 @@ jobs:
           path: |
             out/homeview-vphone600-board.json
             out/qemu-vphone-meson.txt
+            out/nettle-build.log
             out/qemu-vphone-clone.log
             out/qemu-vphone-configure.log
             out/qemu-vphone-build.log
