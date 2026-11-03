@@ -195,13 +195,13 @@ jobs:
           unwrap() {
             local src="$1" dest="$2"
             if [[ ! -s "$src" ]]; then return 0; fi
-            local magic
-            magic="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).read_bytes()[:4].decode("latin1"))' "$src")"
-            echo "UNWRAP $src magic=$magic"
-            if [[ "$magic" == IM4P || "$magic" == IMG4 || "$src" == *.im4p ]]; then
-              ipsw img4 im4p extract "$src" -o "$dest" || cp "$src" "$dest"
+            # qemu rejects any IM4P payload. The kernelcache has no .im4p suffix
+            # and its tag is not in the first four bytes, so always try the extractor.
+            if ipsw img4 im4p extract "$src" -o "$dest"; then
+              echo "UNWRAP_OK $src"
             else
               cp "$src" "$dest"
+              echo "UNWRAP_COPIED $src"
             fi
           }
           unwrap "$DEST/kernelcache.research.vphone600" "$DEST/bootkc"
