@@ -27,21 +27,30 @@ def tolerate_missing_children(node_cls):
 
 
 def adapt(raw, output, upstream_path, nvram_path):
+    """Set only the firmware name qemu-sptm checks.
+
+    The full darwin-vm fixup rewrites an iPhone board and crashes on this
+    virtual tree, which has no dockchannel-uart and no uart interrupt-parent.
+    """
+    del nvram_path
     spec = importlib.util.spec_from_file_location("darwin_vm_dt_fixup", upstream_path)
     if spec is None or spec.loader is None:
         raise ValueError("Cannot load upstream darwin-vm ADT fixup")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    skipped = tolerate_missing_children(mod.ADTNode)
     root = mod.ADTNode()
     mod.decode_node(Path(raw).read_bytes(), root)
-    with Path(nvram_path).open("rb") as nvram:
-        mod.fixup(root, nvram_file=nvram, disable_network=False)
+    chosen = root["chosen"]
+    chosen.props["firmware-version"] = "qemu-sptm"
+    chosen.props["system-firmware-version"] = "qemu-sptm"
+    defaults = root["defaults"] if "defaults" in root else None
+    if defaults is not None and "vmm-present" not in defaults.props:
+        defaults.props["vmm-present"] = "u32:1"
     Path(output).write_bytes(mod.encode_node(root))
     return {
-        "skipped_missing_children": skipped,
-        "firmware_version": root["chosen"].props.get("firmware-version"),
-        "vmm_present": root["defaults"].props.get("vmm-present"),
+        "fixup": "firmware-version only",
+        "firmware_version": chosen.props.get("firmware-version"),
+        "vmm_present": None if defaults is None else defaults.props.get("vmm-present"),
         "output_bytes": Path(output).stat().st_size,
     }
 
