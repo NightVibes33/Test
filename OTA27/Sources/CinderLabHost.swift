@@ -4,7 +4,7 @@ import SwiftUI
 /// Each module runs only after an explicit tap in the original harness UI.
 struct CinderLabHost: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var engine = LabEngine()
+    @ObservedObject var engine: LabEngine
     @StateObject private var browser = FileBrowser(path: Container.documents.path)
     @StateObject private var clipboard = FileClipboard()
     @StateObject private var bookmarks = Bookmarks()
