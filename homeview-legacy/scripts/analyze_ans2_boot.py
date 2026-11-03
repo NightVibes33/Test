@@ -128,7 +128,43 @@ def observe_qemu(text):
     }
 
 
-def compare(control_text, experiment_text, qemu_text="", pc_trace_text=""):
+def dcp_firmware_window(inventory):
+    """DCP's nub is not an ANS-style firmware carve.
+
+    iop-dcp-nub advertises no-firmware-service and has no region-base.
+    Mapping a DRAM window there would contradict the device tree.
+    """
+    nodes = inventory.get("nodes") if isinstance(inventory, dict) else None
+    nub = None
+    if isinstance(nodes, list):
+        for node in nodes:
+            path = node.get("path") if isinstance(node, dict) else ""
+            if str(path).endswith("/arm-io/dcp/iop-dcp-nub"):
+                nub = node
+                break
+    names = set(nub.get("property_names") or []) if isinstance(nub, dict) else set()
+    no_fw = "no-firmware-service" in names
+    has_region = "region-base" in names and "region-size" in names
+    if nub is None:
+        reason = "dcp nub not in inventory"
+    elif no_fw and not has_region:
+        reason = (
+            "iop-dcp-nub sets no-firmware-service and has no region-base; "
+            "RTBuddy will not map an ADT firmware window. Display firmware "
+            "has to come from AFKFirmwareService after AFKResource exists.")
+    else:
+        reason = "dcp nub properties recorded"
+    return {
+        "nub_present": nub is not None,
+        "no_firmware_service": no_fw,
+        "region_base_property_present": "region-base" in names,
+        "quiesced": "quiesced" in names,
+        "dram_carve_applicable": bool(has_region and not no_fw),
+        "reason": reason,
+    }
+
+
+def compare(control_text, experiment_text, qemu_text="", pc_trace_text="", inventory=None):
     control = observe_serial(control_text)
     trial = observe_serial(experiment_text)
     qemu = observe_qemu(qemu_text + "\n" + pc_trace_text)
@@ -216,6 +252,7 @@ def compare(control_text, experiment_text, qemu_text="", pc_trace_text=""):
         "AFKResource_alloc_failed_before_controller_start": (
             trial["AFKResource_allocation_error_count"] > 0 and
             not trial["ANS_controller_start_observed"]),
+        "dcp_firmware_window": dcp_firmware_window(inventory),
         "normal_installed_HomeView_or_BreadBoard_boot_verified": False,
         "interpretation": (
             "Apple RTBuddy start() and ANS2 controller probe() scores demonstrate "
@@ -241,11 +278,16 @@ def main():
     parser.add_argument("--experiment", required=True)
     parser.add_argument("--qemu-log", required=True)
     parser.add_argument("--pc-log", help="Independent read-only QEMU TCG trace artifact")
+    parser.add_argument("--hardware-inventory")
     parser.add_argument("--output", required=True)
     a = parser.parse_args()
+    inventory = None
+    if a.hardware_inventory and Path(a.hardware_inventory).is_file():
+        inventory = json.loads(Path(a.hardware_inventory).read_text(encoding="utf-8"))
     result = compare(read_limited(a.control), read_limited(a.experiment),
                      read_limited(a.qemu_log),
-                     read_limited(a.pc_log) if a.pc_log else "")
+                     read_limited(a.pc_log) if a.pc_log else "",
+                     inventory)
     out = Path(a.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2) + "\n")

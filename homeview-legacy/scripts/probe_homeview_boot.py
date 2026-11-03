@@ -14,6 +14,67 @@ from boot_evidence import classify
 from capture_real_guest_screen import capture
 import sys
 
+def variant_boot_args(name):
+    """Boot args passed with -args, which replace qemu-sptm's defaults.
+
+    The ANS probe uses kextlog=0xffff because that is qemu-sptm's own default
+    filter. It includes the dependency bit 0x4000. kextlog=0xff does not, so
+    the earlier probe could not show why AppleFirmwareKit never registered
+    AFKResource.
+    """
+    if name == "installed-system":
+        return "rd=md0 serial=3 -v -noprogress wdt=-1 cpus=1"
+    args = "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1"
+    if name == "software-update-ans-binding-probe":
+        args += " kextlog=0xffff keepsyms=1"
+    return args
+
+
+def driver_evidence_lines(output, limit=2500):
+    """Keep AFK and dependency lines ahead of the rest of the driver log.
+
+    A wider kextlog filter emits many lines that contain the word kext. Those
+    must not crowd AppleFirmwareKit out of the capped evidence file.
+    """
+    priority_tokens = (
+        "AFK", "AppleFirmwareKit", "Couldn't alloc class",
+        "dependency", "OSBundle", "Failed to load",
+    )
+    other_tokens = ("RTBuddy", "framebuffer", "NAND", "::start", "::probe")
+    priority, rest = [], []
+    for line in output.splitlines():
+        if any(token in line for token in priority_tokens):
+            priority.append(line)
+        elif any(token in line for token in other_tokens):
+            rest.append(line)
+    return (priority + rest)[:limit]
+
+
+def planned_variants(root):
+    root = pathlib.Path(root)
+    variants = []
+    manifest_path = root / "system-volume-manifest.json"
+    system_image = root / "system-volume.dmg"
+    system_tc = root / "system-volume.tc"
+    if (manifest_path.is_file() and system_image.is_file() and system_tc.is_file()
+            and system_image.stat().st_size > 1024 and system_tc.stat().st_size > 16):
+        meta = json.loads(manifest_path.read_text())
+        if meta.get("boot_payload_root") and meta.get("trustcache_generated"):
+            variants.append(("installed-system", root / "dtree", system_image, system_tc))
+    variants.extend([
+        ("software-update-dock-removed-control", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("software-update-dock-removed-pumpkin", root / "dtree.pumpkin", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("software-update-ans-binding-probe", root / "dtree.ans-probe", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("software-update-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("baseline-software-update", root / "dtree.baseline", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
+        ("baseline-restore", root / "dtree.baseline", root / "ramdisk.dmg", root / "ramdisk.tc"),
+    ])
+    only = os.environ.get("HOMEVIEW_ONLY_VARIANT")
+    if only:
+        variants = [item for item in variants if item[0] == only]
+    return variants
+
+
 def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest):
     dest.mkdir(parents=True, exist_ok=True)
     debug = dest / ("qemu-" + name + ".log")
@@ -26,12 +87,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         "-dtree", str(device_tree), "-sptm", str(firmware / "sptm"),
         "-txm", str(firmware / "txm"), "-tc", str(trustcache),
         "-ramdisk", str(ramdisk),
-        "-args", (
-            "rd=md0 serial=3 -v -noprogress wdt=-1 cpus=1"
-            if name == "installed-system"
-            else "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1"
-                 + (" kextlog=0xff" if name == "software-update-ans-binding-probe" else "")
-        ),
+        "-args", variant_boot_args(name),
         "-m", "12G" if name == "installed-system" else "2G",
         "-display", "none", "-serial", "stdio",
         "-monitor", "unix:"+str(monitor)+",server=on,wait=off",
@@ -168,14 +224,9 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         "apple_setup_or_breadboard_verified": False,
         "reason": "No Apple restore boot stage observed"
     }
-    driver_lines = [
-        line for line in output.splitlines()
-        if any(token in line for token in (
-            "AFK", "Couldn't alloc class", "RTBuddy", "kext", "Kext",
-            "framebuffer", "NAND", "::start", "::probe", "dependency"))
-    ]
+    driver_lines = driver_evidence_lines(output)
     (dest / ("homeview-" + name + "-driver-lines.log")).write_text(
-        "\n".join(driver_lines[:2500]) + "\n", encoding="utf-8")
+        "\n".join(driver_lines) + "\n", encoding="utf-8")
     serial.write_text(output[-250000:], encoding="utf-8")
     answer["serial_bytes"] = len(output.encode("utf-8"))
     # Native Apple bootstrapper logs use com.apple.xpc.launchd|, not launchd[PID].
@@ -205,23 +256,10 @@ def main():
     output_dir = pathlib.Path("out")
     machine = pathlib.Path("emulator/build/qemu-system-aarch64").resolve()
     attempts = []
-    variants = []
-    manifest_path = root / "system-volume-manifest.json"
-    system_image = root / "system-volume.dmg"
-    system_tc = root / "system-volume.tc"
-    if (manifest_path.is_file() and system_image.is_file() and system_tc.is_file()
-            and system_image.stat().st_size > 1024 and system_tc.stat().st_size > 16):
-        meta = json.loads(manifest_path.read_text())
-        if meta.get("boot_payload_root") and meta.get("trustcache_generated"):
-            variants.append(("installed-system", root / "dtree", system_image, system_tc))
-    variants.extend([
-        ("software-update-dock-removed-control", root / "dtree", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
-        ("software-update-dock-removed-pumpkin", root / "dtree.pumpkin", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
-        ("software-update-ans-binding-probe", root / "dtree.ans-probe", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
-        ("software-update-dock-neutralized", root / "dtree.neutralized", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
-        ("baseline-software-update", root / "dtree.baseline", root / "ramdisk-su.dmg", root / "ramdisk-su.tc"),
-        ("baseline-restore", root / "dtree.baseline", root / "ramdisk.dmg", root / "ramdisk.tc"),
-    ])
+    variants = planned_variants(root)
+    if not variants:
+        print("NO_BOOT_VARIANTS", file=sys.stderr)
+        return 2
     for name, path, ramdisk, trustcache in variants:
         if not path.exists() or not path.stat().st_size:
             raise SystemExit("Missing real device-tree variant " + str(path))

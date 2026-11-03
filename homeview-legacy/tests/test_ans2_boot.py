@@ -145,6 +145,18 @@ class ANS2BootTests(unittest.TestCase):
         self.assertTrue(report["AFKResource_alloc_failed_before_controller_start"])
         self.assertEqual(report["display_provider_stop"], "DCP_RTBuddy_start_not_logged")
 
+    def test_dcp_nub_without_region_is_not_a_dram_carve(self):
+        window = a.dcp_firmware_window({
+            "nodes": [{
+                "path": "/device-tree/arm-io/dcp/iop-dcp-nub",
+                "property_names": ["no-firmware-service", "quiesced", "compatible"],
+            }],
+        })
+        self.assertTrue(window["no_firmware_service"])
+        self.assertFalse(window["region_base_property_present"])
+        self.assertFalse(window["dram_carve_applicable"])
+        self.assertIn("AFKResource", window["reason"])
+
     def test_active_instrumentation_with_no_hit_is_not_a_storage_success(self):
         trace = (
             "HOMEVIEW_PC_TRACE initialized targets=8 signatures=8 read_only=true\n"

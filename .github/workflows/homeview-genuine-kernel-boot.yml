@@ -34,6 +34,9 @@ on:
       - 'homeview-legacy/scripts/compare_payload_mtree.py'
       - 'homeview-legacy/scripts/static_trustcache.py'
       - 'homeview-legacy/tests/test_payload_root.py'
+      - 'homeview-legacy/scripts/probe_firmwarekit_linkage.py'
+      - 'homeview-legacy/tests/test_firmwarekit_linkage.py'
+      - 'homeview-legacy/scripts/record_volume_image.py'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -94,6 +97,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_restore_ramdisk_inventory.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ota_payload_index.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_payload_root.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_firmwarekit_linkage.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
       - name: Compile real QEMU API v7 observer before expensive Apple firmware download
@@ -349,6 +353,20 @@ jobs:
             --list-exit-code "$STATUS" \
             --output out/homeview-original-kext-iokit-personalities.json
           rm -f "$KEXTS" "$RUNNER_TEMP/homeview-kexts-errors.txt"
+      - name: Check whether AppleFirmwareKit's Mach-O contains AFKResource
+        if: always()
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/afk-kext"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
+          if [[ -s "$RUNNER_TEMP/hv-firmware/bootkc" ]]; then
+            ipsw kernel extract --output "$OUT" "$RUNNER_TEMP/hv-firmware/bootkc" \
+              com.apple.driver.AppleFirmwareKit > out/firmwarekit-extract.log 2>&1
+          fi
+          python3 homeview-legacy/scripts/probe_firmwarekit_linkage.py \
+            --kext-dir "$OUT" --output out/homeview-firmwarekit-linkage.json
+          rm -rf "$OUT"
       - name: Inspect original Apple ANS2 RTBuddy and DCP C++ vtables and methods
         if: always()
         run: |
@@ -402,6 +420,7 @@ jobs:
             --experiment out/native-homeview-software-update-ans-binding-probe-serial.log \
             --qemu-log out/qemu-software-update-ans-binding-probe.log \
             --pc-log out/homeview-tcg-pc-software-update-ans-binding-probe.log \
+            --hardware-inventory out/homeview-j490-hardware-inventory.json \
             --output out/homeview-ans2-runtime-matching.json
           if [[ -s out/homeview-j490-mmio-contract.json ]]; then
             python3 homeview-legacy/scripts/verify_j490_mmio_log.py \
@@ -485,6 +504,31 @@ jobs:
           PY
           # Full payloadv2 extract. BreadBoard is the home UI; do not require a
           # file named SpringBoard. Skip when the runner cannot hold the tree.
+          # Cryptex and dyld are separate from payloadv2. Record sizes, then
+          # delete the bytes so the full payload extract still has disk.
+          CRYPTEX="$RUNNER_TEMP/cryptex-system"
+          rm -rf "$CRYPTEX"
+          mkdir -p "$CRYPTEX"
+          if [[ -s "$AEA" && -n "$KEY" ]]; then
+            ipsw ota extract --cryptex system -o "$CRYPTEX" --key-val "$KEY" "$AEA" \
+              > out/cryptex-system-extract.log 2>&1 || echo "CRYPTEX_EXTRACT_FAILED" >> out/cryptex-system-extract.log
+          fi
+          python3 homeview-legacy/scripts/record_volume_image.py \
+            --dir "$CRYPTEX" --label system-cryptex \
+            --output out/homeview-cryptex-system.json || true
+          rm -rf "$CRYPTEX"
+          DYLD="$RUNNER_TEMP/dyld-cache"
+          rm -rf "$DYLD"
+          mkdir -p "$DYLD"
+          if [[ -s "$AEA" && -n "$KEY" ]]; then
+            ipsw ota extract --dyld --dyld-arch arm64e --json -o "$DYLD" --key-val "$KEY" "$AEA" \
+              > out/homeview-dyld-cache.json 2> out/dyld-cache-extract.log \
+              || echo "DYLD_EXTRACT_FAILED" >> out/dyld-cache-extract.log
+          fi
+          python3 homeview-legacy/scripts/record_volume_image.py \
+            --dir "$DYLD" --label dyld-shared-cache \
+            --output out/homeview-dyld-cache-volume.json || true
+          rm -rf "$DYLD"
           FREE_KB="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 { print $4 }')"
           echo "PAYLOAD_FREE_KB=$FREE_KB"
           EXTRACT="$RUNNER_TEMP/system-root"
@@ -504,9 +548,13 @@ jobs:
           fi
           if [[ -d "$EXTRACT" ]] && find "$EXTRACT" -name BreadBoard -type f | grep -q .; then
             find "$EXTRACT" -print | sed "s#^$EXTRACT/##" > "$RUNNER_TEMP/payload-files.txt"
+            FILE_COUNT="$(find "$EXTRACT" -type f | wc -l | tr -d ' ')"
+            LINK_COUNT="$(find "$EXTRACT" -type l | wc -l | tr -d ' ')"
+            echo "PAYLOAD_FILE_COUNT=$FILE_COUNT PAYLOAD_LINK_COUNT=$LINK_COUNT"
             MTREE="$RUNNER_TEMP/hv-extracted/AssetData/boot/Firmware/141-21962-183.dmg.mtree"
             python3 homeview-legacy/scripts/compare_payload_mtree.py \
               --mtree "$MTREE" --files "$RUNNER_TEMP/payload-files.txt" \
+              --symlink-count "$LINK_COUNT" \
               --output out/homeview-payload-mtree.json || true
             git clone --depth 1 https://github.com/CRKatri/trustcache.git "$RUNNER_TEMP/trustcache-src" \
               > out/trustcache-build.log 2>&1 || true
@@ -528,6 +576,7 @@ jobs:
               --trustcache "$DEST/system-volume.tc" \
               --image "$DEST/system-volume.dmg" \
               --firmware-dir "$DEST" \
+              --extracted-files "${FILE_COUNT:-0}" \
               --output out/homeview-static-trustcache.json || true
             rm -rf "$EXTRACT"
           fi
@@ -561,7 +610,7 @@ jobs:
               ATTACH="$(hdiutil attach -readonly -nobrowse "$DEST/system-volume.dmg" 2>&1)" || true
               MOUNT="$(printf '%s\n' "$ATTACH" | awk '/\/Volumes\// { print $NF; exit }')"
               if [[ -n "$MOUNT" && -d "$MOUNT" ]]; then
-                if find "$MOUNT" -name SpringBoard -type f | head -1 | grep -q SpringBoard; then HAS_SB=1; fi
+                if find "$MOUNT" \( -name BreadBoard -o -name SpringBoard \) -type f | head -1 | grep -q .; then HAS_SB=1; fi
                 hdiutil detach "$MOUNT" >/dev/null 2>&1 || true
               fi
             fi
@@ -596,6 +645,18 @@ jobs:
             rm -rf "$RUNNER_TEMP/system-dmg" "$RUNNER_TEMP/system-tc"
           fi
           rm -f "$LIST" "$DEST/system-volume-decision.txt"
+      - name: Boot the payload root when its trustcache and image are real
+        if: always()
+        env:
+          HOMEVIEW_ONLY_VARIANT: installed-system
+          HOMEVIEW_TCG_PC_PLUGIN: ${{ github.workspace }}/out/homeview-tcg-pc-trace.dylib
+        run: |
+          set +e
+          if [[ -f out/homeview-system-volume-manifest.json ]] && grep -q '"boot_payload_root": true' out/homeview-system-volume-manifest.json; then
+            python3 homeview-legacy/scripts/probe_homeview_boot.py
+          else
+            echo "PAYLOAD_ROOT_NOT_BOOTED"
+          fi
       - name: Delete Apple system binaries and key from ephemeral runner
         if: always()
         run: |
@@ -609,6 +670,8 @@ jobs:
             out/genuine-darwin-boot-inputs.json
             out/homeview-original-kernelcache-driver-markers.json
             out/homeview-original-kext-iokit-personalities.json
+            out/homeview-firmwarekit-linkage.json
+            out/firmwarekit-extract.log
             out/homeview-original-iokit-cpp-methods.json
             out/homeview-original-ans2-vtable-disassembly.json
             out/homeview-original-ans2-shared-calls.json
@@ -624,6 +687,11 @@ jobs:
             out/homeview-payload-mtree.json
             out/homeview-static-trustcache.json
             out/trustcache-build.log
+            out/homeview-cryptex-system.json
+            out/cryptex-system-extract.log
+            out/homeview-dyld-cache.json
+            out/homeview-dyld-cache-volume.json
+            out/dyld-cache-extract.log
             out/homeview-system-mtree-hits.txt
             out/system-volume-extract.log
             out/system-trustcache-extract.log

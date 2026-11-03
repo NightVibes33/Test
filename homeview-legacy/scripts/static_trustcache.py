@@ -48,22 +48,36 @@ def build_with_tool(root, tool, output, limit=20000):
     return count_v1_entries(blob) or 0
 
 
-def write_boot_manifest(image, trustcache, output, firmware_dir):
+# A BreadBoard+launchd+dyld stub is not an installed system. Boot only a
+# tree large enough to be the payload root, and only when it fits the
+# ramdisk slot. qemu-sptm still has no NAND block device.
+MIN_BOOT_FILES = 1000
+RAMDISK_SLOT_BYTES = 6 * 1024 * 1024 * 1024
+
+
+def write_boot_manifest(image, trustcache, output, firmware_dir, extracted_files=0):
     image = Path(image)
     trustcache = Path(trustcache)
     size = image.stat().st_size if image.is_file() else 0
     entries = count_v1_entries(trustcache.read_bytes()) if trustcache.is_file() else None
-    boot = bool(size and entries and size <= 6 * 1024 * 1024 * 1024)
+    try:
+        extracted_files = int(extracted_files)
+    except (TypeError, ValueError):
+        extracted_files = 0
+    fits = bool(size and entries and size <= RAMDISK_SLOT_BYTES and extracted_files >= MIN_BOOT_FILES)
     manifest = {
-        "boot_payload_root": boot,
+        "boot_payload_root": fits,
         "trustcache_generated": bool(entries),
         "trustcache_entries": entries or 0,
         "trustcache_from_ota": False,
         "trustcache_is_restore_ramdisk": False,
         "springboard_file_present": False,
         "breadboard_extracted": True,
+        "extracted_file_count": extracted_files,
+        "partial_payload_root": extracted_files < MIN_BOOT_FILES,
         "image_bytes": size,
-        "fits_qemu_ramdisk_slot": boot,
+        "image_exceeds_ramdisk_slot": size > RAMDISK_SLOT_BYTES,
+        "fits_qemu_ramdisk_slot": fits,
         "guest_ram": "12G",
         "root_slot": "qemu-sptm ramdisk holding the extracted payload root",
         "nand_block_device_present": False,
@@ -73,7 +87,7 @@ def write_boot_manifest(image, trustcache, output, firmware_dir):
     text = json.dumps(manifest, indent=2) + "\n"
     Path(output).write_text(text)
     firmware = Path(firmware_dir)
-    if boot:
+    if fits:
         (firmware / "system-volume-manifest.json").write_text(text)
     elif image.is_file():
         image.unlink()
@@ -88,6 +102,7 @@ def main():
     parser.add_argument("--tool")
     parser.add_argument("--image")
     parser.add_argument("--firmware-dir")
+    parser.add_argument("--extracted-files", type=int, default=0)
     args = parser.parse_args()
     if args.build_root and args.tool:
         build_with_tool(args.build_root, args.tool, args.trustcache)
@@ -104,7 +119,9 @@ def main():
     Path(args.output).write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({"entries": count, "bytes": len(blob)}))
     if args.image and args.firmware_dir:
-        manifest = write_boot_manifest(args.image, args.trustcache, args.output + ".manifest-unused", args.firmware_dir)
+        manifest = write_boot_manifest(
+            args.image, args.trustcache, args.output + ".manifest-unused",
+            args.firmware_dir, args.extracted_files)
         # The count report stays at --output. The boot manifest is the firmware copy plus out/.
         Path(args.output).with_name("homeview-system-volume-manifest.json").write_text(
             Path(args.firmware_dir, "system-volume-manifest.json").read_text()

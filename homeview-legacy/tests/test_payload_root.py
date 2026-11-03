@@ -41,6 +41,59 @@ class PayloadRootTests(unittest.TestCase):
         self.assertEqual(trust.count_v1_entries(blob), 2)
         self.assertIsNone(trust.count_v1_entries(struct.pack("<I", 2) + b"\0" * 24))
 
+    def test_stub_root_is_not_booted(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            image = root / "system.dmg"
+            image.write_bytes(b"x" * 2048)
+            tc = root / "system.tc"
+            tc.write_bytes(struct.pack("<I", 1) + b"\x11" * 16 + struct.pack("<I", 1) + b"\x22" * 22)
+            manifest = trust.write_boot_manifest(image, tc, root / "out.json", root / "fw", extracted_files=12)
+            self.assertFalse(manifest["boot_payload_root"])
+            self.assertTrue(manifest["partial_payload_root"])
+            self.assertFalse(image.exists())
+            self.assertFalse(manifest["nand_block_device_present"])
+
+    def test_large_root_with_trustcache_is_marked_bootable(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            image = root / "system.dmg"
+            image.write_bytes(b"x" * 4096)
+            tc = root / "system.tc"
+            tc.write_bytes(struct.pack("<I", 1) + b"\x11" * 16 + struct.pack("<I", 1) + b"\x22" * 22)
+            fw = root / "fw"
+            fw.mkdir()
+            manifest = trust.write_boot_manifest(
+                image, tc, root / "out.json", fw, extracted_files=trust.MIN_BOOT_FILES)
+            self.assertTrue(manifest["boot_payload_root"])
+            self.assertTrue((fw / "system-volume-manifest.json").is_file())
+            self.assertTrue(image.exists())
+
+    def test_ans_probe_kextlog_includes_dependency_bit(self):
+        import sys
+        scripts = Path(__file__).resolve().parents[1] / "scripts"
+        sys.path.insert(0, str(scripts))
+        spec = importlib.util.spec_from_file_location("probe_homeview_boot", scripts / "probe_homeview_boot.py")
+        probe = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        args = probe.variant_boot_args("software-update-ans-binding-probe")
+        self.assertIn("kextlog=0xffff", args)
+        self.assertNotIn("kextlog=0xff ", args)
+        lines = probe.driver_evidence_lines(
+            "some kext line\nCouldn't alloc class \"AFKResource\"\nRTBuddy(ANS2): start\n")
+        self.assertEqual(lines[0], 'Couldn\'t alloc class "AFKResource"')
+        volume = load("record_volume_image.py")
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            blob = Path(temp) / "System.dmg"
+            blob.write_bytes(b"dmg")
+            report = volume.describe(temp, "system-cryptex")
+        self.assertTrue(report["dmg_present"])
+        self.assertFalse(report["booted"])
+        self.assertFalse(report["nand_block_device_present"])
+
 
 if __name__ == "__main__":
     unittest.main()

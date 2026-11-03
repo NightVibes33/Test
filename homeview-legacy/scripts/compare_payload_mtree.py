@@ -28,7 +28,11 @@ def file_paths(text):
     return paths
 
 
-def coverage(mtree_paths, present_paths):
+def link_count(text):
+    return sum(1 for line in text.splitlines() if "type=link" in line)
+
+
+def coverage(mtree_paths, present_paths, mtree_links=0, extracted_links=None):
     have = set(present_paths)
     missing = [path for path in mtree_paths if path not in have]
     bread = [path for path in mtree_paths if "BreadBoard.app/" in path or path.endswith("BreadBoard.app")]
@@ -40,6 +44,9 @@ def coverage(mtree_paths, present_paths):
         "missing_sample": missing[:15],
         "breadboard_mtree_files": len(bread),
         "breadboard_mtree_missing": len(bread_missing),
+        "mtree_link_count": mtree_links,
+        "extracted_symlink_count": extracted_links,
+        "ownership_xattr_preservation_proven": False,
         "mtree_is_not_proof_the_payload_is_that_dmg": True,
     }
 
@@ -49,12 +56,16 @@ def main():
     parser.add_argument("--mtree", required=True)
     parser.add_argument("--files", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--symlink-count", type=int, default=None)
     args = parser.parse_args()
     mtree = Path(args.mtree)
     listing = Path(args.files)
+    mtree_text = mtree.read_text(encoding="utf-8", errors="replace") if mtree.is_file() else ""
     report = coverage(
-        file_paths(mtree.read_text(encoding="utf-8", errors="replace") if mtree.is_file() else ""),
+        file_paths(mtree_text),
         [line.strip() for line in (listing.read_text(encoding="utf-8", errors="replace") if listing.is_file() else "").splitlines()],
+        link_count(mtree_text),
+        args.symlink_count,
     )
     Path(args.output).write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({"mtree_files": report["mtree_file_count"],
