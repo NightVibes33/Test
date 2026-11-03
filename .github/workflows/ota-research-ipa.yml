@@ -1,0 +1,61 @@
+name: OTA Research unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ios27-ota-airlift-research
+    paths:
+      - 'OTAResearch/**'
+      - '.github/workflows/ota-research-ipa.yml'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
+      - name: Fetch pinned AirCard FFI and pairing support
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/Mak5er/AirCard-iOS.git "$RUNNER_TEMP/AirCard-iOS"
+          git -C "$RUNNER_TEMP/AirCard-iOS" checkout 40640c4d827aeab8d798285b57d24fcf6be070d0
+          cp -R "$RUNNER_TEMP/AirCard-iOS/AirliftFFI.xcframework" OTAResearch/AirliftFFI.xcframework
+          mkdir -p OTAResearch/Support
+          for file in PairingController.swift NetworkStatus.swift Utilities.swift; do
+            cp "$RUNNER_TEMP/AirCard-iOS/ios-app/$file" OTAResearch/Support/
+          done
+          test -s OTAResearch/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+      - name: Generate project
+        run: |
+          cd OTAResearch
+          xcodegen generate --spec project.yml
+          plutil -lint Info.plist
+      - name: Build unsigned iOS app
+        run: |
+          xcodebuild -project OTAResearch/OTAResearch.xcodeproj \
+            -scheme OTAResearch -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" clean build
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/OTAResearch.app"
+          test -d "$app"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          ditto "$app" "$RUNNER_TEMP/ipa/Payload/OTAResearch.app"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/OTAResearch-iOS27-unsigned.ipa" Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OTAResearch-iOS27-unsigned-ipa
+          path: OTAResearch-iOS27-unsigned.ipa
+          if-no-files-found: error

@@ -1,0 +1,39 @@
+name: OTAResearch
+options:
+  bundleIdPrefix: com.nightvibes33
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  OTAResearch:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Support
+    dependencies:
+      - framework: AirliftFFI.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_NAME: OTAResearch
+        PRODUCT_BUNDLE_IDENTIFIER: com.nightvibes33.otaresearch
+        INFOPLIST_FILE: Info.plist
+        OTHER_LDFLAGS: "-lc++"
+        GENERATE_INFOPLIST_FILE: NO
+schemes:
+  OTAResearch:
+    build:
+      targets:
+        OTAResearch: all
