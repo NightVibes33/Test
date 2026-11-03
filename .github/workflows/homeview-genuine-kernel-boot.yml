@@ -463,12 +463,15 @@ jobs:
           : > "$LIST"
           if [[ -s "$AEA" && -n "$KEY" ]]; then
             ipsw ota ls --key-val "$KEY" "$AEA" > "$LIST" 2>out/ota-payload-index.err
+            ipsw ota ls --payload --pattern 'SpringBoard|BreadBoard|AppleFirmwareKit|sbin/launchd|usr/lib/dyld' \
+              --key-val "$KEY" "$AEA" >> "$LIST" 2>>out/ota-payload-index.err || true
           else
             echo "OTA_OR_KEY_MISSING" > "$LIST"
           fi
           python3 homeview-legacy/scripts/summarize_ota_payload_index.py \
             --listing "$LIST" --output out/homeview-payloadv2-index.json
           head -100 "$LIST" > out/ota-payload-index-head.txt
+          tail -80 "$LIST" > out/ota-payload-index-tail.txt
           python3 - <<'PY'
           import json, os, pathlib
           index = json.loads(pathlib.Path("out/homeview-payloadv2-index.json").read_text())
@@ -477,6 +480,42 @@ jobs:
           (dest / "system-volume-decision.txt").write_text((dmgs[0] if dmgs else "") + "\n")
           print("SYSTEM_DMG_CANDIDATE", dmgs[:4], "payload_lines", index.get("payload_line_count"))
           PY
+          # Payloadv2 is a YAA/pbzx archive. Extract SpringBoard itself when the
+          # payload listing names it; do not invent a root from an empty folder.
+          if [[ -s "$AEA" && -n "$KEY" ]] && grep -q SpringBoard "$LIST"; then
+            EXTRACT="$RUNNER_TEMP/system-root"
+            rm -rf "$EXTRACT"
+            mkdir -p "$EXTRACT"
+            ipsw ota extract -y -p 'SpringBoard.app/SpringBoard$|sbin/launchd$|usr/lib/dyld$|AppleFirmwareKit' \
+              -o "$EXTRACT" --key-val "$KEY" "$AEA" > out/system-root-extract.log 2>&1 || true
+            if find "$EXTRACT" -name SpringBoard -type f | grep -q .; then
+              hdiutil create -fs APFS -srcfolder "$EXTRACT" -volname System \
+                "$DEST/system-volume.dmg" > out/system-volume-create.log 2>&1 || true
+              python3 - <<'PY'
+              import json, os, pathlib
+              dest = pathlib.Path(os.environ["RUNNER_TEMP"]) / "hv-firmware"
+              image = dest / "system-volume.dmg"
+              size = image.stat().st_size if image.is_file() else 0
+              # Trustcache for this partial extract does not exist; do not borrow a ramdisk trustcache.
+              manifest = {
+                "springboard_file_present": True,
+                "trustcache_from_ota": False,
+                "trustcache_is_restore_ramdisk": False,
+                "source": "ipsw ota extract payloadv2",
+                "image_bytes": size,
+                "fits_qemu_ramdisk_slot": 0 < size <= 8 * 1024 * 1024 * 1024,
+                "root_slot": "qemu-sptm ramdisk",
+                "nand_block_device_present": False,
+                "springboard_boot_proven": False,
+                "note": "Partial payload extract is not a bootable system and is not booted without its trustcache.",
+              }
+              pathlib.Path("out/homeview-system-volume-manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
+              if not manifest["fits_qemu_ramdisk_slot"]:
+                  image.unlink(missing_ok=True)
+              PY
+            fi
+            rm -rf "$EXTRACT"
+          fi
           DMG_PATH="$(cat "$DEST/system-volume-decision.txt" 2>/dev/null || true)"
           if [[ -n "$DMG_PATH" && -s "$AEA" && -n "$KEY" ]]; then
             NAME="$(basename "$DMG_PATH")"
@@ -515,7 +554,7 @@ jobs:
           size = image.stat().st_size if image.is_file() else 0
           has_sb = "$HAS_SB" == "1"
           has_tc = bool("$FOUND_TC")
-          fits = has_sb and has_tc and 0 < size <= 1400 * 1024 * 1024
+          fits = has_sb and has_tc and 0 < size <= 8 * 1024 * 1024 * 1024
           manifest = {
             "springboard_file_present": has_sb,
             "trustcache_from_ota": has_tc,
@@ -560,6 +599,8 @@ jobs:
             out/homeview-restore-ramdisk-contents.json
             out/homeview-payloadv2-index.json
             out/ota-payload-index-head.txt
+            out/ota-payload-index-tail.txt
+            out/system-root-extract.log
             out/ota-payload-index.err
             out/homeview-system-volume-manifest.json
             out/homeview-system-mtree-hits.txt

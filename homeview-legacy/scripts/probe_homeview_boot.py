@@ -32,7 +32,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
             else "rd=md0 serial=3 -v -noprogress wdt=-1 wlan-olyhal-abort cpus=1"
                  + (" kextlog=0xff" if name == "software-update-ans-binding-probe" else "")
         ),
-        "-m", "6G" if name == "installed-system" else "2G",
+        "-m", "8G" if name == "installed-system" else "2G",
         "-display", "none", "-serial", "stdio",
         "-monitor", "unix:"+str(monitor)+",server=on,wait=off",
         "-d", "guest_errors,unimp", "-D", str(debug)

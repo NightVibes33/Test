@@ -31,7 +31,7 @@ class PayloadIndexTests(unittest.TestCase):
     def test_oversized_dyld_cache_does_not_fit_the_ramdisk_slot(self):
         text = "\n".join((
             "-rwxr-xr-x 2026-10-13T00:00:00Z 2 MB System/Library/CoreServices/SpringBoard.app/SpringBoard",
-            "-rwxr-xr-x 2026-10-13T00:00:00Z 2 GB System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64e",
+            "-rwxr-xr-x 2026-10-13T00:00:00Z 9 GB System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64e",
         ))
         result = mod.summarize(text)
         self.assertTrue(result["springboard_listed"])

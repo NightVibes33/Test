@@ -102,16 +102,69 @@ static void hv_trace_device(MachineState *ms, struct dtree_node *root,
     }
 }
 
-static void hv_load_ans_firmware(struct dtree_node *dt_root) {
+static uint64_t hv_ans_fw_base, hv_ans_fw_size;
+
+/* iBoot writes region-base/region-size before XNU. The stock J490 nub leaves
+ * them zero. Carve the file-sized window from the top of the DRAM this QEMU
+ * process actually maps, using dram-base from the same tree. No fixed PA.
+ */
+static void hv_carve_ans_firmware(MachineState *ms, struct dtree_node *dt_root) {
     const char *path = g_getenv("HOMEVIEW_ANS_FIRMWARE");
-    if (!path || !path[0]) return;
     struct dtree_node *nub = adt_find_node(dt_root, "arm-io/ans/iop-ans-nub");
-    uint64_t *basep = nub ? adt_get_prop_val(nub, "region-base") : NULL;
-    uint64_t *sizep = nub ? adt_get_prop_val(nub, "region-size") : NULL;
-    if (!basep || !sizep || !*basep || !*sizep) {
-        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW region_missing\\n");
+    size_t blen = nub ? adt_get_prop_len(nub, "region-base") : 0;
+    size_t slen = nub ? adt_get_prop_len(nub, "region-size") : 0;
+    uint64_t *basep = blen == sizeof(uint64_t) ? adt_get_prop_val(nub, "region-base") : NULL;
+    uint64_t *sizep = slen == sizeof(uint64_t) ? adt_get_prop_val(nub, "region-size") : NULL;
+    qemu_log_mask(LOG_UNIMP,
+        "HOMEVIEW_ANS_FW probe len_base=%zu len_size=%zu base=0x%" PRIx64
+        " size=0x%" PRIx64 "\\n",
+        blen, slen, basep ? *basep : 0, sizep ? *sizep : 0);
+    if (!path || !path[0] || !basep || !sizep) return;
+    if (*basep && *sizep) {
+        hv_ans_fw_base = *basep;
+        hv_ans_fw_size = *sizep;
         return;
     }
+    struct dtree_node *chosen = adt_find_node(dt_root, "chosen");
+    uint64_t *dram_base = chosen ? adt_get_prop_val(chosen, "dram-base") : NULL;
+    uint64_t *dram_size = chosen ? adt_get_prop_val(chosen, "dram-size") : NULL;
+    if (!dram_base || !dram_size || !*dram_size || !ms->ram_size) {
+        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW dram_missing\\n");
+        return;
+    }
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW open_failed\\n");
+        return;
+    }
+    off_t file_end = lseek(fd, 0, SEEK_END);
+    close(fd);
+    if (file_end <= 0) return;
+    uint64_t carve = ((uint64_t)file_end + 0x3fff) & ~0x3fffull;
+    uint64_t usable = ms->ram_size < *dram_size ? ms->ram_size : *dram_size;
+    if (carve >= usable || *dram_base + usable < carve) {
+        qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW carve_does_not_fit ram=0x%" PRIx64 "\\n", usable);
+        return;
+    }
+    *basep = *dram_base + usable - carve;
+    *sizep = carve;
+    if (*dram_size > carve) *dram_size -= carve;
+    hv_ans_fw_base = *basep;
+    hv_ans_fw_size = *sizep;
+    qemu_log_mask(LOG_UNIMP,
+        "HOMEVIEW_ANS_FW carved base=0x%" PRIx64 " size=0x%" PRIx64 "\\n",
+        hv_ans_fw_base, hv_ans_fw_size);
+}
+
+static void hv_load_ans_firmware(struct dtree_node *dt_root) {
+    const char *path = g_getenv("HOMEVIEW_ANS_FIRMWARE");
+    (void)dt_root;
+    if (!path || !path[0] || !hv_ans_fw_base || !hv_ans_fw_size) {
+        if (path && path[0]) qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW region_missing\\n");
+        return;
+    }
+    uint64_t *basep = &hv_ans_fw_base;
+    uint64_t *sizep = &hv_ans_fw_size;
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
         qemu_log_mask(LOG_UNIMP, "HOMEVIEW_ANS_FW open_failed\\n");
@@ -161,7 +214,11 @@ def patch(text):
         raise ValueError("Upstream qemu-sptm machine layout changed; refusing unsafe patch")
     return (text.replace(INCLUDE, INCLUDE + '\n#include "qemu/log.h"')
         .replace('static void init_sep(', FUNCTION + '\nstatic void init_sep(')
-        .replace(ANCHOR, ANCHOR + '\n' + CALL))
+        .replace(ANCHOR, ANCHOR + '\n' + CALL)
+        .replace(
+            '    struct dtree_node *chosen_node = adt_find_node(dt_root, "chosen");',
+            '    hv_carve_ans_firmware(ms, dt_root);\n'
+            '    struct dtree_node *chosen_node = adt_find_node(dt_root, "chosen");'))
 
 def main():
     parser=argparse.ArgumentParser()

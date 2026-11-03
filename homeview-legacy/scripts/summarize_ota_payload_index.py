@@ -17,7 +17,9 @@ RAMDISK_DMG = (
 )
 # qemu-sptm presents the root as a ramdisk in guest RAM. A larger image cannot
 # be attached: this machine has no NAND block device.
-GUEST_RAMDISK_LIMIT = 1400 * 1024 * 1024
+# qemu-sptm copies the ramdisk into guest RAM. 8 GiB is the largest root this
+# job will try; bigger images need the ANS block device, which is not ready.
+GUEST_RAMDISK_LIMIT = 8 * 1024 * 1024 * 1024
 SIZE = re.compile(r"(\d+(?:\.\d+)?)\s*([kKmMgG]i?B)")
 UNITS = {
     "kb": 1000, "mb": 1000 ** 2, "gb": 1000 ** 3,
