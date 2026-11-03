@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var diagnostics = AirliftDiagnostics()
+    @StateObject private var pairing = PairingController.shared
     @State private var showPairingImporter = false
     @State private var showShare = false
     @State private var shareItems: [Any] = []
@@ -59,14 +60,57 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    GroupBox("3 · AirLift diagnostics (experimental)") {
+                    GroupBox("3 · Pair this iPhone (no Mac)") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Powered by AirCard-iOS AirliftFFI. iOS 27.0.1 support is reported upstream; the exploit is reported patched in iOS 27.2 beta 3+. A paired-device file and working local tunnel are required.")
+                            Text("Enable LocalDevVPN's local-tunnel mode, then pair this iPhone through iOS 27 Developer Mode. This happens entirely on the device.")
+                                .font(.subheadline)
+                            Button("Open LocalDevVPN") {
+                                guard let url = URL(string: "localdevvpn://") else { return }
+                                if UIApplication.shared.canOpenURL(url) {
+                                    UIApplication.shared.open(url)
+                                } else {
+                                    diagnostics.status = "Unable to launch LocalDevVPN. Open the installed LocalDevVPN app manually and activate the local tunnel."
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            Button("Check local tunnel") { diagnostics.refreshTunnelStatus() }
+                                .buttonStyle(.bordered)
+                            Text(diagnostics.tunnelStatus)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button(pairing.running ? "Pairing in progress…" : "Pair this iPhone") {
+                                startOnDevicePairing()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(pairing.running || diagnostics.probing || diagnostics.monitoring)
+                            if pairing.running {
+                                Button("Cancel pairing") { pairing.softCancel() }
+                                    .buttonStyle(.bordered)
+                            }
+                            Text(pairing.pairingStatus)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if let pin = pairing.pairingPIN {
+                                Text("Pairing PIN: \\(pin)")
+                                    .font(.title2.monospacedDigit().bold())
+                                    .textSelection(.enabled)
+                            }
+                            Text("While pairing: Settings → Privacy & Security → Developer Mode → Pair with OTA27 Blocker. Enter the PIN shown above. Return to OTA27 after approval.")
+                                .font(.footnote)
+                            Text(diagnostics.pairingPath == nil ? "Pairing record: not present" : "Pairing record: ready")
+                                .font(.caption.weight(.medium))
+                            Button("Import an existing pairing file (optional)") { showPairingImporter = true }
+                                .buttonStyle(.bordered)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    GroupBox("4 · AirLift diagnostics (experimental)") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Powered by AirCard-iOS AirliftFFI. iOS 27.0.1 support is reported upstream; the exploit is reported patched in iOS 27.2 beta 3+. An on-device pairing record and working local tunnel are required.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
-                            Button("Import pairing file") { showPairingImporter = true }
-                                .buttonStyle(.bordered)
-                            Text(diagnostics.pairingPath == nil ? "Pairing: none" : "Pairing: imported")
+                            Text(diagnostics.pairingPath == nil ? "Pairing: none" : "Pairing: ready")
                                 .font(.caption)
                             TextField("Tunnel IP", text: $diagnostics.targetHost)
                                 .textInputAutocapitalization(.never)
@@ -133,6 +177,25 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showShare) {
             ShareController(items: shareItems)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            diagnostics.refreshTunnelStatus()
+            diagnostics.restoreStoredPairing()
+        }
+    }
+
+    private func startOnDevicePairing() {
+        guard !pairing.running else { return }
+        diagnostics.status = "Starting on-device pairing. Approve the pairing PIN in Developer Mode."
+        Task {
+            do {
+                let path = try await pairing.startAndWait()
+                diagnostics.adoptPairing(at: path)
+            } catch is CancellationError {
+                diagnostics.status = "On-device pairing cancelled."
+            } catch {
+                diagnostics.status = "On-device pairing failed: \\(error.localizedDescription)"
+            }
         }
     }
 

@@ -13,7 +13,16 @@
     <key>CFBundleVersion</key><string>1</string>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Connect to the user's own paired iPhone over a local tunnel for AirLift software-update diagnostics.</string>
+    <string>Advertise an on-device pairing host and connect to this iPhone through the local VPN tunnel for OTA diagnostics.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_remotepairing-pairable-host._tcp</string>
+        <string>_ota27probe._tcp</string>
+    </array>
+    <key>UIBackgroundModes</key>
+    <array><string>audio</string></array>
+    <key>LSApplicationQueriesSchemes</key>
+    <array><string>localdevvpn</string></array>
     <key>UIFileSharingEnabled</key><true/>
     <key>LSSupportsOpeningDocumentsInPlace</key><true/>
     <key>UILaunchScreen</key><dict/>

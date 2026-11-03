@@ -12,15 +12,69 @@ final class AirliftDiagnostics: ObservableObject {
 
     @Published var pairingPath: String?
     @Published var targetHost = "10.7.0.1"
+    @Published var tunnelStatus = "Tunnel status not checked"
     @Published var selectedTarget = "/var/mobile/Library/Caches"
     @Published var monitoring = false
     @Published var probing = false
-    @Published var status = "Import a local pairing file to enable AirLift diagnostics."
+    @Published var status = "Pair this iPhone on-device or import a pairing file."
     @Published var canaryResult = "Not tested"
     @Published var logs: [String] = []
 
     init() {
         Self.active = self
+        restoreStoredPairing()
+        refreshTunnelStatus()
+    }
+
+    func restoreStoredPairing() {
+        let path = PairingController.pairingFilePath()
+        let bytes = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
+        guard bytes > 0 else { return }
+        pairingPath = path
+        if !monitoring && !probing {
+            status = "A local pairing record is ready. Start LocalDevVPN before using AirLift."
+        }
+    }
+
+    func adoptPairing(at path: String) {
+        let bytes = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
+        guard bytes > 0 else {
+            status = "On-device pairing did not produce a usable record."
+            return
+        }
+        pairingPath = PairingController.syncCanonicalPairingFile(from: path)
+        status = "On-device pairing complete. Start LocalDevVPN and scan OTA logs."
+        append("On-device RPPairing completed without a Mac (\\(bytes) bytes).")
+    }
+
+    func refreshTunnelStatus() {
+        let (vpn, _, detail) = NetworkStatus.summarize(deviceIP: targetHost)
+        tunnelStatus = vpn
+            ? "Tunnel interface detected — not proof LocalDevVPN is connected to device services."
+            : "No tunnel interface detected. Activate LocalDevVPN in local-tunnel mode."
+        append("Tunnel check: \\(tunnelStatus) Interfaces: \\(detail)")
+    }
+
+    /// Match AirCard's route setup: local VPN address first, then self-device candidate hosts.
+    nonisolated private static func configureTunnel(host input: String) {
+        let host = NetworkStatus.host(input)
+        if host.isEmpty {
+            al_clear_target_hosts()
+            return
+        }
+        host.withCString { _ = al_set_target_host($0) }
+        var candidates = [host]
+        for candidate in NetworkStatus.tunnelHostCandidates() where !candidates.contains(candidate) {
+            candidates.append(candidate)
+        }
+        let cStrings = candidates.map { strdup($0) }
+        defer { cStrings.forEach { free($0) } }
+        var ptrs = cStrings.map { UnsafePointer($0) }
+        ptrs.withUnsafeBufferPointer { buffer in
+            if let base = buffer.baseAddress {
+                _ = al_set_target_hosts(base, buffer.count)
+            }
+        }
     }
 
     func importPairing(from url: URL) {
@@ -71,7 +125,7 @@ final class AirliftDiagnostics: ObservableObject {
         status = "Connecting to the paired device's syslog stream…"
         let host = targetHost.trimmingCharacters(in: .whitespacesAndNewlines)
         DispatchQueue.global(qos: .userInitiated).async {
-            host.withCString { _ = al_set_target_host($0) }
+            Self.configureTunnel(host: host)
             var error: UnsafeMutablePointer<CChar>? = nil
             let rc = path.withCString { pairingCString in
                 al_syslog_stream_start(pairingCString, { _, line in
@@ -101,7 +155,7 @@ final class AirliftDiagnostics: ObservableObject {
     func runCanary() {
         guard !monitoring, !probing, let path = pairingPath,
               Self.canaryTargets.contains(selectedTarget) else {
-            status = "Import pairing and select an allowed test target first."
+            status = "Pair the device and select an allowed test target first."
             return
         }
         probing = true
@@ -109,7 +163,7 @@ final class AirliftDiagnostics: ObservableObject {
         let target = selectedTarget
         let host = targetHost.trimmingCharacters(in: .whitespacesAndNewlines)
         DispatchQueue.global(qos: .userInitiated).async {
-            host.withCString { _ = al_set_target_host($0) }
+            Self.configureTunnel(host: host)
             var output: UnsafeMutablePointer<CChar>? = nil
             var error: UnsafeMutablePointer<CChar>? = nil
             let rc = path.withCString { pairingCString in
