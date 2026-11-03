@@ -69,6 +69,8 @@ class KernelcacheMatchingTests(unittest.TestCase):
         found = result["AFK_and_firmware_kit_bundles"]
         self.assertEqual(found[0]["bundle_id"], "com.apple.driver.AppleFirmwareKit")
         self.assertFalse(found[0]["guest_start_observed"])
+        self.assertEqual(found[0]["personalities"][0]["selectors"]["IOProviderClass"],
+                         "IOResources")
 
     def test_documented_json_envelope_and_missing_metadata(self):
         result = a.summarize({"kexts": [{"id": "com.apple.driver.AppleDCP"}]})

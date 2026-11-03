@@ -166,18 +166,27 @@ def afk_census(raw):
         if not isinstance(bundle, str) or not BUNDLE_RE.fullmatch(bundle):
             continue
         classes = []
-        for raw_personality in personality_map(item).values():
-            if not isinstance(raw_personality, dict):
+        personalities = []
+        for name, raw_personality in personality_map(item).items():
+            if not isinstance(raw_personality, dict) or not isinstance(name, str):
                 continue
             io_class = raw_personality.get("IOClass")
             if isinstance(io_class, str) and io_class.startswith("AFK"):
                 classes.append(io_class[:64])
                 if io_class == "AFKResource":
                     declared = True
+            if io_class == "AFKResource" or AFK_BUNDLE.search(bundle):
+                personalities.append({
+                    "personality_name": name[:96],
+                    "selectors": {k: compact(raw_personality.get(k))
+                                  for k in FIELDS
+                                  if compact(raw_personality.get(k)) is not None},
+                })
         if (AFK_BUNDLE.search(bundle) or classes) and len(bundles) < 40:
             bundles.append({
                 "bundle_id": bundle,
                 "afk_ioclasses": sorted(set(classes))[:12],
+                "personalities": personalities[:8],
                 "declares_IOClass_AFKResource": "AFKResource" in classes,
                 "metaclass_registered_in_guest": False,
                 "guest_start_observed": False,
