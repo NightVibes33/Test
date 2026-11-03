@@ -48,6 +48,9 @@ on:
       - 'homeview-legacy/tests/test_sibling_firmwares.py'
       - 'homeview-legacy/scripts/assess_qemu_disk.py'
       - 'homeview-legacy/tests/test_qemu_disk.py'
+      - 'homeview-legacy/scripts/vphone_homeview_path.py'
+      - 'homeview-legacy/tests/test_vphone_homeview_path.py'
+      - 'homeview-legacy/scripts/probe_vphone_pv_boot.py'
       - 'homeview-legacy/scripts/inventory_restore_ramdisk.py'
       - 'homeview-legacy/tests/test_restore_ramdisk_inventory.py'
       - 'homeview-legacy/scripts/scan_homeview_ota_layout.py'
@@ -112,6 +115,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_fileset_symbols.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_sibling_firmwares.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_qemu_disk.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_vphone_homeview_path.py' -v
           python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
           python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
       - name: Compile real QEMU API v7 observer before expensive Apple firmware download
@@ -131,6 +135,104 @@ jobs:
           test -s "$RUNNER_TEMP/homeview-tcg-pc-trace.so"
           nm -D "$RUNNER_TEMP/homeview-tcg-pc-trace.so" | grep -q 'qemu_plugin_install'
           echo 'TCG_PLUGIN_API7_COMPILED_FAST: signature and headers verified'
+
+  vphone-pv-boot:
+    needs: fast-evidence-validation
+    runs-on: xcode-27
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore or build qemu without paravirtual graphics
+        run: |
+          set -e
+          brew install blacktop/tap/ipsw || brew install ipsw
+          mkdir -p out emulator/build
+      - name: Restore reproducible Darwin QEMU build cache
+        id: vphone-qemu-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: emulator/build/qemu-system-aarch64
+          key: homeview-macos27-qemu-sptm-bad6336fb24-plugin-v1-trace-${{ hashFiles('homeview-legacy/scripts/patch_qemu_mmio_trace.py') }}
+      - name: Build qemu-sptm with PVG disabled
+        if: steps.vphone-qemu-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/jprx/qemu-sptm.git emulator
+          git -C emulator checkout --detach bad6336fb24211f8c4e8e946c259bd5b12417340
+          python3 homeview-legacy/scripts/patch_qemu_mmio_trace.py emulator/hw/arm/darwin.c
+          mkdir -p emulator/build
+          cd emulator/build
+          # PGTask_t is obsoleted on macOS 27, so the paravirtual display cannot be compiled.
+          ../configure --target-list=aarch64-softmmu --disable-pvg --disable-werror \
+            --disable-docs --disable-gtk --disable-sdl --enable-plugins
+          make -j 3
+      - name: Record the vphone-cli HomeView path
+        run: |
+          sw_vers
+          python3 homeview-legacy/scripts/vphone_homeview_path.py \
+            --macos-major 27 --output out/homeview-vphone-path.json
+      - name: Extract the cloudOS 26.4 vphone600 kernel and ramdisk
+        run: |
+          set +e
+          set +x
+          DEST="$RUNNER_TEMP/hv-vphone"
+          mkdir -p "$DEST" out
+          curl -fL --retry 3 --connect-timeout 30 --max-time 1800 \
+            -o "$RUNNER_TEMP/cloudos264.zip" \
+            "https://updates.cdn-apple.com/private-cloud-compute/c0ecdb4b310cf5239ab2b248dd3098eec297dc5aa3bbe6ada27273262b0b8b64"
+          test "$(stat -f %z "$RUNNER_TEMP/cloudos264.zip")" = 1199454323
+          unzip -j -o "$RUNNER_TEMP/cloudos264.zip" \
+            kernelcache.research.vphone600 \
+            Firmware/all_flash/DeviceTree.vphone600ap.im4p \
+            Firmware/sptm.vresearch1.release.im4p \
+            Firmware/txm.iphoneos.research.im4p \
+            094-39914-031.dmg \
+            Firmware/094-39914-031.dmg.trustcache \
+            -d "$DEST"
+          unwrap() {
+            local src="$1" dest="$2"
+            if [[ ! -s "$src" ]]; then return 0; fi
+            if head -c 4 "$src" | grep -q IM4P; then
+              ipsw img4 im4p extract "$src" -o "$dest"
+            else
+              cp "$src" "$dest"
+            fi
+          }
+          unwrap "$DEST/kernelcache.research.vphone600" "$DEST/bootkc"
+          unwrap "$DEST/DeviceTree.vphone600ap.im4p" "$DEST/dtree.raw"
+          unwrap "$DEST/sptm.vresearch1.release.im4p" "$DEST/sptm"
+          unwrap "$DEST/txm.iphoneos.research.im4p" "$DEST/txm"
+          unwrap "$DEST/094-39914-031.dmg.trustcache" "$DEST/ramdisk.tc"
+          cp "$DEST/094-39914-031.dmg" "$DEST/ramdisk.dmg"
+          git clone --depth 1 https://github.com/jprx/darwin-vm.git darwin-tools
+          python3 darwin-tools/dt_fixup.py -nvram darwin-tools/nvram.bin \
+            "$DEST/dtree.raw" "$DEST/dtree" > out/vphone-dt-fixup.log 2>&1 || true
+          rm -f "$RUNNER_TEMP/cloudos264.zip"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "hv-vphone"
+          report = {path.name: path.stat().st_size for path in root.iterdir() if path.is_file()}
+          Path("out/vphone-component-sizes.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps(report))
+          PY
+      - name: Boot the vphone600 research kernel
+        run: python3 homeview-legacy/scripts/probe_vphone_pv_boot.py
+      - name: Publish the vphone kernel boot log, never Apple binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeview-vphone600-boot-evidence
+          path: |
+            out/homeview-vphone-path.json
+            out/homeview-vphone-pv-result.json
+            out/vphone-component-sizes.json
+            out/vphone-dt-fixup.log
+            out/native-homeview-vphone600-serial.log
+            out/qemu-vphone600.log
+            out/native-homeview-guest-frame-vphone600.ppm
+            out/native-homeview-guest-frame-vphone600.png
+          if-no-files-found: ignore
+          retention-days: 7
 
   payload-root:
     needs: fast-evidence-validation
