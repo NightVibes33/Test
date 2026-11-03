@@ -114,6 +114,62 @@ class ANS2BootTests(unittest.TestCase):
         self.assertTrue(report["experimental_QEMU_MMIO"]["zero_hits_are_inconclusive"])
         self.assertTrue(report["experimental_QEMU_MMIO"]["PC_trace_candidate_budget_exhausted"])
 
+    def test_historical_hits_share_one_slide_and_flag_the_outlier(self):
+        log = (
+            "HOMEVIEW_PC_TRACE initialized targets=8 signatures=8 read_only=true\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009afa1bc "
+            "guest=0xfffffff02a35b730 cpu=0\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff00a1112a0 "
+            "guest=0xfffffff02a1112a0 cpu=0\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b1d1e4 "
+            "guest=0xfffffff029b1d1e4 cpu=0\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b0dabc "
+            "guest=0xfffffff029b0dabc cpu=0\n")
+        report = a.compare("no service", PROBES + "unable to get framebuffer\n", log)
+        qemu = report["experimental_QEMU_MMIO"]
+        self.assertEqual(qemu["kernelcache_slide_consensus"], "0x20000000")
+        self.assertEqual(qemu["original_code_fingerprint_hit_count"], 4)
+        off = [hit for hit in qemu["original_code_fingerprint_hits"]
+               if not hit["on_consensus_kernelcache_slide"]]
+        self.assertEqual(len(off), 1)
+        self.assertEqual(off[0]["static_vaddr"], "0xfffffff009afa1bc")
+        self.assertEqual(report["storage_stop"],
+                         "probe_scores_logged_controller_start_absent_no_ANS_MMIO")
+        self.assertEqual(report["framebuffer_stop"],
+                         "userspace_display_service_missing_no_DCP_MMIO")
+        self.assertFalse(report["functional_ANS2_device_verified"])
+        self.assertFalse(report["normal_installed_HomeView_or_BreadBoard_boot_verified"])
+
+    def test_active_instrumentation_with_no_hit_is_not_a_storage_success(self):
+        trace = (
+            "HOMEVIEW_PC_TRACE initialized targets=8 signatures=8 read_only=true\n"
+            "HOMEVIEW_PC_TRACE exec_callback_fired cpu=0 guest=0x1000 seq=1 time_ns=1\n"
+            "HOMEVIEW_PC_TRACE summary translations=3 exec_callbacks=1 "
+            "fingerprint_hits=0 exact_pc_hits=0 instrumentation_active=true "
+            "classification=no_hit_instrumentation_active\n")
+        report = a.compare("control", "Waiting for NAND service to publish\n", "", trace)
+        qemu = report["experimental_QEMU_MMIO"]
+        self.assertTrue(qemu["exec_callbacks_confirmed"])
+        self.assertTrue(qemu["configured_fingerprints_absent_while_instrumentation_active"])
+        self.assertEqual(qemu["original_code_fingerprint_hit_count"], 0)
+        self.assertFalse(qemu["zero_hits_are_inconclusive"])
+        self.assertFalse(report["functional_ANS2_device_verified"])
+        self.assertNotEqual(report["storage_stop"],
+                            "probe_scores_logged_controller_start_absent_no_ANS_MMIO")
+
+    def test_class_and_slot_survive_trace_parse(self):
+        trace = (
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff000001000 "
+            "guest=0xfffffff020001000 cpu=0 mode=cross-tb class=TestController "
+            "slot=85 seq=2 time_ns=20 slide=0x20000000 phase=executed\n")
+        observed = a.observe_qemu(trace)
+        hit = observed["original_code_fingerprint_hits"][0]
+        self.assertEqual(hit["class"], "TestController")
+        self.assertEqual(hit["vtable_slot"], 85)
+        self.assertEqual(hit["mode"], "cross-tb")
+        self.assertEqual(hit["kernelcache_slide"], "0x20000000")
+        self.assertEqual(observed["DCP_or_SGX_MMIO_access_count"], 0)
+
     def test_bounded_log_reader(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "input.log"

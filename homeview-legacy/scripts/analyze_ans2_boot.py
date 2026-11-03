@@ -19,7 +19,50 @@ PC_CONFIG = re.compile(r"HOMEVIEW_PC_TRACE initialized targets=(\d+)", re.I)
 PC_HIT = re.compile(r"HOMEVIEW_PC_TRACE hit target=(0x[0-9a-f]{8,16}) cpu=(\d+)", re.I)
 FINGERPRINT_HIT = re.compile(
     r"HOMEVIEW_PC_TRACE fingerprint_hit static=(0x[0-9a-f]{8,16}) "
-    r"guest=(0x[0-9a-f]{8,16}) cpu=(\d+)", re.I)
+    r"guest=(0x[0-9a-f]{8,16}) cpu=(\d+)"
+    r"(?: mode=([A-Za-z0-9:_-]+))?"
+    r"(?: class=([A-Za-z_][A-Za-z0-9_]*))?"
+    r"(?: slot=(\d+))?", re.I)
+DCP_ACCESS = re.compile(
+    r"HOMEVIEW_MMIO_TRACE (read|write) (arm-io/(?:dcp|dcp0-expert|sgx))\s+off=0x([0-9a-f]+)",
+    re.I)
+
+
+def fingerprint_record(match):
+    static = int(match.group(1), 16)
+    guest = int(match.group(2), 16)
+    delta = (guest - static) & 0xFFFFFFFFFFFFFFFF
+    aligned = bool(delta) and delta < 0x1000000000 and (delta & 0x3FFF) == 0
+    record = {
+        "static_vaddr": match.group(1).lower(),
+        "runtime_guest_vaddr": match.group(2).lower(),
+        "cpu": int(match.group(3)),
+        "kernelcache_slide": hex(delta) if aligned else None,
+        "slide_is_16k_aligned": aligned,
+    }
+    if match.group(4):
+        record["mode"] = match.group(4)
+    if match.group(5):
+        record["class"] = match.group(5)
+    if match.group(6):
+        record["vtable_slot"] = int(match.group(6))
+    return record
+
+
+def consensus_slide(hits):
+    counts = {}
+    for hit in hits:
+        slide = hit.get("kernelcache_slide")
+        if slide:
+            counts[slide] = counts.get(slide, 0) + 1
+    if not counts:
+        return None
+    best = max(counts, key=lambda slide: (counts[slide], slide))
+    if len(hits) > 1 and counts[best] < 2 and len(counts) != 1:
+        return None
+    for hit in hits:
+        hit["on_consensus_kernelcache_slide"] = hit.get("kernelcache_slide") == best
+    return best
 
 
 def observe_serial(text):
@@ -44,6 +87,8 @@ def observe_serial(text):
         "NAND_service_wait_count": text.lower().count("waiting for nand service to publish"),
         "NAND_service_publish_logged": bool(re.search(
             r"NAND service (?:published|found|available)\b", text, re.I)),
+        "framebuffer_missing_count": text.lower().count("unable to get framebuffer"),
+        "display_list_missing_logged": "unable to get display list" in text.lower(),
         "AFKResource_allocation_error_count": text.count('Couldn\'t alloc class "AFKResource"'),
         "Apple_runtime_RTBuddy_or_probe_evidence": bool(buddy_starts or ranked),
         "RTKit_mailbox_handshake_completed_proven": False,
@@ -75,9 +120,8 @@ def observe_qemu(text):
             for m in list(PC_HIT.finditer(text))[:24]],
         "PC_hit_proves_dispatch_not_method_completion": True,
         "original_code_fingerprint_hits": [
-            {"static_vaddr": m.group(1), "runtime_guest_vaddr": m.group(2),
-             "cpu": int(m.group(3))}
-            for m in list(FINGERPRINT_HIT.finditer(text))[:16]],
+            fingerprint_record(m) for m in list(FINGERPRINT_HIT.finditer(text))[:16]],
+        "DCP_or_SGX_MMIO_access_count": len(list(DCP_ACCESS.finditer(text))),
         "fingerprint_match_is_not_an_ANS_driver_start_proof": True,
         "no_PC_hits_does_not_exclude_KASLR_or_missing_targets": True,
     }
@@ -104,14 +148,26 @@ def compare(control_text, experiment_text, qemu_text="", pc_trace_text=""):
         for address, cpu in sorted({(entry["target_vaddr"], entry["cpu"])
                                     for entry in hits})][:24]
     qemu["PC_hit_count"] = len(qemu["observed_guest_PC_hits"])
-    hits = qemu["original_code_fingerprint_hits"] + serial_pc["original_code_fingerprint_hits"]
+    merged = {}
+    for hit in (qemu["original_code_fingerprint_hits"] +
+                serial_pc["original_code_fingerprint_hits"]):
+        key = (hit["static_vaddr"], hit["runtime_guest_vaddr"], hit["cpu"])
+        merged.setdefault(key, hit)
     qemu["original_code_fingerprint_hits"] = [
-        {"static_vaddr": static, "runtime_guest_vaddr": guest, "cpu": cpu}
-        for static, guest, cpu in sorted({
-            (h["static_vaddr"], h["runtime_guest_vaddr"], h["cpu"])
-            for h in hits})][:16]
+        merged[key] for key in sorted(merged)][:16]
     qemu["original_code_fingerprint_hit_count"] = len(
         qemu["original_code_fingerprint_hits"])
+    qemu["kernelcache_slide_consensus"] = consensus_slide(
+        qemu["original_code_fingerprint_hits"])
+    trace_blob = "\n".join((qemu_text, pc_trace_text, experiment_text))
+    qemu["exec_callbacks_confirmed"] = (
+        "exec_callback_fired" in trace_blob or
+        "instrumentation_active=true" in trace_blob)
+    qemu["configured_fingerprints_absent_while_instrumentation_active"] = (
+        "classification=no_hit_instrumentation_active" in trace_blob and
+        qemu["original_code_fingerprint_hit_count"] == 0)
+    dcp = qemu["DCP_or_SGX_MMIO_access_count"] + serial_pc["DCP_or_SGX_MMIO_access_count"]
+    qemu["DCP_or_SGX_MMIO_access_count"] = dcp
     # Even with a complete trace, no hits cannot rule out incorrect static
     # addresses, a different KASLR slide, or unmapped original code.
     qemu["zero_hits_are_not_proof_of_driver_absence"] = True
@@ -135,6 +191,21 @@ def compare(control_text, experiment_text, qemu_text="", pc_trace_text=""):
             - {v["class"] for v in control["ANS_controller_probe_candidates"]}),
         "result": result,
         "functional_ANS2_device_verified": False,
+        "storage_stop": (
+            "probe_scores_logged_controller_start_absent_no_ANS_MMIO"
+            if trial["ANS_controller_probe_count"] and
+            not trial["ANS_controller_start_observed"] and
+            qemu["ANS_or_SART_MMIO_access_count"] == 0
+            else "ANS_MMIO_observed_protocol_not_implemented"
+            if qemu["ANS_or_SART_MMIO_access_count"]
+            else "no_ANS_MMIO_observed"),
+        "framebuffer_stop": (
+            "userspace_display_service_missing_no_DCP_MMIO"
+            if trial["framebuffer_missing_count"] and
+            qemu["DCP_or_SGX_MMIO_access_count"] == 0
+            else "DCP_MMIO_observed_display_not_implemented"
+            if qemu["DCP_or_SGX_MMIO_access_count"]
+            else "framebuffer_error_not_logged"),
         "normal_installed_HomeView_or_BreadBoard_boot_verified": False,
         "interpretation": (
             "Apple RTBuddy start() and ANS2 controller probe() scores demonstrate "

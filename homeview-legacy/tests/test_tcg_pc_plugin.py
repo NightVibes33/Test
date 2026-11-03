@@ -1,5 +1,7 @@
 import importlib.util
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +24,10 @@ class TCGPCPluginTests(unittest.TestCase):
         self.assertIn("HOMEVIEW_TCG_PC_TRACE_FILE", source)
         self.assertIn("candidate_budget_exhausted=true", source)
         self.assertIn("complete_in_tb", source)
+        self.assertIn("exec_callback_fired", source)
+        self.assertIn("classification=no_hit_instrumentation_active", source)
+        self.assertIn("hv_prefix_kind", source)
+        self.assertIn("qemu_plugin_register_atexit_cb", source)
         self.assertNotIn("volatile int hooked;", source)
         self.assertIn("QEMU_PLUGIN_CB_NO_REGS", source)
         self.assertIn("__sync_bool_compare_and_swap", source)
@@ -46,6 +52,33 @@ class TCGPCPluginTests(unittest.TestCase):
         self.assertIn('fingerprint_args', code)
         self.assertIn('if name == "software-update-ans-binding-probe":', code)
         self.assertIn('argv[argv.index("-d") + 1] += ",plugin"', code)
+
+    def test_deterministic_fingerprint_selftest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            binary = Path(temp) / "hv-selftest"
+            trace = Path(temp) / "trace.log"
+            subprocess.check_call([
+                "cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                "-DHOMEVIEW_FINGERPRINT_SELFTEST", "-o", str(binary), str(SRC)])
+            completed = subprocess.run([str(binary), str(trace)],
+                                       check=True, capture_output=True, text=True)
+            text = completed.stdout
+            self.assertIn("PASS POSITIVE full", text)
+            self.assertIn("PASS NEGATIVE single-byte mutation", text)
+            self.assertIn("PASS CROSS_TB prefix", text)
+            self.assertIn("PASS CROSS_TB short prefix rejected", text)
+            self.assertIn("PASS CROSS_TB tail mutation", text)
+            self.assertIn("PASS RELOCATION aligned slide", text)
+            self.assertIn("PASS RELOCATION unaligned rejected", text)
+            self.assertIn("execution=false", text)
+            self.assertIn("phase=executed", text)
+            self.assertIn("classification=no_hit_instrumentation_active", text)
+            saved = trace.read_text()
+            self.assertIn("HOMEVIEW_PC_TRACE initialized", saved)
+            self.assertIn("execution=false", saved)
+            self.assertIn("phase=executed", saved)
+            self.assertIn("classification=hits_recorded", saved)
+            self.assertNotIn("execution=false", saved.split("fingerprint_hit", 1)[1].split("\n", 1)[0])
 
 if __name__ == "__main__":
     unittest.main()

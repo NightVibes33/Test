@@ -442,6 +442,7 @@ jobs:
             out/homeview-dtree-dock-neutralized.json
             out/native-homeview-*-serial.log
             out/native-homeview-guest-frame-*.ppm
+            out/native-homeview-guest-frame-*.png
             out/homeview-*-result.json
             out/qemu-*.log
             out/homeview-tcg-pc-*.log

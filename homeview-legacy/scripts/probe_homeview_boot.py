@@ -113,6 +113,9 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
             answer["qemu_timed_out"] = True
     finally:
         if proc.poll() is None:
+            late = capture(monitor, screendump)
+            if late.get("qemu_monitor_surface_captured"):
+                screen_result = late
             proc.terminate()
         try:
             rest, _ = proc.communicate(timeout=5)
@@ -132,11 +135,17 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
         answer["pc_trace_file_bytes"] = len(trace_text.encode("utf-8"))
         answer["pc_trace_fingerprint_hits"] = trace_text.count("HOMEVIEW_PC_TRACE fingerprint_hit ")
         answer["pc_trace_exact_pc_hits"] = trace_text.count("HOMEVIEW_PC_TRACE hit ")
+        active_negative = "classification=no_hit_instrumentation_active" in trace_text
+        answer["pc_trace_instrumentation_active"] = (
+            "exec_callback_fired" in trace_text or "instrumentation_active=true" in trace_text)
         answer["pc_trace_no_hit_inconclusive"] = (
             not answer["pc_trace_initialized"]
             or "candidate_budget_exhausted=true" in trace_text
             or "candidate_allocation_failed=true" in trace_text
-            or not (answer["pc_trace_fingerprint_hits"] or answer["pc_trace_exact_pc_hits"]))
+            or "classification=no_exec_callbacks_inconclusive" in trace_text
+            or (
+                not (answer["pc_trace_fingerprint_hits"] or answer["pc_trace_exact_pc_hits"])
+                and not active_negative))
     answer["observation_stop_reason"] = stop_reason
     answer["experimental_ans_dcp_mmio_trace"] = name in (
         "software-update-dock-removed-control",

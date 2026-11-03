@@ -48,5 +48,11 @@ def from_disassembly(report):
 
 
 def plugin_args(report):
-    return [f"sig={item['static_vaddr']}:{item['signature_hex']}"
-            for item in from_disassembly(report)]
+    args = []
+    for item in from_disassembly(report):
+        args.append(f"sig={item['static_vaddr']}:{item['signature_hex']}")
+        klass = item.get("class") or ""
+        slot = item.get("slot")
+        if isinstance(klass, str) and klass.isidentifier() and isinstance(slot, int):
+            args.append(f"id={item['static_vaddr']}:{klass}:{slot}")
+    return args
