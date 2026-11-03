@@ -266,8 +266,12 @@ jobs:
             --output out/homeview-vphone600-board.json
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential ninja-build pkg-config \
-            python3-venv flex bison libglib2.0-dev libpixman-1-dev \
-            zlib1g-dev libslirp-dev
+            python3-venv python3-pip flex bison libglib2.0-dev \
+            libpixman-1-dev zlib1g-dev libslirp-dev libtasn1-dev
+          python3 -m venv "$RUNNER_TEMP/meson-venv"
+          "$RUNNER_TEMP/meson-venv/bin/pip" install -q 'meson>=1.5,<2'
+          export PATH="$RUNNER_TEMP/meson-venv/bin:$PATH"
+          meson --version | tee out/qemu-vphone-meson.txt
           git clone --depth 1 --branch vphone https://github.com/YahiaAngelo/qemu-vphone.git \
             "$RUNNER_TEMP/qemu-vphone" > out/qemu-vphone-clone.log 2>&1
           git -C "$RUNNER_TEMP/qemu-vphone" submodule update --init --depth 1 util/mlib \
@@ -286,9 +290,10 @@ jobs:
           curl -fsSL --retry 3 -o "$ROM/OpenSEP.bin" \
             "https://github.com/Lakr233/vphone-cli/raw/main/VPhoneExecutable/VPhoneVirtualization/Resources/OpenSEP/OpenSEP.bin"
           cd "$RUNNER_TEMP/qemu-vphone"
-          ./configure --target-list=aarch64-softmmu --disable-werror \
-            --disable-docs --disable-gtk --disable-sdl --disable-vnc \
+          ./configure --target-list=aarch64-softmmu \
+            --disable-gtk --disable-sdl --disable-vnc \
             --disable-curses --disable-pvg --disable-tools \
+            -Dwerror=false \
             > "$GITHUB_WORKSPACE/out/qemu-vphone-configure.log" 2>&1
           CONFIG_STATUS=$?
           if [[ $CONFIG_STATUS -ne 0 ]]; then
@@ -317,6 +322,7 @@ jobs:
           name: homeview-vresearch-qemu-build
           path: |
             out/homeview-vphone600-board.json
+            out/qemu-vphone-meson.txt
             out/qemu-vphone-clone.log
             out/qemu-vphone-configure.log
             out/qemu-vphone-build.log
