@@ -43,13 +43,33 @@ def adapt(raw, output, upstream_path, nvram_path):
     chosen = root["chosen"]
     chosen.props["firmware-version"] = "qemu-sptm"
     chosen.props["system-firmware-version"] = "qemu-sptm"
+    # qemu-sptm dereferences these with no NULL check. The vphone tree is
+    # kept as-is when the property is already present.
+    filled = []
+    for key, value in (
+        ("dram-base", "u64:0x10000000000"),
+        ("dram-size", "u64:0x200000000"),
+    ):
+        if key not in chosen.props:
+            chosen.props[key] = value
+            filled.append(key)
+    cpu0 = root["cpus"]["cpu0"] if "cpus" in root and "cpu0" in root["cpus"] else None
+    if cpu0 is not None and "clock-frequency" not in cpu0.props:
+        cpu0.props["clock-frequency"] = "u32:0x100000"
+        filled.append("cpus/cpu0/clock-frequency")
     defaults = root["defaults"] if "defaults" in root else None
     if defaults is not None and "vmm-present" not in defaults.props:
         defaults.props["vmm-present"] = "u32:1"
     Path(output).write_bytes(mod.encode_node(root))
+    arm_children = []
+    if "arm-io" in root:
+        arm_children = [child.props.get("name") for child in root["arm-io"].children][:40]
     return {
-        "fixup": "firmware-version only",
+        "fixup": "firmware-version and missing dram",
         "firmware_version": chosen.props.get("firmware-version"),
+        "filled_missing_properties": filled,
+        "chosen_properties": sorted(chosen.props)[:40],
+        "arm_io_children": [str(name) for name in arm_children],
         "vmm_present": None if defaults is None else defaults.props.get("vmm-present"),
         "output_bytes": Path(output).stat().st_size,
     }
