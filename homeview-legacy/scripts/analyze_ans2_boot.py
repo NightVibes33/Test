@@ -23,6 +23,12 @@ FINGERPRINT_HIT = re.compile(
     r"(?: mode=([A-Za-z0-9:_-]+))?"
     r"(?: class=([A-Za-z_][A-Za-z0-9_]*))?"
     r"(?: slot=(\d+))?", re.I)
+SLID_PC_HIT = re.compile(
+    r"HOMEVIEW_PC_TRACE slid_pc_hit static=(0x[0-9a-f]{8,16}) "
+    r"guest=(0x[0-9a-f]{8,16}) cpu=(\\d+) slide=(0x[0-9a-f]+)", re.I)
+SLIDE_CONSENSUS = re.compile(
+    r"HOMEVIEW_PC_TRACE slide_consensus slide=(0x[0-9a-f]+) "
+    r"witness_signatures=(\\d+)", re.I)
 DCP_ACCESS = re.compile(
     r"HOMEVIEW_MMIO_TRACE (read|write) (arm-io/(?:dcp|dcp0-expert|sgx))\s+off=0x([0-9a-f]+)",
     re.I)
@@ -120,6 +126,14 @@ def observe_qemu(text):
             {"target_vaddr": m.group(1), "cpu": int(m.group(2))}
             for m in list(PC_HIT.finditer(text))[:24]],
         "PC_hit_proves_dispatch_not_method_completion": True,
+        "relocated_guest_PC_hits": [
+            {"static_vaddr": m.group(1).lower(),
+             "runtime_guest_vaddr": m.group(2).lower(),
+             "cpu": int(m.group(3)), "kernelcache_slide": m.group(4).lower()}
+            for m in list(SLID_PC_HIT.finditer(text))[:24]],
+        "runtime_slide_consensus_events": [
+            {"slide": m.group(1).lower(), "witness_signatures": int(m.group(2))}
+            for m in list(SLIDE_CONSENSUS.finditer(text))[:8]],
         "original_code_fingerprint_hits": [
             fingerprint_record(m) for m in list(FINGERPRINT_HIT.finditer(text))[:16]],
         "DCP_or_SGX_MMIO_access_count": len(list(DCP_ACCESS.finditer(text))),
@@ -185,6 +199,19 @@ def compare(control_text, experiment_text, qemu_text="", pc_trace_text="", inven
         for address, cpu in sorted({(entry["target_vaddr"], entry["cpu"])
                                     for entry in hits})][:24]
     qemu["PC_hit_count"] = len(qemu["observed_guest_PC_hits"])
+    relocated = qemu["relocated_guest_PC_hits"] + serial_pc["relocated_guest_PC_hits"]
+    qemu["relocated_guest_PC_hits"] = [
+        {"static_vaddr": static, "runtime_guest_vaddr": guest,
+         "cpu": cpu, "kernelcache_slide": slide}
+        for static, guest, cpu, slide in sorted({
+            (h["static_vaddr"], h["runtime_guest_vaddr"], h["cpu"],
+             h["kernelcache_slide"]) for h in relocated})][:24]
+    qemu["relocated_guest_PC_hit_count"] = len(qemu["relocated_guest_PC_hits"])
+    events = qemu["runtime_slide_consensus_events"] + serial_pc["runtime_slide_consensus_events"]
+    qemu["runtime_slide_consensus_events"] = [
+        {"slide": slide, "witness_signatures": witnesses}
+        for slide, witnesses in sorted({
+            (e["slide"], e["witness_signatures"]) for e in events})][:8]
     merged = {}
     for hit in (qemu["original_code_fingerprint_hits"] +
                 serial_pc["original_code_fingerprint_hits"]):
@@ -196,6 +223,18 @@ def compare(control_text, experiment_text, qemu_text="", pc_trace_text="", inven
         qemu["original_code_fingerprint_hits"])
     qemu["kernelcache_slide_consensus"] = consensus_slide(
         qemu["original_code_fingerprint_hits"])
+    qemu["fingerprint_hits_on_consensus_slide"] = sum(
+        hit.get("on_consensus_kernelcache_slide", False)
+        for hit in qemu["original_code_fingerprint_hits"])
+    qemu["fingerprint_hits_off_consensus_slide"] = sum(
+        hit.get("on_consensus_kernelcache_slide") is False
+        for hit in qemu["original_code_fingerprint_hits"])
+    qemu["slid_PC_hits_agree_with_fingerprint_consensus"] = all(
+        hit["kernelcache_slide"] == qemu["kernelcache_slide_consensus"]
+        for hit in qemu["relocated_guest_PC_hits"])
+    qemu["runtime_slide_events_agree_with_fingerprints"] = all(
+        event["slide"] == qemu["kernelcache_slide_consensus"]
+        for event in qemu["runtime_slide_consensus_events"])
     trace_blob = "\n".join((qemu_text, pc_trace_text, experiment_text))
     qemu["exec_callbacks_confirmed"] = (
         "exec_callback_fired" in trace_blob or
