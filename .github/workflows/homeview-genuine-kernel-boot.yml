@@ -858,7 +858,7 @@ jobs:
               "manifest_boot_payload_root": data.get("boot_payload_root") is True,
               "manifest_fits_ramdisk": data.get("fits_qemu_ramdisk_slot") is True,
               "image_bytes_reported": data.get("image_bytes"),
-              "real_ANS_block_backend_present": False,
+              "storage_backend": "not_checked_in_cache_readiness",
           }
           status["ready_for_ramdisk"] = all((
               status["manifest_present"], status["image_present"],
