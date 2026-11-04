@@ -141,6 +141,7 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 typedef struct {
     uint64_t address;
     volatile int seen;
+    volatile int slid_seen;
 } PCTarget;
 
 typedef struct {
@@ -151,6 +152,7 @@ typedef struct {
     uint64_t hit_sites[MAX_HIT_SITES];
     volatile int translated_logged;
     volatile int mismatch_logged;
+    volatile uint64_t slide_voted;
 } PCSignature;
 
 typedef struct {
@@ -178,6 +180,10 @@ static volatile int translations;
 static volatile int exec_callbacks;
 static volatile int fingerprint_hits;
 static volatile int exact_hits;
+static volatile int slid_hits;
+/* Only committed after TWO distinct original-code signatures execute at
+ * the same 16-KiB aligned kernelcache relocation. Never hard-code one run. */
+static volatile uint64_t runtime_slide;
 static volatile int tb_ordinal;
 static volatile int witness_hooks;
 static uint64_t witness_pcs[MAX_WITNESS];
@@ -250,6 +256,50 @@ static void hit(unsigned int cpu, void *userdata)
     trace_event(msg);
 }
 
+static void slid_hit(unsigned int cpu, void *userdata)
+{
+    PCTarget *t = userdata;
+    __sync_add_and_fetch(&exec_callbacks, 1);
+    uint64_t slide = __atomic_load_n(&runtime_slide, __ATOMIC_ACQUIRE);
+    if (!slide || !__sync_bool_compare_and_swap(&t->slid_seen, 0, 1)) {
+        return;
+    }
+    __sync_add_and_fetch(&slid_hits, 1);
+    char msg[260];
+    snprintf(msg, sizeof(msg),
+             "HOMEVIEW_PC_TRACE slid_pc_hit static=0x%" PRIx64
+             " guest=0x%" PRIx64 " cpu=%u slide=0x%" PRIx64
+             " seq=%llu time_ns=%llu phase=executed\\n",
+             t->address, t->address + slide, cpu, slide,
+             next_seq(), now_ns());
+    trace_event(msg);
+}
+
+static void note_slide_vote(PCSignature *s, uint64_t slide)
+{
+    if (!slide || !__sync_bool_compare_and_swap(&s->slide_voted,
+                                               (uint64_t)0, slide)) {
+        return;
+    }
+    int distinct = 0;
+    for (size_t j = 0; j < signature_count; ++j) {
+        if (__atomic_load_n(&signatures[j].slide_voted,
+                            __ATOMIC_ACQUIRE) == slide) {
+            ++distinct;
+        }
+    }
+    if (distinct >= 2 && __sync_bool_compare_and_swap(&runtime_slide,
+                                                     (uint64_t)0, slide)) {
+        char msg[210];
+        snprintf(msg, sizeof(msg),
+                 "HOMEVIEW_PC_TRACE slide_consensus slide=0x%" PRIx64
+                 " witness_signatures=%d basis=executed_distinct_fingerprints"
+                 " seq=%llu time_ns=%llu\\n",
+                 slide, distinct, next_seq(), now_ns());
+        trace_event(msg);
+    }
+}
+
 static void signature_hit(unsigned int cpu, void *userdata)
 {
     PCMatch *match = userdata;
@@ -307,6 +357,9 @@ static void signature_hit(unsigned int cpu, void *userdata)
                      s->klass[0] ? s->klass : "unknown",
                      s->slot, next_seq(), now_ns(), slide_text);
             trace_event(msg);
+            if (aligned) {
+                note_slide_vote(s, slide);
+            }
             return;
         }
     }
@@ -333,10 +386,18 @@ static void translate(struct qemu_plugin_tb *tb, void *userdata)
                 }
             }
         }
+        uint64_t slide = __atomic_load_n(&runtime_slide, __ATOMIC_ACQUIRE);
         for (size_t j = 0; j < count; ++j) {
             if (targets[j].address == addr) {
                 qemu_plugin_register_vcpu_insn_exec_cb(
                     insn, hit, QEMU_PLUGIN_CB_NO_REGS, &targets[j]);
+            }
+            /* Retrospective hits are not invented: only future TBs can be
+             * hooked after two executed fingerprints establish a slide. */
+            if (slide && addr >= slide &&
+                targets[j].address == addr - slide) {
+                qemu_plugin_register_vcpu_insn_exec_cb(
+                    insn, slid_hit, QEMU_PLUGIN_CB_NO_REGS, &targets[j]);
             }
         }
         uint8_t window[HV_SIGNATURE_BYTES];
@@ -405,10 +466,11 @@ static void hv_atexit(void *userdata)
     char msg[320];
     snprintf(msg, sizeof(msg),
              "HOMEVIEW_PC_TRACE summary translations=%d exec_callbacks=%d "
-             "fingerprint_hits=%d exact_pc_hits=%d instrumentation_active=%s "
+             "fingerprint_hits=%d exact_pc_hits=%d slid_pc_hits=%d instrumentation_active=%s "
              "classification=%s seq=%llu time_ns=%llu\n",
              translations, exec_callbacks, fingerprint_hits, exact_hits,
-             active ? "true" : "false", classification, next_seq(), now_ns());
+             slid_hits, active ? "true" : "false", classification,
+             next_seq(), now_ns());
     trace_event(msg);
 }
 
