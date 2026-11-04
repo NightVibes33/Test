@@ -47,6 +47,8 @@ on:
       - 'homeview-legacy/scripts/catalog_sibling_firmwares.py'
       - 'homeview-legacy/tests/test_sibling_firmwares.py'
       - 'homeview-legacy/scripts/assess_qemu_disk.py'
+      - 'homeview-legacy/scripts/assess_ans_port_gap.py'
+      - 'homeview-legacy/tests/test_ans_port_gap.py'
       - 'homeview-legacy/tests/test_qemu_disk.py'
       - 'homeview-legacy/scripts/vphone_homeview_path.py'
       - 'homeview-legacy/tests/test_vphone_homeview_path.py'
@@ -109,6 +111,7 @@ jobs:
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_iokit_classes.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_vtable_disassembly.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_ans2_callgraph.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans_port_gap.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_boot.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_pc_plugin.py' -v
           python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_plugin_smoke.py' -v
@@ -733,6 +736,23 @@ jobs:
           else
             echo "No original Apple vtable disassembly; cannot claim call targets"
           fi
+      - name: Compare existing Apple ANS emulator against original J490 windows
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -s out/homeview-j490-mmio-contract.json ]]; then
+            UPSTREAM="https://raw.githubusercontent.com/YahiaAngelo/qemu-vphone/f6b3bc9d8ec9ba3113a4dbae9e9584775cd0d1f2"
+            curl -fsSL --retry 2 "$UPSTREAM/hw/block/apple-silicon/ans.c" -o "$RUNNER_TEMP/upstream-ans.c"
+            curl -fsSL --retry 2 "$UPSTREAM/hw/arm/apple-silicon/sart.c" -o "$RUNNER_TEMP/upstream-sart.c"
+            python3 homeview-legacy/scripts/assess_ans_port_gap.py \\
+              --contract out/homeview-j490-mmio-contract.json \\
+              --upstream-ans "$RUNNER_TEMP/upstream-ans.c" \\
+              --upstream-sart "$RUNNER_TEMP/upstream-sart.c" \\
+              --output out/homeview-ans-port-gap.json
+            rm -f "$RUNNER_TEMP/upstream-ans.c" "$RUNNER_TEMP/upstream-sart.c"
+          else
+            echo "Real J490 ADT absent; port compatibility cannot be assessed"
+          fi
       - name: Compare original and patched J490 device trees with real XNU
         env:
           HOMEVIEW_TCG_PC_PLUGIN: ${{ github.workspace }}/out/homeview-tcg-pc-trace.dylib
@@ -929,6 +949,7 @@ jobs:
             out/homeview-original-iokit-cpp-methods.json
             out/homeview-original-ans2-vtable-disassembly.json
             out/homeview-original-ans2-shared-calls.json
+            out/homeview-ans-port-gap.json
             out/homeview-ans2-runtime-matching.json
             out/homeview-original-ota-layout.json
             out/homeview-restore-ramdisk-contents.json
