@@ -25,10 +25,10 @@ FINGERPRINT_HIT = re.compile(
     r"(?: slot=(\d+))?", re.I)
 SLID_PC_HIT = re.compile(
     r"HOMEVIEW_PC_TRACE slid_pc_hit static=(0x[0-9a-f]{8,16}) "
-    r"guest=(0x[0-9a-f]{8,16}) cpu=(\\d+) slide=(0x[0-9a-f]+)", re.I)
+    r"guest=(0x[0-9a-f]{8,16}) cpu=(\d+) slide=(0x[0-9a-f]+)", re.I)
 SLIDE_CONSENSUS = re.compile(
     r"HOMEVIEW_PC_TRACE slide_consensus slide=(0x[0-9a-f]+) "
-    r"witness_signatures=(\\d+)", re.I)
+    r"witness_signatures=(\d+)", re.I)
 DCP_ACCESS = re.compile(
     r"HOMEVIEW_MMIO_TRACE (read|write) (arm-io/(?:dcp|dcp0-expert|sgx))\s+off=0x([0-9a-f]+)",
     re.I)
