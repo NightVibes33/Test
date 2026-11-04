@@ -54,7 +54,7 @@ jobs:
           # --remote uses partial ZIP access; the filesystem DMG itself may still
           # need downloading and mounting. This operation never uses iOS 15 data.
           ipsw extract "$FIRMWARE_URL" --remote --files \
-            --pattern '(^|/)Applications/Music\\.app(/|$)' \
+            --pattern '(^|/)Applications/Music[.]app(/|$)' \
             --output "$RUNNER_TEMP/native" --device "$DEVICE"
           echo "Extracted Music.app candidates:"
           find "$RUNNER_TEMP/native" -name Music.app -type d -print
