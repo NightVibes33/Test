@@ -137,6 +137,12 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 #define MAX_SIGNATURES 8
 #define MAX_HIT_SITES 4
 #define MAX_WITNESS 32
+/* Catch exact executable addresses *before* fingerprint slide consensus:
+ * 16 KiB alignment filters speculative hooks; execution and the final slide
+ * must independently agree before analysis reports a validated PC.
+ */
+#define MAX_SPECULATIVE_HOOKS 64000
+#define MAX_PROVISIONAL_LOGS 16000
 
 typedef struct {
     uint64_t address;
@@ -154,6 +160,13 @@ typedef struct {
     volatile int mismatch_logged;
     volatile uint64_t slide_voted;
 } PCSignature;
+
+typedef struct {
+    PCTarget *target;
+    uint64_t guest_address;
+    uint64_t candidate_slide;
+    volatile int seen;
+} PCSpeculative;
 
 typedef struct {
     PCSignature *signature;
@@ -181,6 +194,10 @@ static volatile int exec_callbacks;
 static volatile int fingerprint_hits;
 static volatile int exact_hits;
 static volatile int slid_hits;
+static volatile int speculative_hooks;
+static volatile int speculative_execs;
+static volatile int speculative_hook_exhausted;
+static volatile int speculative_log_exhausted;
 /* Only committed after TWO distinct original-code signatures execute at
  * the same 16-KiB aligned kernelcache relocation. Never hard-code one run. */
 static volatile uint64_t runtime_slide;
@@ -272,6 +289,38 @@ static void slid_hit(unsigned int cpu, void *userdata)
              " seq=%llu time_ns=%llu phase=executed\n",
              t->address, t->address + slide, cpu, slide,
              next_seq(), now_ns());
+    trace_event(msg);
+}
+
+static void speculative_hit(unsigned int cpu, void *userdata)
+{
+    PCSpeculative *candidate = userdata;
+    if (!__sync_bool_compare_and_swap(&candidate->seen, 0, 1)) {
+        return;
+    }
+    uint64_t proven = __atomic_load_n(&runtime_slide, __ATOMIC_ACQUIRE);
+    if (proven == candidate->candidate_slide) {
+        /* The callback proves actual execution, not merely translation. */
+        slid_hit(cpu, candidate->target);
+        return;
+    }
+    __sync_add_and_fetch(&exec_callbacks, 1);
+    int index = __sync_add_and_fetch(&speculative_execs, 1);
+    if (index > MAX_PROVISIONAL_LOGS) {
+        if (__sync_bool_compare_and_swap(&speculative_log_exhausted, 0, 1)) {
+            trace_event("HOMEVIEW_PC_TRACE provisional_log_budget_exhausted=true "
+                        "retrospective_evidence_incomplete=true\n");
+        }
+        return;
+    }
+    char msg[320];
+    snprintf(msg, sizeof(msg),
+             "HOMEVIEW_PC_TRACE provisional_pc_hit static=0x%" PRIx64
+             " guest=0x%" PRIx64 " cpu=%u slide=0x%" PRIx64
+             " seq=%llu time_ns=%llu phase=executed"
+             " validation=pending_fingerprint_consensus\n",
+             candidate->target->address, candidate->guest_address, cpu,
+             candidate->candidate_slide, next_seq(), now_ns());
     trace_event(msg);
 }
 
@@ -392,13 +441,40 @@ static void translate(struct qemu_plugin_tb *tb, void *userdata)
                 qemu_plugin_register_vcpu_insn_exec_cb(
                     insn, hit, QEMU_PLUGIN_CB_NO_REGS, &targets[j]);
             }
-            /* Retrospective hits are not invented: only future TBs can be
-             * hooked after two executed fingerprints establish a slide. */
-            if (slide && addr >= slide &&
-                targets[j].address == addr - slide) {
+            uint64_t candidate_slide = 0;
+            if (!hv_slide_aligned(targets[j].address, addr,
+                                  &candidate_slide)) {
+                continue;
+            }
+            if (slide && candidate_slide == slide) {
                 qemu_plugin_register_vcpu_insn_exec_cb(
                     insn, slid_hit, QEMU_PLUGIN_CB_NO_REGS, &targets[j]);
+                continue;
             }
+            /* If this TB was translated before slide consensus, record only
+             * speculative first-instruction execution. Later evidence
+             * processing must independently validate the learned slide.
+             */
+            int spec = __sync_add_and_fetch(&speculative_hooks, 1);
+            if (spec > MAX_SPECULATIVE_HOOKS) {
+                if (__sync_bool_compare_and_swap(&speculative_hook_exhausted, 0, 1)) {
+                    trace_event("HOMEVIEW_PC_TRACE speculative_hook_budget_exhausted=true "
+                                "retrospective_evidence_incomplete=true\n");
+                }
+                continue;
+            }
+            PCSpeculative *candidate = malloc(sizeof(*candidate));
+            if (!candidate) {
+                trace_event("HOMEVIEW_PC_TRACE speculative_allocation_failed=true "
+                            "retrospective_evidence_incomplete=true\n");
+                continue;
+            }
+            candidate->target = &targets[j];
+            candidate->guest_address = addr;
+            candidate->candidate_slide = candidate_slide;
+            candidate->seen = 0;
+            qemu_plugin_register_vcpu_insn_exec_cb(
+                insn, speculative_hit, QEMU_PLUGIN_CB_NO_REGS, candidate);
         }
         uint8_t window[HV_SIGNATURE_BYTES];
         size_t got = 0;
@@ -466,10 +542,12 @@ static void hv_atexit(void *userdata)
     char msg[320];
     snprintf(msg, sizeof(msg),
              "HOMEVIEW_PC_TRACE summary translations=%d exec_callbacks=%d "
-             "fingerprint_hits=%d exact_pc_hits=%d slid_pc_hits=%d instrumentation_active=%s "
+             "fingerprint_hits=%d exact_pc_hits=%d slid_pc_hits=%d "
+             "speculative_hooks=%d provisional_execs=%d instrumentation_active=%s "
              "classification=%s seq=%llu time_ns=%llu\n",
              translations, exec_callbacks, fingerprint_hits, exact_hits,
-             slid_hits, active ? "true" : "false", classification,
+             slid_hits, speculative_hooks, speculative_execs,
+             active ? "true" : "false", classification,
              next_seq(), now_ns());
     trace_event(msg);
 }

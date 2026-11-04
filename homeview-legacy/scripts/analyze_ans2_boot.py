@@ -29,6 +29,9 @@ SLID_PC_HIT = re.compile(
 SLIDE_CONSENSUS = re.compile(
     r"HOMEVIEW_PC_TRACE slide_consensus slide=(0x[0-9a-f]+) "
     r"witness_signatures=(\d+)", re.I)
+PROVISIONAL_PC_HIT = re.compile(
+    r"HOMEVIEW_PC_TRACE provisional_pc_hit static=(0x[0-9a-f]{8,16}) "
+    r"guest=(0x[0-9a-f]{8,16}) cpu=(\\d+) slide=(0x[0-9a-f]+)", re.I)
 DCP_ACCESS = re.compile(
     r"HOMEVIEW_MMIO_TRACE (read|write) (arm-io/(?:dcp|dcp0-expert|sgx))\s+off=0x([0-9a-f]+)",
     re.I)
@@ -125,6 +128,7 @@ def observe_qemu(text):
         "PC_trace_plugin_initialized": bool(PC_CONFIG.search(text)),
         "PC_trace_candidate_budget_exhausted": "candidate_budget_exhausted=true" in text,
         "PC_trace_candidate_allocation_failed": "candidate_allocation_failed=true" in text,
+        "retrospective_evidence_incomplete": "retrospective_evidence_incomplete=true" in text,
         "observed_guest_PC_hits": [
             {"target_vaddr": m.group(1), "cpu": int(m.group(2))}
             for m in list(PC_HIT.finditer(text))[:24]],
@@ -226,6 +230,36 @@ def compare(control_text, experiment_text, qemu_text="", pc_trace_text="", inven
         qemu["original_code_fingerprint_hits"])
     qemu["kernelcache_slide_consensus"] = consensus_slide(
         qemu["original_code_fingerprint_hits"])
+    # The direct plugin artifact takes precedence over the QEMU debug copy.
+    # Never turn an unconfirmed 16-KiB alignment candidate into a hit unless
+    # TWO distinct executed original-code fingerprints first agree on a slide.
+    candidate_text = pc_trace_text or qemu_text or experiment_text
+    candidates = list(PROVISIONAL_PC_HIT.finditer(candidate_text))
+    consensus = qemu["kernelcache_slide_consensus"]
+    verified = []
+    count = 0
+    if consensus is not None:
+        slide_value = int(consensus, 16)
+        for match in candidates:
+            static, guest = int(match.group(1), 16), int(match.group(2), 16)
+            if (match.group(4).lower() != consensus or
+                    guest != static + slide_value):
+                continue
+            count += 1
+            if len(verified) < 24:
+                verified.append({"static_vaddr": match.group(1).lower(),
+                                 "runtime_guest_vaddr": match.group(2).lower(),
+                                 "cpu": int(match.group(3)),
+                                 "kernelcache_slide": consensus,
+                                 "execution_observed": True,
+                                 "corroboration": "distinct_executed_fingerprint_consensus"})
+    qemu["preconsensus_candidate_execution_count"] = len(candidates)
+    qemu["retrospective_confirmed_PC_hit_count"] = count
+    qemu["retrospective_confirmed_PC_hits"] = verified
+    qemu["retrospective_evidence_incomplete"] |= (
+        "retrospective_evidence_incomplete=true" in candidate_text)
+    qemu["early_target_code_executed_before_proven_slide"] = count > 0
+    qemu["retrospective_hits_do_not_prove_controller_start"] = True
     qemu["fingerprint_hits_on_consensus_slide"] = sum(
         hit.get("on_consensus_kernelcache_slide", False)
         for hit in qemu["original_code_fingerprint_hits"])
@@ -250,6 +284,8 @@ def compare(control_text, experiment_text, qemu_text="", pc_trace_text="", inven
     # Even with a complete trace, no hits cannot rule out incorrect static
     # addresses, a different KASLR slide, or unmapped original code.
     qemu["zero_hits_are_not_proof_of_driver_absence"] = True
+    if qemu["retrospective_evidence_incomplete"]:
+        qemu["zero_hits_are_inconclusive"] = True
     if not control_text or not experiment_text:
         result = "incomplete_guest_log_pair"
     elif trial["ANS2_RTBuddy_start_was_invoked"] and not control["ANS2_RTBuddy_start_was_invoked"]:

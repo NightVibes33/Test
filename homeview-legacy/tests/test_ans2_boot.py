@@ -232,6 +232,46 @@ class ANS2BootTests(unittest.TestCase):
         qemu = a.compare("control", PROBES, "", trace)["experimental_QEMU_MMIO"]
         self.assertFalse(qemu["slid_PC_hits_agree_with_fingerprint_consensus"])
 
+    def test_preconsensus_execution_reconciled_only_after_two_distinct_signatures(self):
+        early = (
+            "HOMEVIEW_PC_TRACE provisional_pc_hit static=0xfffffff009b2340c "
+            "guest=0xfffffff029b2340c cpu=0 slide=0x20000000 "
+            "phase=executed validation=pending_fingerprint_consensus\\n"
+        )
+        no_witness = a.compare("control", PROBES, "", early)["experimental_QEMU_MMIO"]
+        self.assertEqual(no_witness["preconsensus_candidate_execution_count"], 1)
+        self.assertEqual(no_witness["retrospective_confirmed_PC_hit_count"], 0)
+        two = early + (
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff00a1112a0 "
+            "guest=0xfffffff02a1112a0 cpu=0\\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b1d1e4 "
+            "guest=0xfffffff029b1d1e4 cpu=0\\n"
+        )
+        report = a.compare("control", PROBES, "", two)
+        q = report["experimental_QEMU_MMIO"]
+        self.assertEqual(q["kernelcache_slide_consensus"], "0x20000000")
+        self.assertEqual(q["retrospective_confirmed_PC_hit_count"], 1)
+        self.assertEqual(q["retrospective_confirmed_PC_hits"][0]["static_vaddr"],
+                         "0xfffffff009b2340c")
+        self.assertTrue(q["early_target_code_executed_before_proven_slide"])
+        self.assertFalse(report["functional_ANS2_device_verified"])
+
+    def test_provisional_wrong_slide_remains_unconfirmed_and_budget_incomplete(self):
+        trace = (
+            "HOMEVIEW_PC_TRACE provisional_pc_hit static=0xfffffff009b2340c "
+            "guest=0xfffffff039b2340c cpu=0 slide=0x30000000\\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff00a1112a0 "
+            "guest=0xfffffff02a1112a0 cpu=0\\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b1d1e4 "
+            "guest=0xfffffff029b1d1e4 cpu=0\\n"
+            "HOMEVIEW_PC_TRACE speculative_hook_budget_exhausted=true "
+            "retrospective_evidence_incomplete=true\\n"
+        )
+        q = a.compare("control", PROBES, "", trace)["experimental_QEMU_MMIO"]
+        self.assertEqual(q["retrospective_confirmed_PC_hit_count"], 0)
+        self.assertTrue(q["retrospective_evidence_incomplete"])
+        self.assertTrue(q["zero_hits_are_inconclusive"])
+
     def test_bounded_log_reader(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "input.log"
