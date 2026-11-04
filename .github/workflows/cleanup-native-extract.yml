@@ -24,4 +24,11 @@ jobs:
             gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" ||
               echo "Run $id may already be complete or inaccessible"
           done
+          # LiveContainer builds below were accidentally triggered by edits
+          # to this Music experiment branch; they are unrelated to the task.
+          for id in 41910134180 41909936090 41909834479 41909570537 41909495953 41909427848 41909347377; do
+            echo "Request cancellation of incidental LiveContainer build $id"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" ||
+              echo "Run $id may already be complete or inaccessible"
+          done
           echo "Kept latest native extraction run 41909935827 unchanged"
