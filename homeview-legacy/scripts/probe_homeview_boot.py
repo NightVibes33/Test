@@ -125,6 +125,14 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
             from disassemble_ans2_vtables import select_targets
             classes = json.loads(classes_path.read_text())
             addresses = [x["address"] for x in select_targets(classes)]
+            shared_pcs = []
+            shared_path = dest / "homeview-original-ans2-shared-calls.json"
+            if shared_path.is_file():
+                from original_pc_signatures import shared_call_pcs
+                shared_pcs = shared_call_pcs(json.loads(shared_path.read_text()))
+                # Keep the original class entrypoints, add confirmed static BL
+                # sites and destinations, and never guess a KASLR slide here.
+                addresses = list(dict.fromkeys(addresses + shared_pcs))[:24]
             fingerprint_args = []
             disassembly = dest / "homeview-original-ans2-vtable-disassembly.json"
             if disassembly.is_file():
@@ -143,6 +151,7 @@ def run_variant(machine, firmware, name, device_tree, ramdisk, trustcache, dest)
                 # unless -d plugin is enabled in the ANS experiment.
                 argv[argv.index("-d") + 1] += ",plugin"
                 answer["experimental_guest_PC_trace_targets"] = addresses
+                answer["experimental_shared_direct_BL_trace_targets"] = shared_pcs
         answer["guest_PC_trace_is_not_controller_start_proof"] = True
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     chunks = bytearray()
