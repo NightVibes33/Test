@@ -1,0 +1,83 @@
+name: Extract genuine iOS 27 Music from IPSW
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - temp/music-ipa-sidestore-audit-20261103
+    paths:
+      - .github/workflows/native-ios27-music.yml
+      - tools/build_native_music.py
+      - tests/test_build_native_music.py
+permissions:
+  contents: read
+jobs:
+  extract:
+    runs-on: xcode-27
+    timeout-minutes: 70
+    env:
+      DEVICE: iPhone17,3
+      VERSION: '27.0.1'
+      BUILD: 24A446
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local native packaging tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_build_native_music.py' -v
+      - name: Select official iPhone 16 IPSW by exact build
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          device=os.environ['DEVICE']; build=os.environ['BUILD'];version=os.environ['VERSION']
+          url=f'https://api.ipsw.me/v4/device/{device}?type=ipsw'
+          with urllib.request.urlopen(url,timeout=50) as response:
+              data=json.load(response)
+          exact=[fw for fw in data.get('firmwares',[]) if fw.get('buildid')==build and fw.get('version')==version]
+          if len(exact)!=1:
+              raise SystemExit(f'BLOCKED: expected 1 official firmware for {device} {version}/{build}, got {len(exact)}')
+          fw=exact[0]['url']
+          if not fw.startswith('https://'):
+              raise SystemExit('BLOCKED: non-HTTPS firmware source')
+          with open(os.environ['GITHUB_ENV'],'a') as out:
+              out.write('FIRMWARE_URL='+fw+'\n')
+          print(f'Confirmed firmware {device} {version}/{build}: {exact[0].get("filesize")} bytes')
+          PY
+      - name: Install firmware extraction tooling
+        run: |
+          brew install ipsw
+          ipsw version || ipsw --version
+      - name: Extract ONLY modern Music.app from IPSW filesystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/native"
+          # --remote uses partial ZIP access; the filesystem DMG itself may still
+          # need downloading and mounting. This operation never uses iOS 15 data.
+          ipsw extract "$FIRMWARE_URL" --remote --files \
+            --pattern '(^|/)Applications/Music\\.app(/|$)' \
+            --output "$RUNNER_TEMP/native" --device "$DEVICE"
+          echo "Extracted Music.app candidates:"
+          find "$RUNNER_TEMP/native" -name Music.app -type d -print
+      - name: Package native app without legacy substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/build_native_music.py \
+            --extracted "$RUNNER_TEMP/native" \
+            --output "$RUNNER_TEMP/Music-Native-iOS27-SideStore-unsigned.ipa" \
+            --expected-build "$BUILD"
+          python3 tools/build_native_music.py \
+            --extracted "$RUNNER_TEMP/native" \
+            --output "$RUNNER_TEMP/Music-Native-iOS27-main-only-unsigned.ipa" \
+            --expected-build "$BUILD" --main-only
+      - name: Upload only verified native iOS 27 experimental IPAs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Music-Native-27-24A446-experimental-unsigned
+          path: |
+            ${{ runner.temp }}/Music-Native-iOS27-SideStore-unsigned.ipa
+            ${{ runner.temp }}/Music-Native-iOS27-SideStore-unsigned.report.json
+            ${{ runner.temp }}/Music-Native-iOS27-main-only-unsigned.ipa
+            ${{ runner.temp }}/Music-Native-iOS27-main-only-unsigned.report.json
+          if-no-files-found: error
+          retention-days: 3
