@@ -1,0 +1,27 @@
+name: Stop superseded native Music extraction runs
+on:
+  push:
+    branches:
+      - temp/music-ipa-sidestore-audit-20261103
+    paths:
+      - .github/workflows/cleanup-native-extract.yml
+permissions:
+  actions: write
+  contents: read
+jobs:
+  cancel-obsolete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Cancel only earlier superseded extraction attempts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for id in 41909496068 41909570610 41909836060; do
+            echo "Request cancellation of superseded GitHub run $id"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" ||
+              echo "Run $id may already be complete or inaccessible"
+          done
+          echo "Kept latest native extraction run 41909935827 unchanged"
