@@ -1,0 +1,23 @@
+name: IPA SideStore audit checks
+on:
+  push:
+    branches:
+      - temp/music-ipa-sidestore-audit-20261103
+    paths:
+      - tools/ipa_sideload_audit.py
+      - tests/test_ipa_sideload_audit.py
+      - .github/workflows/ipa-sideload-audit.yml
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile audit tool
+        run: python -m py_compile tools/ipa_sideload_audit.py
+      - name: Run regression suite
+        run: python -m unittest discover -s tests -p 'test_ipa_sideload_audit.py' -v
