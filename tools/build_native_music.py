@@ -8,6 +8,7 @@ import hashlib
 import json
 import plistlib
 import struct
+import stat
 import zipfile
 from pathlib import Path
 
@@ -97,14 +98,19 @@ def build(args):
         if m:
             if any(s['encrypted'] for s in m):encrypted.append(rel)
             if any(7 in s['platforms'] for s in m):simulator.append(rel)
-        packaged['Payload/Music.app/'+rel]=data
+        packaged['Payload/Music.app/'+rel]=(data,f.stat().st_mode)
     if encrypted:raise ValueError(f'Encrypted binaries: {encrypted[:5]}')
     if simulator:raise ValueError(f'Simulator binaries: {simulator[:5]}')
     if len(packaged)<10:raise ValueError('Implausibly few app files: '+str(len(packaged)))
     if args.output.exists():raise ValueError('Output already exists (no overwrite)')
     args.output.parent.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(args.output,'w',zipfile.ZIP_DEFLATED,compresslevel=7) as z:
-        for name,data in sorted(packaged.items()):z.writestr(name,data)
+        for name,(data,mode) in sorted(packaged.items()):
+            entry=zipfile.ZipInfo(name)
+            entry.create_system=3
+            entry.compress_type=zipfile.ZIP_DEFLATED
+            entry.external_attr=(stat.S_IFREG | stat.S_IMODE(mode))<<16
+            z.writestr(entry,data,compress_type=zipfile.ZIP_DEFLATED,compresslevel=7)
     with zipfile.ZipFile(args.output) as z:
         if z.testzip():raise ValueError('IPA CRC mismatch')
     report={'status':'unsigned_structural_pass_only',
