@@ -56,15 +56,18 @@ def fingerprint_record(match):
 
 
 def consensus_slide(hits):
-    counts = {}
+    # Distinct *original* methods are required; repeated matches of one
+    # 48-byte sequence, even at multiple guest locations, are not consensus.
+    votes = {}
     for hit in hits:
         slide = hit.get("kernelcache_slide")
-        if slide:
-            counts[slide] = counts.get(slide, 0) + 1
-    if not counts:
+        static = hit.get("static_vaddr")
+        if slide and static:
+            votes.setdefault(slide, set()).add(static)
+    if not votes:
         return None
-    best = max(counts, key=lambda slide: (counts[slide], slide))
-    if len(hits) > 1 and counts[best] < 2 and len(counts) != 1:
+    best = max(votes, key=lambda slide: (len(votes[slide]), slide))
+    if len(votes[best]) < 2:
         return None
     for hit in hits:
         hit["on_consensus_kernelcache_slide"] = hit.get("kernelcache_slide") == best
