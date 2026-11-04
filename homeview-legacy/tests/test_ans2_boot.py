@@ -236,16 +236,16 @@ class ANS2BootTests(unittest.TestCase):
         early = (
             "HOMEVIEW_PC_TRACE provisional_pc_hit static=0xfffffff009b2340c "
             "guest=0xfffffff029b2340c cpu=0 slide=0x20000000 "
-            "phase=executed validation=pending_fingerprint_consensus\\n"
+            "phase=executed validation=pending_fingerprint_consensus\n"
         )
         no_witness = a.compare("control", PROBES, "", early)["experimental_QEMU_MMIO"]
         self.assertEqual(no_witness["preconsensus_candidate_execution_count"], 1)
         self.assertEqual(no_witness["retrospective_confirmed_PC_hit_count"], 0)
         two = early + (
             "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff00a1112a0 "
-            "guest=0xfffffff02a1112a0 cpu=0\\n"
+            "guest=0xfffffff02a1112a0 cpu=0\n"
             "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b1d1e4 "
-            "guest=0xfffffff029b1d1e4 cpu=0\\n"
+            "guest=0xfffffff029b1d1e4 cpu=0\n"
         )
         report = a.compare("control", PROBES, "", two)
         q = report["experimental_QEMU_MMIO"]
@@ -259,13 +259,13 @@ class ANS2BootTests(unittest.TestCase):
     def test_provisional_wrong_slide_remains_unconfirmed_and_budget_incomplete(self):
         trace = (
             "HOMEVIEW_PC_TRACE provisional_pc_hit static=0xfffffff009b2340c "
-            "guest=0xfffffff039b2340c cpu=0 slide=0x30000000\\n"
+            "guest=0xfffffff039b2340c cpu=0 slide=0x30000000\n"
             "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff00a1112a0 "
-            "guest=0xfffffff02a1112a0 cpu=0\\n"
+            "guest=0xfffffff02a1112a0 cpu=0\n"
             "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b1d1e4 "
-            "guest=0xfffffff029b1d1e4 cpu=0\\n"
+            "guest=0xfffffff029b1d1e4 cpu=0\n"
             "HOMEVIEW_PC_TRACE speculative_hook_budget_exhausted=true "
-            "retrospective_evidence_incomplete=true\\n"
+            "retrospective_evidence_incomplete=true\n"
         )
         q = a.compare("control", PROBES, "", trace)["experimental_QEMU_MMIO"]
         self.assertEqual(q["retrospective_confirmed_PC_hit_count"], 0)

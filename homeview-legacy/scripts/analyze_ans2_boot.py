@@ -31,7 +31,7 @@ SLIDE_CONSENSUS = re.compile(
     r"witness_signatures=(\d+)", re.I)
 PROVISIONAL_PC_HIT = re.compile(
     r"HOMEVIEW_PC_TRACE provisional_pc_hit static=(0x[0-9a-f]{8,16}) "
-    r"guest=(0x[0-9a-f]{8,16}) cpu=(\\d+) slide=(0x[0-9a-f]+)", re.I)
+    r"guest=(0x[0-9a-f]{8,16}) cpu=(\d+) slide=(0x[0-9a-f]+)", re.I)
 DCP_ACCESS = re.compile(
     r"HOMEVIEW_MMIO_TRACE (read|write) (arm-io/(?:dcp|dcp0-expert|sgx))\s+off=0x([0-9a-f]+)",
     re.I)
