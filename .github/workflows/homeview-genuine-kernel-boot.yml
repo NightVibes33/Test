@@ -744,12 +744,14 @@ jobs:
             UPSTREAM="https://raw.githubusercontent.com/YahiaAngelo/qemu-vphone/f6b3bc9d8ec9ba3113a4dbae9e9584775cd0d1f2"
             curl -fsSL --retry 2 "$UPSTREAM/hw/block/apple-silicon/ans.c" -o "$RUNNER_TEMP/upstream-ans.c"
             curl -fsSL --retry 2 "$UPSTREAM/hw/arm/apple-silicon/sart.c" -o "$RUNNER_TEMP/upstream-sart.c"
+            curl -fsSL --retry 2 "$UPSTREAM/hw/arm/apple-silicon/t8030.c" -o "$RUNNER_TEMP/upstream-t8030.c"
             python3 homeview-legacy/scripts/assess_ans_port_gap.py \
               --contract out/homeview-j490-mmio-contract.json \
               --upstream-ans "$RUNNER_TEMP/upstream-ans.c" \
               --upstream-sart "$RUNNER_TEMP/upstream-sart.c" \
+              --upstream-board "$RUNNER_TEMP/upstream-t8030.c" \
               --output out/homeview-ans-port-gap.json
-            rm -f "$RUNNER_TEMP/upstream-ans.c" "$RUNNER_TEMP/upstream-sart.c"
+            rm -f "$RUNNER_TEMP/upstream-ans.c" "$RUNNER_TEMP/upstream-sart.c" "$RUNNER_TEMP/upstream-t8030.c"
           else
             echo "Real J490 ADT absent; port compatibility cannot be assessed"
           fi
