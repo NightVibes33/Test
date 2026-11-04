@@ -187,6 +187,51 @@ class ANS2BootTests(unittest.TestCase):
         self.assertEqual(hit["kernelcache_slide"], "0x20000000")
         self.assertEqual(observed["DCP_or_SGX_MMIO_access_count"], 0)
 
+    def test_learned_kaslr_slide_and_exact_slid_branch_execution(self):
+        trace = (
+            "HOMEVIEW_PC_TRACE initialized targets=11 signatures=8 read_only=true\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff00a1112a0 "
+            "guest=0xfffffff02a1112a0 cpu=0 mode=full-tb class=RTBuddy slot=86\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b1d1e4 "
+            "guest=0xfffffff029b1d1e4 cpu=0 mode=full-tb class=AppleANS2CGv2Controller slot=85\n"
+            "HOMEVIEW_PC_TRACE slide_consensus slide=0x20000000 "
+            "witness_signatures=2 basis=executed_distinct_fingerprints seq=12 time_ns=77\n"
+            "HOMEVIEW_PC_TRACE slid_pc_hit static=0xfffffff009b2340c "
+            "guest=0xfffffff029b2340c cpu=0 slide=0x20000000 "
+            "seq=13 time_ns=88 phase=executed\n"
+        )
+        qemu = a.compare("control", PROBES, "", trace)["experimental_QEMU_MMIO"]
+        self.assertEqual(qemu["kernelcache_slide_consensus"], "0x20000000")
+        self.assertEqual(qemu["fingerprint_hits_on_consensus_slide"], 2)
+        self.assertEqual(qemu["relocated_guest_PC_hit_count"], 1)
+        self.assertTrue(qemu["slid_PC_hits_agree_with_fingerprint_consensus"])
+        self.assertTrue(qemu["runtime_slide_events_agree_with_fingerprints"])
+        self.assertEqual(qemu["runtime_slide_consensus_events"][0]["witness_signatures"], 2)
+        self.assertEqual(qemu["relocated_guest_PC_hits"][0]["static_vaddr"],
+                         "0xfffffff009b2340c")
+
+    def test_one_signature_or_duplicate_cannot_confirm_a_kernel_slide(self):
+        one = [{
+            "static_vaddr": "0xfffffff009b0dabc",
+            "runtime_guest_vaddr": "0xfffffff029b0dabc",
+            "kernelcache_slide": "0x20000000",
+        }]
+        self.assertIsNone(a.consensus_slide(one))
+        self.assertIsNone(a.consensus_slide(one + [dict(one[0])]))
+        self.assertNotIn("on_consensus_kernelcache_slide", one[0])
+
+    def test_conflicting_slid_pc_witness_fails_validation(self):
+        trace = (
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff00a1112a0 "
+            "guest=0xfffffff02a1112a0 cpu=0\n"
+            "HOMEVIEW_PC_TRACE fingerprint_hit static=0xfffffff009b0dabc "
+            "guest=0xfffffff029b0dabc cpu=0\n"
+            "HOMEVIEW_PC_TRACE slid_pc_hit static=0xfffffff009b2340c "
+            "guest=0xfffffff039b2340c cpu=0 slide=0x30000000\n"
+        )
+        qemu = a.compare("control", PROBES, "", trace)["experimental_QEMU_MMIO"]
+        self.assertFalse(qemu["slid_PC_hits_agree_with_fingerprint_consensus"])
+
     def test_bounded_log_reader(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "input.log"
