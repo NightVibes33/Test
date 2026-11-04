@@ -1,0 +1,76 @@
+name: HomeView J490 - Fast independent validation
+on:
+  push:
+    branches: [temp/homeview-legacy-boot]
+    paths:
+      - 'homeview-legacy/**'
+      - '.github/workflows/homeview-fast-validation.yml'
+      - '.github/workflows/homeview-genuine-kernel-boot.yml'
+  workflow_dispatch:
+
+# Independent from the 6+ GB firmware boot and safe to cancel old fast runs.
+concurrency:
+  group: homeview-fast-j490-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  quick-regressions-and-plugin-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate genuine HomeView boot evidence stages
+        run: |
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_boot_evidence.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_adt_hardware.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_real_guest_screen.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_mmio_trace_patch.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_personality.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_observer.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_adt_pair.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_pumpkin_guest_pair.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans_adt_probe.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_j490_mmio_contract.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_kernelcache.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_j490_kexts.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_iokit_classes.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_vtable_disassembly.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_ans2_callgraph.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans_port_gap.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ans2_boot.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_pc_plugin.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_tcg_plugin_smoke.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_original_pc_signatures.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_homeview_ota_layout.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_restore_ramdisk_inventory.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_ota_payload_index.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_payload_root.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_firmwarekit_linkage.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_fileset_symbols.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_sibling_firmwares.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_qemu_disk.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_vphone_homeview_path.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_adapt_vphone_dtree.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_vphone600_board.py' -v
+          python3 -m unittest discover -s homeview-legacy/tests -p 'test_vresearch_machine.py' -v
+          python3 -m py_compile homeview-legacy/scripts/probe_homeview_boot.py
+          python3 -m py_compile homeview-legacy/scripts/boot_evidence.py
+      - name: Compile real QEMU API v7 observer before expensive Apple firmware download
+        run: |
+          set -euo pipefail
+          pkg-config --exists glib-2.0 || { sudo apt-get update -qq; sudo apt-get install -y libglib2.0-dev pkg-config; }
+          API="$RUNNER_TEMP/homeview-pinned-qemu-api"
+          mkdir -p "$API/plugins"
+          curl -fsSL --retry 3 \
+            "https://raw.githubusercontent.com/jprx/qemu-sptm/bad6336fb24211f8c4e8e946c259bd5b12417340/include/plugins/qemu-plugin.h" \
+            -o "$API/plugins/qemu-plugin.h"
+          grep -Fq '#define QEMU_PLUGIN_VERSION 7' "$API/plugins/qemu-plugin.h"
+          cc -std=c11 -Wall -Wextra -Werror -fPIC -shared \
+            -I"$API" $(pkg-config --cflags glib-2.0) \
+            -o "$RUNNER_TEMP/homeview-tcg-pc-trace.so" \
+            homeview-legacy/scripts/homeview_tcg_pc_trace.c
+          test -s "$RUNNER_TEMP/homeview-tcg-pc-trace.so"
+          nm -D "$RUNNER_TEMP/homeview-tcg-pc-trace.so" | grep -q 'qemu_plugin_install'
+          echo 'TCG_PLUGIN_API7_COMPILED_FAST: signature and headers verified'
+
