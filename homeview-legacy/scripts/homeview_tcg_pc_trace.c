@@ -269,7 +269,7 @@ static void slid_hit(unsigned int cpu, void *userdata)
     snprintf(msg, sizeof(msg),
              "HOMEVIEW_PC_TRACE slid_pc_hit static=0x%" PRIx64
              " guest=0x%" PRIx64 " cpu=%u slide=0x%" PRIx64
-             " seq=%llu time_ns=%llu phase=executed\\n",
+             " seq=%llu time_ns=%llu phase=executed\n",
              t->address, t->address + slide, cpu, slide,
              next_seq(), now_ns());
     trace_event(msg);
@@ -294,7 +294,7 @@ static void note_slide_vote(PCSignature *s, uint64_t slide)
         snprintf(msg, sizeof(msg),
                  "HOMEVIEW_PC_TRACE slide_consensus slide=0x%" PRIx64
                  " witness_signatures=%d basis=executed_distinct_fingerprints"
-                 " seq=%llu time_ns=%llu\\n",
+                 " seq=%llu time_ns=%llu\n",
                  slide, distinct, next_seq(), now_ns());
         trace_event(msg);
     }
