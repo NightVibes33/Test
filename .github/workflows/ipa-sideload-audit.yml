@@ -1,11 +1,13 @@
-name: IPA SideStore audit checks
+name: IPA SideStore audit and hybrid checks
 on:
   push:
     branches:
       - temp/music-ipa-sidestore-audit-20261103
     paths:
       - tools/ipa_sideload_audit.py
+      - tools/build_music_hybrid.py
       - tests/test_ipa_sideload_audit.py
+      - tests/test_music_hybrid.py
       - .github/workflows/ipa-sideload-audit.yml
   workflow_dispatch:
 jobs:
@@ -17,7 +19,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Compile audit tool
-        run: python -m py_compile tools/ipa_sideload_audit.py
-      - name: Run regression suite
-        run: python -m unittest discover -s tests -p 'test_ipa_sideload_audit.py' -v
+      - name: Compile audit tools
+        run: python -m py_compile tools/ipa_sideload_audit.py tools/build_music_hybrid.py
+      - name: Run audit and hybrid regression suites
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
