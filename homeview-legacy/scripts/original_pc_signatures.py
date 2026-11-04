@@ -47,6 +47,41 @@ def from_disassembly(report):
     return result[:MAX_SIGNATURES]
 
 
+
+def shared_call_pcs(report):
+    """Trace only proven static BL destination and call sites shared by both
+    Apple ANS2 and ANS3 CGv2 classes. The addresses do not prove execution.
+    """
+    records = report.get("shared_direct_call_targets", [])
+    if not isinstance(records, list):
+        return []
+    accepted = []
+    seen = set()
+    for item in records[:16]:
+        if not isinstance(item, dict):
+            continue
+        classes = item.get("distinct_calling_classes", [])
+        if not isinstance(classes, list) or not {
+            "AppleANS2CGv2Controller", "AppleANS3CGv2Controller"
+        }.issubset(set(c for c in classes if isinstance(c, str))):
+            continue
+        addresses = [item.get("destination")]
+        sites = item.get("call_sites", [])
+        if isinstance(sites, list):
+            addresses.extend(site.get("site") for site in sites[:16]
+                             if isinstance(site, dict) and
+                             site.get("class") in classes)
+        for raw in addresses:
+            if not isinstance(raw, str) or not re.fullmatch(
+                    r"0x[0-9a-fA-F]{8,16}", raw):
+                continue
+            address = int(raw, 16)
+            if not address or address & 3 or address in seen:
+                continue
+            seen.add(address)
+            accepted.append(f"0x{address:x}")
+    return accepted[:16]
+
 def plugin_args(report):
     args = []
     for item in from_disassembly(report):
