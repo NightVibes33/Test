@@ -432,6 +432,7 @@ jobs:
             out/payload-cache/*.json
             out/payload-cache/*.log
             out/homeview-system-volume-manifest.json
+            out/homeview-payload-cache-readiness.json
             out/homeview-static-trustcache.json
             out/system-root-extract.log
             out/trustcache-build.log
@@ -833,20 +834,51 @@ jobs:
         with:
           path: out/payload-cache
           key: homeview-payload-${{ hashFiles('homeview-legacy/scripts/payload_cache_key.txt') }}
-      - name: Install the cached payload root for the ramdisk slot
+      - name: Validate cached payload root before any attempted guest use
         if: always()
         run: |
-          set +e
+          set -euo pipefail
           DEST="$RUNNER_TEMP/hv-firmware"
           mkdir -p "$DEST" out
-          if [[ -f out/payload-cache/system-volume-manifest.json ]]; then
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("out/payload-cache")
+          manifest = root / "system-volume-manifest.json"
+          image = root / "system-volume.dmg"
+          trust = root / "system-volume.tc"
+          data = json.loads(manifest.read_text()) if manifest.is_file() else {}
+          # An extracted OTA volume is not a bootable ramdisk merely because
+          # its manifest and trustcache are cached. The actual image must
+          # exist, fit guest memory, and be independently marked bootable.
+          status = {
+              "manifest_present": manifest.is_file(),
+              "image_present": image.is_file() and image.stat().st_size > 0,
+              "trustcache_present": trust.is_file() and trust.stat().st_size > 0,
+              "manifest_boot_payload_root": data.get("boot_payload_root") is True,
+              "manifest_fits_ramdisk": data.get("fits_qemu_ramdisk_slot") is True,
+              "image_bytes_reported": data.get("image_bytes"),
+              "real_ANS_block_backend_present": False,
+          }
+          status["ready_for_ramdisk"] = all((
+              status["manifest_present"], status["image_present"],
+              status["trustcache_present"], status["manifest_boot_payload_root"],
+              status["manifest_fits_ramdisk"],
+          ))
+          Path("out/homeview-payload-cache-readiness.json").write_text(
+              json.dumps(status, indent=2) + "\n")
+          print("HOMEVIEW_ROOT_CACHE:", json.dumps(status))
+          PY
+          if [[ -s out/payload-cache/system-volume-manifest.json ]]; then
             cp -f out/payload-cache/system-volume-manifest.json out/homeview-system-volume-manifest.json
             cp -f out/payload-cache/system-volume-manifest.json "$DEST/system-volume-manifest.json"
+          fi
+          if grep -q '"ready_for_ramdisk": true' out/homeview-payload-cache-readiness.json; then
             cp -f out/payload-cache/system-volume.tc "$DEST/system-volume.tc"
             cp -f out/payload-cache/system-volume.dmg "$DEST/system-volume.dmg"
-            echo "USED_CACHED_PAYLOAD_ROOT"
+            echo "CACHED_ROOT_IMAGE_READY"
           else
-            echo "PAYLOAD_CACHE_MISS"
+            echo "NO_BOOTABLE_ROOT_IMAGE: missing disk or image exceeds ramdisk; ANS backend still required"
           fi
       - name: Record sibling firmwares and whether qemu-sptm has a disk
         if: always()
