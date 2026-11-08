@@ -1,0 +1,38 @@
+name: RW Research unsigned IPA
+on:
+  push:
+    branches:
+      - 'research/iphone16-rw-capability-*'
+    paths:
+      - 'rw-research/**'
+      - '.github/workflows/rw-research-ios.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check available iPhoneOS SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun swiftc -version
+      - name: Compile unsigned arm64 iOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          mkdir -p out/Payload/RWResearch.app
+          xcrun swiftc -sdk "$SDK" -target arm64-apple-ios18.0 -parse-as-library -module-name RWResearch -O rw-research/Sources/RWResearch.swift -o out/Payload/RWResearch.app/RWResearch
+          cp rw-research/Info.plist out/Payload/RWResearch.app/Info.plist
+          plutil -lint out/Payload/RWResearch.app/Info.plist
+          chmod +x out/Payload/RWResearch.app/RWResearch
+          (cd out && zip -qyr ../rw-research-unsigned.ipa Payload)
+          unzip -t rw-research-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rw-research-unsigned-ipa
+          path: rw-research-unsigned.ipa
+          retention-days: 14
+          if-no-files-found: error
