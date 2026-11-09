@@ -89,7 +89,7 @@ struct ContentView: View {
                         }
                         Text(credential == nil ? "Not loaded" : "16-byte credential loaded in memory only")
                             .font(.caption)
-                            .foregroundStyle(credential == nil ? .secondary : .green)
+                            .foregroundStyle(credential == nil ? Color.secondary : Color.green)
                     }
 
                     section("A · Offline decrypt & rebuild IPA",systemImage:"arrow.triangle.2.circlepath") {

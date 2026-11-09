@@ -30,8 +30,8 @@ enum FairPlayCore {
     private static let roundConstants: [UInt64] = [0x68547c2e, 0x7e05e1de, 0xd495038b, 0x0ab24add]
     private static let finalSelectors = [(0,1,2,3), (0,2,4,6), (0,3,5,7), (4,5,6,7)]
     private static let finalConstants: [UInt64] = [0x5b7198c7, 0xeb5de22c, 0x0f8aa8fa, 0xf6e1bb3f]
-    static func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
-        if !condition() { throw DecryptionFailure.invalid(message) }
+    static func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
+        if try !condition() { throw DecryptionFailure.invalid(message) }
     }
     static func u32(_ d: Data, _ pos: Int, big: Bool = false) throws -> UInt32 {
         try require(pos >= 0 && pos <= d.count - 4, "Truncated 32-bit field")
