@@ -1,0 +1,23 @@
+name: Verify iCarCast original-parity repacker
+on:
+  push:
+    branches:
+      - temp/ios-native-ipa-decrypter-20261108
+    paths:
+      - 'tools/icarcast-original-parity/**'
+      - '.github/workflows/verify-icarcast-original-parity.yml'
+  workflow_dispatch:
+jobs:
+  verify-repacker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify encryption header guards
+        run: python3 -m unittest discover -s tools/icarcast-original-parity/tests -v
+      - name: Check syntax
+        run: python3 -m py_compile tools/icarcast-original-parity/scripts/repack_minimal.py
+      - name: Protect customer materials
+        run: echo 'Customer IPA and FairPlay credential never uploaded to GitHub.'
