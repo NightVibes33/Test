@@ -13,7 +13,7 @@ struct DeviceAccessDiagnosticsView: View {
         VStack(alignment:.leading,spacing:13) {
             Label("worse_query · Actual backend",systemImage:"folder.badge.gearshape")
                 .font(.headline)
-            Text("This build compiles forcequitOS's genuine worse_query.m engine and links its App Group sandbox-extension API. Test it only on directories listed in the published PoC; it does not retrieve Apple account keys.")
+            Text("This build compiles forcequitOS's genuine worse_query.m engine and links its App Group sandbox-extension API. This runs the real ContainerManager sandbox-extension call on supported paths. It does not retrieve Apple account keys, and its reported iOS 27 support does not explicitly include 27.0.1.")
                 .font(.footnote).foregroundStyle(.secondary)
 
             Button {
@@ -46,7 +46,7 @@ struct DeviceAccessDiagnosticsView: View {
             }
             .buttonStyle(.bordered)
             Text(rsdStatus).font(.caption).foregroundStyle(.secondary)
-            Text("Neither an RSD TCP connection nor a pairing record proves FairPlay access. worse_query needs the signed App Group entitlement and a supported iOS build. It uses an App Group Library/Caches symlink temporarily; do not store user files in that directory.")
+            Text("Neither an RSD TCP connection nor a pairing record proves FairPlay access. worse_query needs the signed App Group entitlement and a supported iOS build. It uses an App Group Library/Caches symlink temporarily; this build refuses to overwrite non-empty caches.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(16)
@@ -97,7 +97,9 @@ struct DeviceAccessDiagnosticsView: View {
                             -3:"container query initialization failed",
                             -4:"group cache symlink could not be created",
                             -5:"ContainerManager query rejected",
-                            -6:"kernel refused sandbox extension"
+                            -6:"kernel refused sandbox extension",
+                            -7:"App Group cache directory is not empty (preserved safely)",
+                            -8:"App Group cache directory is unavailable or already linked"
                         ]
                         return "\(path): \(messages[handle] ?? "error \(handle)")"
                     }

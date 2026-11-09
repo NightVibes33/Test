@@ -2,7 +2,7 @@
 
 ## Actual behavior
 
-The default interface no longer asks for a 16-byte FairPlay account credential. It presents a credential-free **Device-assisted FairPlay** action for a licensed encrypted target that was embedded in the helper bundle at build time, an **Import IPA** button for inspecting an IPA and showing whether it is encrypted, and an actual **worse_query ContainerManager sandbox-extension test**.
+The default interface does not ask for FairPlay account credentials. It presents a credential-free **Device-assisted FairPlay** action for a licensed encrypted target that was embedded in the helper bundle at build time, an **Import IPA** button for inspecting an IPA and showing whether it is encrypted, and an actual **worse_query ContainerManager sandbox-extension test**.
 
 **Do not confuse inspection with decryption.** FairPlayed documents that fairplayd cannot read an IPA copied into an ordinary app data container. As a result, imported IPAs cannot be decrypted merely by tapping a button after installation. The imported IPA is inspected only. To decrypt using the device backend, embed that target into a freshly built/signed helper app beforehand, then install that helper on the iPhone signed in to the account holding a license.
 
@@ -36,3 +36,7 @@ References:
 https://github.com/forcequitOS/worse_query
 https://github.com/EthanArbuckle/fairplay-decrypt
 https://github.com/morzelowski/FairPlayed
+
+## 4 KB encrypted pages on a 16 KB iOS VM page
+
+The device backend rounds the VM mapping range down/up to the host page size, then reads only the original 4 KB FairPlay-encrypted pages. This removes the previous immediate alignment rejection for an IPA such as iCarCast (cryptoff=204800, cryptsize=4096) on a 16 KB-page device. Whether iOS FairPlay licenses the mapping remains a **physical-device** question; errors are surfaced without exporting or relabeling ciphertext. The worse_query code now refuses to erase an App Group cache directory containing user data and cleans up only its own temporary symlink.

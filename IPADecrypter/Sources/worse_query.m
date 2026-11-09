@@ -48,8 +48,13 @@ static void clean_symlink(NSString *group) {
         NSURL *groupRoot = [files containerURLForSecurityApplicationGroupIdentifier: group];
         if (groupRoot) {
             NSURL *caches = [groupRoot URLByAppendingPathComponent: @"Library/Caches"];
-            [files removeItemAtURL: caches error: nil];
-            [files createDirectoryAtURL: caches withIntermediateDirectories: false attributes: nil error: nil];
+            struct stat st;
+            // Only remove the temporary symlink we created, never an existing
+            // directory that could contain the user's own App Group cache data.
+            if (lstat(caches.fileSystemRepresentation, &st) == 0 && S_ISLNK(st.st_mode)) {
+                [files removeItemAtURL: caches error: nil];
+                [files createDirectoryAtURL: caches withIntermediateDirectories: false attributes: nil error: nil];
+            }
         }
     }
     return;
@@ -69,6 +74,17 @@ int64_t worse_query(NSString *target, NSString *group, bool alt_flags, bool crea
     NSURL *groupRoot = [files containerURLForSecurityApplicationGroupIdentifier: group];
     if (!groupRoot) return -1; // App Group doesn't exist or we can't access it
     NSString *caches = [[groupRoot URLByAppendingPathComponent: @"Library/Caches"] path];
+    // Upstream PoC temporarily replaces the App Group's Caches directory with
+    // a symlink. Do not destroy non-empty caches or an unexpected existing link.
+    struct stat cacheStat;
+    if (lstat(caches.fileSystemRepresentation, &cacheStat) == 0) {
+        if (S_ISLNK(cacheStat.st_mode) || !S_ISDIR(cacheStat.st_mode)) return -8;
+        NSError *listError = nil;
+        NSArray<NSString *> *contents = [files contentsOfDirectoryAtPath:caches error:&listError];
+        if (!contents || contents.count) return -7;
+    } else {
+        if (![files createDirectoryAtPath:caches withIntermediateDirectories:YES attributes:nil error:nil]) return -8;
+    }
     
     // Resolve functions
     void *mgr = dlopen("/usr/lib/system/libsystem_containermanager.dylib", RTLD_NOW | RTLD_LOCAL);
@@ -111,6 +127,7 @@ int64_t worse_query(NSString *target, NSString *group, bool alt_flags, bool crea
     [files removeItemAtPath: caches error: nil];
     if ([files createSymbolicLinkAtPath: caches withDestinationPath: target error: nil] == false) {
         dlclose(mgr);
+        [files createDirectoryAtPath:caches withIntermediateDirectories:YES attributes:nil error:nil];
         return -4; // Failed to create symlink
     }
     

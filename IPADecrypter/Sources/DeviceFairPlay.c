@@ -83,35 +83,47 @@ int fp_device_decrypt_pages(const char *installed_binary_path,
     if (os_error) *os_error = 0;
     if (successful_pages) *successful_pages = 0;
     if (!installed_binary_path || !result || !cryptsize || capacity < cryptsize) return -1;
-    uint32_t page = (uint32_t)getpagesize();
-    if (!page || (slice_offset % page) || (cryptoff % page) ||
-        (cryptsize % page) || cryptsize > 0x10000000) return -2;
+    const uint32_t page = (uint32_t)getpagesize();
+    // Mach-O/FairPlay regions use 4 KB crypto pages, even when the iPhone VM
+    // mapping granularity is 16 KB. Align the VM mapping without extending
+    // the range copied into the output IPA. This is a research path: success
+    // still requires licensed page reads and changed plaintext verification.
+    if (!page || (page & (page - 1)) || (slice_offset % page) ||
+        (cryptoff % 4096) || (cryptsize % 4096) || cryptsize > 0x10000000)
+        return -2;
+    uint64_t aligned_start = (uint64_t)cryptoff & ~((uint64_t)page - 1);
+    uint64_t final_byte = (uint64_t)cryptoff + (uint64_t)cryptsize;
+    uint64_t aligned_end = (final_byte + page - 1) & ~((uint64_t)page - 1);
+    if (aligned_end <= aligned_start || aligned_end > SIZE_MAX) return -2;
     int fd = open(installed_binary_path, O_RDONLY);
     if (fd < 0) { if (os_error) *os_error = errno; return -3; }
     fp_register_signature(fd, slice_offset);
-    size_t length = ((uint64_t)cryptoff + cryptsize + page - 1) & ~((uint64_t)page - 1);
+    size_t length = (size_t)aligned_end;
     void *mem = mmap(NULL, length, PROT_READ, MAP_PRIVATE, fd, (off_t)slice_offset);
     if (mem == MAP_FAILED) {
         if (os_error) *os_error = errno;
         close(fd);
         return -4;
     }
+    uint8_t *mapped = (uint8_t *)mem + aligned_start;
     uint8_t *at = (uint8_t *)mem + cryptoff;
     errno = 0;
-    // Model-cryptid 2 lets iOS perform FairPlay work without PROT_EXEC.
-    int remap = fp_remap(at, cryptsize, 2, cputype, cpusubtype);
+    // Model-cryptid 2 avoids PROT_EXEC on the licensed, preinstalled bundle.
+    int remap = fp_remap(mapped, (size_t)(aligned_end - aligned_start), 2, cputype, cpusubtype);
     if (remap != 0) {
         if (os_error) *os_error = errno;
         munmap(mem, length); close(fd);
         return -5;
     }
     uint32_t good = 0;
-    for (uint32_t offset = 0; offset < cryptsize; offset += page) {
+    // Read ONLY actual encrypted bytes, never extra bytes in the aligned VM mapping.
+    for (uint32_t offset = 0; offset < cryptsize; offset += 4096) {
         vm_size_t nread = 0;
+        const uint32_t chunk = cryptsize - offset >= 4096 ? 4096 : cryptsize - offset;
         kern_return_t kr = vm_read_overwrite(mach_task_self(),
-                                              (vm_address_t)(at + offset), page,
+                                              (vm_address_t)(at + offset), (vm_size_t)chunk,
                                               (vm_address_t)(result + offset), &nread);
-        if (kr != KERN_SUCCESS || nread != page) {
+        if (kr != KERN_SUCCESS || nread != chunk) {
             if (os_error) *os_error = (int)kr;
             munmap(mem, length); close(fd);
             return -6;
