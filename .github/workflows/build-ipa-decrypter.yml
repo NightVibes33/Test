@@ -1,41 +1,69 @@
-name: IPA Decrypter unsigned iOS 27 build
+name: IPA Decrypter with upstream Go library (iOS)
 on:
   push:
     branches: ['temp/ios-native-ipa-decrypter-*']
     paths:
       - '.github/workflows/build-ipa-decrypter.yml'
       - 'IPADecrypter/**'
+      - 'tools/ipadecrypt-ios/**'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
     runs-on: xcode-27
-    timeout-minutes: 35
+    timeout-minutes: 65
     env:
       EMBEDDED_IPA_URL: ${{ secrets.EMBEDDED_IPA_URL }}
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch pinned MIT-licensed upstream ipadecrypt
+        uses: actions/checkout@v4
         with:
-          submodules: false
-      - name: Check Xcode version
+          repository: londek/ipadecrypt
+          ref: 9958b9298b62dfef5053d9b6491634c006f3d4e7
+          path: upstream
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: upstream/go.mod
+          cache: false
+      - name: Compile real Go FairPlay + verification engine for iOS ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream rev-parse HEAD)" = "9958b9298b62dfef5053d9b6491634c006f3d4e7"
+          mkdir -p upstream/iosbridge IPADecrypter/Vendor
+          cp tools/ipadecrypt-ios/main.go upstream/iosbridge/main.go
+          SDKROOT="$(xcrun --sdk iphoneos --show-sdk-path)"
+          export SDKROOT
+          export GOOS=ios GOARCH=arm64 CGO_ENABLED=1
+          export CC="$(xcrun --sdk iphoneos -f clang)"
+          export CGO_CFLAGS="-target arm64-apple-ios18.0 -isysroot $SDKROOT"
+          export CGO_LDFLAGS="-target arm64-apple-ios18.0 -isysroot $SDKROOT"
+          (cd upstream && go build -trimpath -buildmode=c-archive -o "$GITHUB_WORKSPACE/IPADecrypter/Vendor/libipadecrypt.a" ./iosbridge)
+          test -s IPADecrypter/Vendor/libipadecrypt.a
+          test -s IPADecrypter/Vendor/libipadecrypt.h
+          file IPADecrypter/Vendor/libipadecrypt.a
+          cp IPADecrypter/Vendor/libipadecrypt.h IPADecrypter/Sources/ipadecrypt.h
+      - name: Report iOS toolchain
         run: xcodebuild -version
-      - name: Prepare resources and optional private embedded target
+      - name: Prepare embedded payload resource directory
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p IPADecrypter/EmbeddedPayload
           if [[ -n "$EMBEDDED_IPA_URL" ]]; then
             if [[ "$GITHUB_REPOSITORY_VISIBILITY" != "private" ]]; then
-              echo "::error::Licensed embedded payload requires a private repository. Not publishing account-bound FairPlay records in a public Actions artifact."
+              echo "::error::Refusing to publish licensed FairPlay records in public Actions artifacts."
               exit 1
             fi
-            curl --fail --silent --show-error --location --max-time 180 -o "$RUNNER_TEMP/target.ipa" "$EMBEDDED_IPA_URL"
-            unzip -t "$RUNNER_TEMP/target.ipa" >/dev/null
+            curl --fail --location --silent --show-error --max-time 180 -o "$RUNNER_TEMP/target.ipa" "$EMBEDDED_IPA_URL"
+            unzip -t "$RUNNER_TEMP/target.ipa" > /dev/null
             mkdir -p "$RUNNER_TEMP/target_unpack"
             unzip -q "$RUNNER_TEMP/target.ipa" -d "$RUNNER_TEMP/target_unpack"
             count=$(find "$RUNNER_TEMP/target_unpack/Payload" -maxdepth 1 -type d -name '*.app' | wc -l | tr -d ' ')
-            test "$count" -eq 1 || { echo 'Expected one app in Payload' >&2; exit 1; }
+            test "$count" -eq 1 || exit 1
             app=$(find "$RUNNER_TEMP/target_unpack/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)
             name=$(basename "$app" .app)
             ditto "$app" "IPADecrypter/EmbeddedPayload/$name"
@@ -47,33 +75,30 @@ jobs:
           manifest=root/"SC_Info"/"Manifest.plist"
           if manifest.exists():
               data=plistlib.loads(manifest.read_bytes())
-              sinfs=data.get("SinfPaths", [])
+              sinfs=data.get("SinfPaths",[])
               if sinfs:
                   original=root/sinfs[0]
-                  for item in data.get("SinfReplicationPaths", []):
+                  for item in data.get("SinfReplicationPaths",[]):
                       item=pathlib.PurePosixPath(item)
-                      if item.is_absolute() or ".." in item.parts or item.parts[0]=="Watch": continue
+                      if not item.parts or item.is_absolute() or ".." in item.parts or item.parts[0]=="Watch":continue
                       dest=root/item
                       if not dest.exists():
-                          dest.parent.mkdir(parents=True, exist_ok=True)
-                          shutil.copyfile(original, dest)
+                          dest.parent.mkdir(parents=True,exist_ok=True)
+                          shutil.copyfile(original,dest)
           PY
           fi
       - name: Install XcodeGen
         shell: bash
         run: |
           if ! command -v xcodegen >/dev/null 2>&1; then brew install xcodegen; fi
-          xcodegen --version
-      - name: Generate Xcode project
-        run: |
-          cd IPADecrypter
-          xcodegen generate --spec project.yml
-      - name: Build arm64 iOS executable (unsigned)
+      - name: Generate iOS project
+        run: cd IPADecrypter && xcodegen generate --spec project.yml
+      - name: Build unsigned native iOS app with linked upstream Go core
         shell: bash
         run: |
           set -euo pipefail
           xcodebuild -project IPADecrypter/IPADecrypter.xcodeproj -scheme IPADecrypter -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/IPADecrypterDerived" CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY='' build
-      - name: Package and verify IPA
+      - name: Package and validate IPA
         shell: bash
         run: |
           set -euo pipefail
@@ -81,18 +106,19 @@ jobs:
           test -s "$app/IPADecrypter"
           mkdir -p "$RUNNER_TEMP/stage/Payload"
           ditto "$app" "$RUNNER_TEMP/stage/Payload/IPADecrypter.app"
-          (cd "$RUNNER_TEMP/stage" && ditto -c -k --keepParent Payload "$GITHUB_WORKSPACE/IPADecrypter-unsigned.ipa")
-          unzip -t IPADecrypter-unsigned.ipa | tail -2
-          unzip -l IPADecrypter-unsigned.ipa | grep -q 'Payload/IPADecrypter.app/IPADecrypter'
-          shasum -a 256 IPADecrypter-unsigned.ipa > IPADecrypter-unsigned.sha256
-      - uses: actions/upload-artifact@v4
+          (cd "$RUNNER_TEMP/stage" && ditto -c -k --keepParent Payload "$GITHUB_WORKSPACE/IPADecrypter-iOS-Go-unsigned.ipa")
+          unzip -t IPADecrypter-iOS-Go-unsigned.ipa | tail -2
+          unzip -l IPADecrypter-iOS-Go-unsigned.ipa | grep -q 'Payload/IPADecrypter.app/IPADecrypter'
+          shasum -a 256 IPADecrypter-iOS-Go-unsigned.ipa > IPADecrypter-iOS-Go-unsigned.sha256
+      - name: Publish unsigned IPA
+        uses: actions/upload-artifact@v4
         with:
-          name: IPADecrypter-iOS27-unsigned
+          name: IPADecrypter-upstream-Go-iOS-unsigned
           path: |
-            IPADecrypter-unsigned.ipa
-            IPADecrypter-unsigned.sha256
+            IPADecrypter-iOS-Go-unsigned.ipa
+            IPADecrypter-iOS-Go-unsigned.sha256
           if-no-files-found: error
           retention-days: 7
-      - name: Delete temporary encrypted input
+      - name: Clean any embedded licensed IPA
         if: always()
         run: rm -f "$RUNNER_TEMP/target.ipa"

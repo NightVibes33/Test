@@ -44,6 +44,11 @@ enum DeviceFairPlayService {
         try fm.createDirectory(at:payload,withIntermediateDirectories:true)
         let target=payload.appendingPathComponent(source.lastPathComponent+".app",isDirectory:true)
         try fm.copyItem(at:source,to:target)
+        // Keep an encrypted baseline privately for the upstream Go verifier.
+        // It is deleted before this method returns and is never shared.
+        let originalIPA=fm.temporaryDirectory.appendingPathComponent("source-"+UUID().uuidString+".ipa")
+        defer {try? fm.removeItem(at:originalIPA)}
+        try fm.zipItem(at:task,to:originalIPA,shouldKeepParent:false,compressionMethod:.deflate)
         guard let iter=fm.enumerator(at:source,includingPropertiesForKeys:[.isRegularFileKey,.isSymbolicLinkKey]) else {
             throw DecryptionFailure.invalid("Cannot enumerate embedded app bundle")
         }
@@ -120,6 +125,9 @@ enum DeviceFairPlayService {
             try fm.zipItem(at:task,to:url,shouldKeepParent:false,compressionMethod:.deflate)
             let inspected=try IPAService.inspect(ipa:url)
             try FairPlayCore.require(inspected.encryptedPages==0,"Exported IPA still has encrypted main executable")
+            // londek/ipadecrypt's real Go validation checks all Mach-Os,
+            // unchanged ciphertext, and all bytes outside FairPlay pages.
+            try GoIPAValidator.verify(output:url,original:originalIPA)
         } catch {
             try? fm.removeItem(at:url)
             throw error

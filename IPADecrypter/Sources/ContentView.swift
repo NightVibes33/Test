@@ -21,7 +21,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 7) {
                         Label("IPA Decrypter", systemImage: "lock.open.display")
                             .font(.largeTitle.bold())
-                        Text("Device-assisted FairPlay decryption")
+                        Text("Native iOS FairPlay research + upstream ipadecrypt verification")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Text("No credential.bin import or Apple ID password needed for the device method.")

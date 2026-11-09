@@ -1,42 +1,34 @@
-# IPA Decrypter · on-device FairPlay + worse_query
+# IPA Decrypter for iOS 18–27
 
-## Actual behavior
+This project builds a **real iPhone IPA**, not the desktop console. The SwiftUI app includes a native iOS **Go c-archive** built from pinned londek/ipadecrypt core packages.
 
-The default interface does not ask for FairPlay account credentials. It presents a credential-free **Device-assisted FairPlay** action for a licensed encrypted target that was embedded in the helper bundle at build time, an **Import IPA** button for inspecting an IPA and showing whether it is encrypted, and an actual **worse_query ContainerManager sandbox-extension test**.
+## iOS engine
 
-**Do not confuse inspection with decryption.** FairPlayed documents that fairplayd cannot read an IPA copied into an ordinary app data container. As a result, imported IPAs cannot be decrypted merely by tapping a button after installation. The imported IPA is inspected only. To decrypt using the device backend, embed that target into a freshly built/signed helper app beforehand, then install that helper on the iPhone signed in to the account holding a license.
+The new workflow fetches pinned source commit 9958b9298b62dfef5053d9b6491634c006f3d4e7, compiles a Go C archive using GOOS=ios / GOARCH=arm64, and links it directly into the SwiftUI app. The bridge includes:
+- `internal/fairplay` and `internal/pipeline` for complete authorized offline FairPlay decrypt with SINF/SUPF and the matching account credential
+- `internal/pipeline.Verify` for source-vs-output cryptid, ciphertext, zero-fill and untouched-byte verification
 
-The embedded backend calls mremap_encrypted with cryptid model=2 and validates every mapped page before patching any encryption flag. No source claims that GitHub cloud runners can decrypt encrypted FairPlay binaries; only a physical licensed iPhone can run the device path. Re-sign exported IPA outputs.
+The **default iOS UI remains credential-free** and uses the device-assisted path on targets embedded at build time. It now invokes upstream Go verification after the device-mapped pages have been written and the IPA rebuilt. The authorized offline method is linked but not exposed as a misleading credential-less button.
 
-## Bundled worse_query: actual implementation
+The Go upstream CLI's `bootstrap` is a desktop workflow requiring a jailbroken device with root SSH and one installed App Store purchase. It **cannot mint the reusable key through a regular stock iPhone application, device pairing record, worse_query, or LocalDevVPN**. None of those methods is claimed as a substitute.
 
-The following upstream source from https://github.com/forcequitOS/worse_query is included and compiled, NOT a simulated directory listing:
-* Sources/worse_query.h
-* Sources/worse_query.m
+## worse_query
 
-The bridge to Swift is in Sources/DeviceFairPlay.h. The Xcode target references IPADecrypter.entitlements with App Group **group.com.nightvibes33.ipadecrypter**. The on-device diagnostics call worse_query(target, groupID, alt_flags, false), consume the real returned sandbox extension, check the listing, and call worse_query_release(handle) afterward.
+The original GPL-licensed worse_query.m backend is compiled and the SwiftUI diagnostic invokes it with its required App Group. The IPA must be signed with provisioning that authorizes `group.com.nightvibes33.ipadecrypter`. The upstream project doesn't explicitly list iOS 27.0.1 as supported. This gives data-container sandbox extensions, not access to the FairPlay key or an installed executable's process memory.
 
-Important: upstream implementation temporarily removes/replaces its *own App Group* Library/Caches directory with a symlink during its ContainerManager query. Do not save valuable files in that directory. An unsigned IPA includes source entitlements but **cannot grant them by itself**. The end user's signing/provisioning profile must authorize group.com.nightvibes33.ipadecrypter. A simple ad hoc or free-signed installation might not have this entitlement. Missing group returns an actionable message.
+## Building and using
 
-Upstream reports compatibility with iOS 26.0–26.7.2 and iOS 27.2. It is NOT verified by us on iOS 27.0.1. This is a sandbox-extension/file-container tool, **not** a Keychain/FairPlay-key extractor. It does not directly turn an imported data-container IPA into a decryption source for fairplayd.
+The GitHub Actions workflow `.github/workflows/build-ipa-decrypter.yml` builds the native app via Xcode 27 and publishes `IPADecrypter-upstream-Go-iOS-unsigned`, containing `IPADecrypter-iOS-Go-unsigned.ipa` and SHA-256. **This workflow is the iOS deliverable.**
 
-LocalDevVPN/RSD and pairing checks remain separate. They do not import Apple ID secrets or change FairPlay license ownership.
+For the device-assisted FairPlayed-style experiment, a licensed target IPA must be embedded before the app is signed and installed. The public repository intentionally does not include owner-bound SINF/SUPF records. A PRIVATE repository and `EMBEDDED_IPA_URL` Actions secret can stage the target. Imported IPAs are currently inspection-only because iOS FairPlay cannot access their ordinary app data-container locations for the device mapping technique.
 
-## Build
+The device-assisted process has not been validated against iCarCast on a physical iPhone. An unsigned build is not proof of decryption. A valid Apple developer signature is needed to install the helper; a decrypted IPA must also be resigned.
 
-The GitHub Actions workflow at .github/workflows/build-ipa-decrypter.yml builds ARM64 with Xcode 27 and creates an **unsigned IPA artifact** named IPADecrypter-iOS27-unsigned. The GitHub runner validates compilation/archive integrity; physical-iPhone testing is still needed.
+## Licenses / attribution
 
-Optional embedded payload: on a PRIVATE copy of the repo, provide EMBEDDED_IPA_URL as a private Action secret pointing to the licensed encrypted IPA, then trigger the workflow. The public repo refuses embedding because that would expose account-bound SC_Info records in a public artifact.
+- `londek/ipadecrypt`: MIT license, pinned upstream core compiled inside the app; no third-party credentials bundled
+- `forcequitOS/worse_query`: GPL-3.0-or-later, compiled into app
+- Original Swift FairPlay adaptation: GPL-3.0 from `EthanArbuckle/fairplay-decrypt`
+- `ZIPFoundation`: MIT
 
-## License
-
-GPL-3.0-or-later applies. The included original worse_query source is Copyright (C) 2026 Taj C (forcequit). FairPlayCore.swift is a Swift adaptation of EthanArbuckle/fairplay-decrypt (GPL-3.0); device VM technique is based on public technical research by morzelowski/FairPlayed.
-
-References: 
-https://github.com/forcequitOS/worse_query
-https://github.com/EthanArbuckle/fairplay-decrypt
-https://github.com/morzelowski/FairPlayed
-
-## 4 KB encrypted pages on a 16 KB iOS VM page
-
-The device backend rounds the VM mapping range down/up to the host page size, then reads only the original 4 KB FairPlay-encrypted pages. This removes the previous immediate alignment rejection for an IPA such as iCarCast (cryptoff=204800, cryptsize=4096) on a 16 KB-page device. Whether iOS FairPlay licenses the mapping remains a **physical-device** question; errors are surfaced without exporting or relabeling ciphertext. The worse_query code now refuses to erase an App Group cache directory containing user data and cleans up only its own temporary symlink.
+The mistaken desktop-console workflow and wrappers have been removed from this branch. The old GitHub run cannot be retroactively retracted but is not the requested output.

@@ -33,3 +33,5 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         CODE_SIGNING_ALLOWED: NO
         CLANG_ENABLE_MODULES: YES
+        LIBRARY_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Vendor"
+        OTHER_LDFLAGS: "$(inherited) -L$(PROJECT_DIR)/Vendor -lipadecrypt -lresolv -framework CoreFoundation -framework Security"
