@@ -1,0 +1,32 @@
+name: IPADecrypter
+options:
+  bundleIdPrefix: com.nightvibes33
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
+targets:
+  IPADecrypter:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: EmbeddedPayload
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: ZIPFoundation
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nightvibes33.ipadecrypter
+        SWIFT_VERSION: "5.10"
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/DeviceFairPlay.h
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "IPA Decrypter"
+        INFOPLIST_KEY_UIFileSharingEnabled: YES
+        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGNING_ALLOWED: NO

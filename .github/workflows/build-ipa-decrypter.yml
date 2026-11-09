@@ -1,0 +1,98 @@
+name: IPA Decrypter unsigned iOS 27 build
+on:
+  push:
+    branches: ['temp/ios-native-ipa-decrypter-*']
+    paths:
+      - '.github/workflows/build-ipa-decrypter.yml'
+      - 'IPADecrypter/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 35
+    env:
+      EMBEDDED_IPA_URL: ${{ secrets.EMBEDDED_IPA_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Check Xcode version
+        run: xcodebuild -version
+      - name: Prepare resources and optional private embedded target
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p IPADecrypter/EmbeddedPayload
+          if [[ -n "$EMBEDDED_IPA_URL" ]]; then
+            if [[ "$GITHUB_REPOSITORY_VISIBILITY" != "private" ]]; then
+              echo "::error::Licensed embedded payload requires a private repository. Not publishing account-bound FairPlay records in a public Actions artifact."
+              exit 1
+            fi
+            curl --fail --silent --show-error --location --max-time 180 -o "$RUNNER_TEMP/target.ipa" "$EMBEDDED_IPA_URL"
+            unzip -t "$RUNNER_TEMP/target.ipa" >/dev/null
+            mkdir -p "$RUNNER_TEMP/target_unpack"
+            unzip -q "$RUNNER_TEMP/target.ipa" -d "$RUNNER_TEMP/target_unpack"
+            count=$(find "$RUNNER_TEMP/target_unpack/Payload" -maxdepth 1 -type d -name '*.app' | wc -l | tr -d ' ')
+            test "$count" -eq 1 || { echo 'Expected one app in Payload' >&2; exit 1; }
+            app=$(find "$RUNNER_TEMP/target_unpack/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)
+            name=$(basename "$app" .app)
+            ditto "$app" "IPADecrypter/EmbeddedPayload/$name"
+            rm -rf "IPADecrypter/EmbeddedPayload/$name/Watch"
+            export EMBEDDED_FOLDER="IPADecrypter/EmbeddedPayload/$name"
+            python3 - <<'PY'
+          import os, pathlib, plistlib, shutil
+          root=pathlib.Path(os.environ["EMBEDDED_FOLDER"])
+          manifest=root/"SC_Info"/"Manifest.plist"
+          if manifest.exists():
+              data=plistlib.loads(manifest.read_bytes())
+              sinfs=data.get("SinfPaths", [])
+              if sinfs:
+                  original=root/sinfs[0]
+                  for item in data.get("SinfReplicationPaths", []):
+                      item=pathlib.PurePosixPath(item)
+                      if item.is_absolute() or ".." in item.parts or item.parts[0]=="Watch": continue
+                      dest=root/item
+                      if not dest.exists():
+                          dest.parent.mkdir(parents=True, exist_ok=True)
+                          shutil.copyfile(original, dest)
+          PY
+          fi
+      - name: Install XcodeGen
+        shell: bash
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then brew install xcodegen; fi
+          xcodegen --version
+      - name: Generate Xcode project
+        run: |
+          cd IPADecrypter
+          xcodegen generate --spec project.yml
+      - name: Build arm64 iOS executable (unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project IPADecrypter/IPADecrypter.xcodeproj -scheme IPADecrypter -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/IPADecrypterDerived" CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY='' build
+      - name: Package and verify IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/IPADecrypterDerived/Build/Products/Release-iphoneos/IPADecrypter.app"
+          test -s "$app/IPADecrypter"
+          mkdir -p "$RUNNER_TEMP/stage/Payload"
+          ditto "$app" "$RUNNER_TEMP/stage/Payload/IPADecrypter.app"
+          (cd "$RUNNER_TEMP/stage" && ditto -c -k --keepParent Payload "$GITHUB_WORKSPACE/IPADecrypter-unsigned.ipa")
+          unzip -t IPADecrypter-unsigned.ipa | tail -2
+          unzip -l IPADecrypter-unsigned.ipa | grep -q 'Payload/IPADecrypter.app/IPADecrypter'
+          shasum -a 256 IPADecrypter-unsigned.ipa > IPADecrypter-unsigned.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IPADecrypter-iOS27-unsigned
+          path: |
+            IPADecrypter-unsigned.ipa
+            IPADecrypter-unsigned.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Delete temporary encrypted input
+        if: always()
+        run: rm -f "$RUNNER_TEMP/target.ipa"
