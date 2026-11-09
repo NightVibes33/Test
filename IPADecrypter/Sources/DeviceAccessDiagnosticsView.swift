@@ -1,128 +1,141 @@
 import SwiftUI
 import Network
-import UIKit
 
 struct DeviceAccessDiagnosticsView: View {
-    @State private var importPairing = false
-    @State private var pairingStatus = "No pairing record inspected"
-    @State private var networkStatus = "Local RSD endpoint not tested"
-    @State private var containerStatus = "Filesystem access not tested"
-    @State private var working = false
+    private let groupID="group.com.nightvibes33.ipadecrypter"
+    @State private var importPairing=false
+    @State private var pairingStatus="No pairing record selected"
+    @State private var rsdStatus="Local RSD connection not tested"
+    @State private var worseStatus="No sandbox extension requested yet"
+    @State private var running=false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            Label("C · Pairing / LocalDevVPN diagnostics", systemImage: "network.badge.shield.half.filled")
+        VStack(alignment:.leading,spacing:13) {
+            Label("worse_query · Actual backend",systemImage:"folder.badge.gearshape")
                 .font(.headline)
-            Text("These checks are independent of FairPlay. A device pairing file, RSD tunnel and worse_query container access do NOT themselves reveal Apple account FairPlay credentials.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            Text("This build compiles forcequitOS's genuine worse_query.m engine and links its App Group sandbox-extension API. Test it only on directories listed in the published PoC; it does not retrieve Apple account keys.")
+                .font(.footnote).foregroundStyle(.secondary)
 
             Button {
-                importPairing = true
+                probeWorseQuery()
             } label: {
-                Label("Inspect pairing plist locally", systemImage: "doc.badge.gearshape")
+                HStack {
+                    if running {ProgressView()}
+                    Label("Test worse_query sandbox extension",systemImage:"checkmark.shield")
+                }
+                .frame(maxWidth:.infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(running)
+            Text(worseStatus)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .foregroundStyle(.secondary)
+            Divider()
+
+            Label("Optional device-service diagnostics",systemImage:"network")
+                .font(.headline)
+            Button {importPairing=true} label: {
+                Label("Inspect pairing plist",systemImage:"doc")
             }
             .buttonStyle(.bordered)
-            Text(pairingStatus)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(pairingStatus).font(.caption).foregroundStyle(.secondary)
 
-            Button {
-                probeRSD()
-            } label: {
-                if working { ProgressView() }
-                Label("Probe LocalDevVPN / RSD on port 49152",systemImage:"cable.connector")
+            Button {probeRSD()} label: {
+                Label("Test LocalDevVPN loopback RSD",systemImage:"cable.connector")
             }
             .buttonStyle(.bordered)
-            .disabled(working)
-            Text(networkStatus)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button {
-                probeContainers()
-            } label: {
-                Label("Check baseline sandbox paths",systemImage:"folder")
-            }
-            .buttonStyle(.bordered)
-            Text(containerStatus)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text("worse_query is not silently embedded or activated by this diagnostic. Its published supported-version range does not establish compatibility with iOS 27.0.1. A sandbox listing is not evidence of Keychain or FairPlay credential access.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(rsdStatus).font(.caption).foregroundStyle(.secondary)
+            Text("Neither an RSD TCP connection nor a pairing record proves FairPlay access. worse_query needs the signed App Group entitlement and a supported iOS build. It uses an App Group Library/Caches symlink temporarily; do not store user files in that directory.")
+                .font(.caption).foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(maxWidth:.infinity,alignment:.leading)
-        .background(Color(uiColor:.secondarySystemGroupedBackground), in:RoundedRectangle(cornerRadius:18))
+        .background(Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:18))
         .fileImporter(isPresented:$importPairing,allowedContentTypes:[.item],allowsMultipleSelection:false) { result in
             do {
-                guard let url=try result.get().first else {return}
-                let scope=url.startAccessingSecurityScopedResource()
-                defer {if scope {url.stopAccessingSecurityScopedResource()}}
-                let bytes=try Data(contentsOf:url)
-                try FairPlayCore.require(bytes.count > 64 && bytes.count < 2_000_000,"Unrecognized pairing record size")
-                let plist=try PropertyListSerialization.propertyList(from:bytes,format:nil)
-                try FairPlayCore.require(plist is [String:Any], "Pairing record must be a plist dictionary")
-                // No pairing keys are retained, displayed, transmitted or used as Apple ID credentials.
-                pairingStatus="Parsed plist locally (\(bytes.count) bytes); connectivity/authorization not established."
+                guard let file=try result.get().first else {return}
+                let scoped=file.startAccessingSecurityScopedResource()
+                defer {if scoped{file.stopAccessingSecurityScopedResource()}}
+                let d=try Data(contentsOf:file)
+                try FairPlayCore.require(d.count>64 && d.count<2_000_000,"Pairing plist has unexpected length")
+                let plist=try PropertyListSerialization.propertyList(from:d,format:nil)
+                try FairPlayCore.require(plist is [String:Any],"Selected file is not a pairing plist dictionary")
+                pairingStatus="Pairing plist parsed locally (\(d.count) bytes). No account credentials extracted or saved."
             } catch {
-                pairingStatus="Cannot parse selected record: \(error.localizedDescription)"
+                pairingStatus="Import failed: \(error.localizedDescription)"
             }
+        }
+    }
+
+    private func probeWorseQuery() {
+        guard !running else {return}
+        guard FileManager.default.containerURLForSecurityApplicationGroupIdentifier(groupID) != nil else {
+            worseStatus="The App Group is unavailable. Sign with a provisioning profile that authorizes \(groupID); ordinary ad-hoc signatures will not grant the group."
+            return
+        }
+        running=true
+        worseStatus="Attempting the real ContainerManager sandbox-extension flow…"
+        let group=groupID
+        Task {
+            let output=await Task.detached(priority:.userInitiated) { () -> String in
+                let paths=[
+                    "/var/mobile/Containers/Shared/AppGroup",
+                    "/var/containers/Data/System",
+                    "/var/containers/Shared/SystemGroup"
+                ]
+                let fm=FileManager.default
+                let os=ProcessInfo.processInfo.operatingSystemVersion
+                return paths.map { path -> String in
+                    let alternative=os.majorVersion == 26 && path.contains("/Containers/Shared/AppGroup")
+                    let handle=worse_query(path as NSString,group as NSString,alternative,false)
+                    guard handle >= 0 else {
+                        let messages:[Int64:String]=[
+                            -255:"path not found",
+                            -1:"App Group unavailable",
+                            -2:"unsupported ContainerManager symbols",
+                            -3:"container query initialization failed",
+                            -4:"group cache symlink could not be created",
+                            -5:"ContainerManager query rejected",
+                            -6:"kernel refused sandbox extension"
+                        ]
+                        return "\(path): \(messages[handle] ?? "error \(handle)")"
+                    }
+                    defer {worse_query_release(handle)}
+                    do {
+                        let entries=try fm.contentsOfDirectory(atPath:path)
+                        return "\(path): extension granted; directory readable (\(entries.count) entries)"
+                    } catch {
+                        return "\(path): extension granted; listing denied (\(error.localizedDescription))"
+                    }
+                }.joined(separator:"\n")
+            }.value
+            worseStatus=output
+            running=false
         }
     }
 
     private func probeRSD() {
-        guard !working else {return}
-        working=true
-        networkStatus="Testing local TCP connection (127.0.0.1:49152)…"
-        let endpoint=NWEndpoint.Host("127.0.0.1")
-        let port=NWEndpoint.Port(rawValue:49152)!
-        let connection=NWConnection(host:endpoint,port:port,using:.tcp)
-        connection.stateUpdateHandler={state in
+        rsdStatus="Trying TCP 127.0.0.1:49152…"
+        let conn=NWConnection(host:"127.0.0.1",port:NWEndpoint.Port(rawValue:49152)!,using:.tcp)
+        conn.stateUpdateHandler={ state in
             switch state {
             case .ready:
                 DispatchQueue.main.async {
-                    networkStatus="TCP endpoint responded. This does NOT establish pairing or account-key access."
-                    working=false
+                    rsdStatus="RSD TCP listener is reachable; device service authentication has not been verified."
                 }
-                connection.cancel()
-            case .failed(let error):
+                conn.cancel()
+            case .failed(let err):
                 DispatchQueue.main.async {
-                    networkStatus="No RSD connection at 127.0.0.1:49152: \(error.localizedDescription)"
-                    working=false
+                    rsdStatus="RSD loopback unavailable: \(err.localizedDescription)"
                 }
-                connection.cancel()
+                conn.cancel()
             default:break
             }
         }
-        connection.start(queue:DispatchQueue.global(qos:.utility))
+        conn.start(queue:DispatchQueue.global(qos:.utility))
         DispatchQueue.global(qos:.utility).asyncAfter(deadline:.now()+5) {
-            connection.cancel()
-            DispatchQueue.main.async {
-                if working {
-                    working=false
-                    networkStatus="Probe timed out; local RSD tunnel was not confirmed."
-                }
-            }
+            conn.cancel()
         }
-    }
-
-    private func probeContainers() {
-        let paths=[
-            "/var/mobile/Containers/Shared/AppGroup",
-            "/var/containers/Data/System",
-            "/var/containers/Shared/SystemGroup"
-        ]
-        let results=paths.map{ p -> String in
-            do {
-                let entries=try FileManager.default.contentsOfDirectory(atPath:p)
-                return "\(p): readable (\(entries.count) entries)"
-            } catch {
-                return "\(p): inaccessible"
-            }
-        }
-        containerStatus=results.joined(separator:"\n")
     }
 }

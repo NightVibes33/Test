@@ -3,14 +3,14 @@ import SwiftUI
 struct DeviceFairPlayView: View {
     @State private var selected:URL?
     @State private var result:DecryptionOutput?
-    @State private var status="Checking for a FairPlay-licensed IPA embedded at build time."
+    @State private var status="Checking for an installed FairPlay-licensed embedded target."
     @State private var busy=false
     @State private var error:String?
     private var embedded:[URL] {DeviceFairPlayService.embeddedFolders()}
 
     var body: some View {
         VStack(alignment:.leading,spacing:14) {
-            Label("B · Device-assisted FairPlay",systemImage:"iphone.gen3.radiowaves.left.and.right")
+            Label("1 · Decrypt on this iPhone",systemImage:"iphone.gen3.radiowaves.left.and.right")
                 .font(.headline)
             Text("Uses device FairPlay mapping instead of an exported Apple account credential. The encrypted app must already be embedded in this decryptor's installed bundle. Importing a new IPA after installation cannot use this mode.")
                 .font(.footnote).foregroundStyle(.secondary)

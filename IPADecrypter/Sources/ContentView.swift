@@ -3,249 +3,115 @@ import UniformTypeIdentifiers
 
 @main
 struct IPADecrypterApp: App {
-    var body: some Scene {
-        WindowGroup { ContentView() }
-    }
+    var body: some Scene { WindowGroup { ContentView() } }
 }
 
 struct ContentView: View {
-    @State private var ipaURL: URL?
-    @State private var inspection: IPAInspection?
-    @State private var credential: Data?
-    @State private var output: DecryptionOutput?
     @State private var importIPA = false
-    @State private var importCredential = false
+    @State private var inspected: IPAInspection?
+    @State private var fileName: String?
     @State private var busy = false
-    @State private var status = "Choose an IPA to inspect its encryption."
     @State private var error: String?
-
-    private var canDecrypt: Bool {
-        ipaURL != nil && credential != nil && inspection?.encryptedPages ?? 0 > 0 && !busy
-    }
-
+    @State private var message = "Select an encrypted IPA to inspect it."
+    
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("IPA Decrypter",systemImage:"lock.open.display")
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Label("IPA Decrypter", systemImage: "lock.open.display")
                             .font(.largeTitle.bold())
-                        Text("Offline FairPlay decryption, on your iPhone")
+                        Text("Device-assisted FairPlay decryption")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("No Apple ID login, no cloud upload, no fake cryptid patch.")
+                        Text("No credential.bin import or Apple ID password needed for the device method.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 20)
+                    }.padding(.top, 14)
 
-                    section("1 · Import IPA",systemImage:"shippingbox") {
+                    DeviceFairPlayView()
+                    
+                    panel {
+                        Label("Inspect another IPA", systemImage: "shippingbox")
+                            .font(.headline)
+                        Text("Importing an IPA can inspect its Mach-O encryption and license records. Apple's FairPlay service cannot decrypt a newly imported IPA from this app's data sandbox, so use a helper build with the licensed IPA embedded before installation.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                         Button {
                             importIPA = true
                         } label: {
-                            Label(ipaURL == nil ? "Select encrypted IPA" : "Replace IPA",
-                                  systemImage:"square.and.arrow.down")
-                                .frame(maxWidth:.infinity)
+                            Label(busy ? "Inspecting…" : "Import encrypted IPA", systemImage: "square.and.arrow.down")
+                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
-                        if let ipaURL {
-                            LabeledContent("File",value:ipaURL.lastPathComponent)
+                        .buttonStyle(.bordered)
+                        .disabled(busy)
+                        if let name=fileName { Text(name).font(.caption.monospaced()).textSelection(.enabled) }
+                        if let info=inspected {
+                            LabeledContent("App", value: info.title)
+                            LabeledContent("Bundle", value: info.identifier)
+                            LabeledContent("Version", value: info.version)
+                            LabeledContent("Encrypted 4 KB pages", value: "\(info.encryptedPages)")
+                            LabeledContent("License records", value: info.hasLicenseRecords ? "Present" : "Not found")
                         }
-                        if let inspection {
-                            Divider()
-                            LabeledContent("App",value:inspection.title)
-                            LabeledContent("Bundle",value:inspection.identifier)
-                            LabeledContent("Version",value:inspection.version)
-                            LabeledContent("Encrypted pages",value:"\(inspection.encryptedPages)")
-                            LabeledContent("FairPlay license records",
-                                           value:inspection.hasLicenseRecords ? "Found" : "Missing")
-                            if inspection.encryptedPages==0 {
-                                Label("Main executable already unencrypted",systemImage:"checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                            }
-                        }
-                    }
-
-                    section("2 · Authorized account credential",systemImage:"key.horizontal") {
-                        Text("Import credential.bin (16 bytes) obtained from a supported device for the Apple account that owns this IPA. A pairing file, Apple ID password or certificate cannot replace it.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        HStack {
-                            Button {
-                                importCredential=true
-                            } label: {
-                                Label(credential == nil ? "Import credential.bin" : "Change credential",
-                                      systemImage:"doc.badge.plus")
-                            }
-                            .buttonStyle(.bordered)
-                            if credential != nil {
-                                Image(systemName:"checkmark.shield.fill").foregroundStyle(.green)
-                                Button("Clear",role:.destructive) {
-                                    credential=nil
-                                    output=nil
-                                    status="Credential cleared from app memory."
-                                }
-                            }
-                        }
-                        Text(credential == nil ? "Not loaded" : "16-byte credential loaded in memory only")
-                            .font(.caption)
-                            .foregroundStyle(credential == nil ? Color.secondary : Color.green)
-                    }
-
-                    section("A · Offline decrypt & rebuild IPA",systemImage:"arrow.triangle.2.circlepath") {
-                        Button(action:beginDecryption) {
-                            HStack {
-                                if busy { ProgressView().tint(.white) }
-                                Label(busy ? "Working…" : "Decrypt & repackage",systemImage:"lock.open")
-                            }
-                            .frame(maxWidth:.infinity)
-                            .padding(.vertical,4)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!canDecrypt)
-
-                        Text(status)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                        Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                         if let error {
-                            Label(error,systemImage:"exclamationmark.triangle")
-                                .foregroundStyle(.red)
-                                .font(.footnote)
-                                .textSelection(.enabled)
-                        }
-                        if let output {
-                            Divider()
-                            Label("\(output.binaries) binary(s), \(output.pages) encrypted page(s) decrypted",
-                                  systemImage:"checkmark.seal.fill")
-                                .foregroundStyle(.green)
-                            Text(output.url.lastPathComponent)
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
-                            ShareLink(item:output.url) {
-                                Label("Share decrypted IPA",systemImage:"square.and.arrow.up")
-                                    .frame(maxWidth:.infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
+                            Label(error, systemImage: "exclamationmark.triangle")
+                                .font(.footnote).foregroundStyle(.red)
                         }
                     }
-
-                    DeviceFairPlayView()
-
                     DeviceAccessDiagnosticsView()
-
-                    Label {
-                        Text("Stock iOS does not grant access to other apps' decrypted runtime memory. This app performs real offline decryption only when the correct FairPlay credential is supplied. The resulting IPA needs a fresh signature before normal installation.")
-                            .font(.footnote)
-                    } icon: {
-                        Image(systemName:"info.circle")
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom,30)
+                    Text("Output IPAs are unsigned and must be re-signed for installation. Neither a successful build nor a sandbox extension proves FairPlay decryption until it runs on a licensed physical iPhone.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 24)
                 }
-                .padding(.horizontal,20)
+                .padding(.horizontal, 18)
             }
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
-            .background(Color(uiColor:.systemGroupedBackground))
-            .fileImporter(isPresented:$importIPA,allowedContentTypes:[.item],allowsMultipleSelection:false) {
-                handleIPA($0)
-            }
-            .fileImporter(isPresented:$importCredential,allowedContentTypes:[.item],allowsMultipleSelection:false) {
-                handleCredential($0)
-            }
+            .fileImporter(isPresented: $importIPA, allowedContentTypes: [.item], allowsMultipleSelection: false, onCompletion: handleImport)
         }
     }
 
-    private func section<Content:View>(_ title:String,systemImage:String,
-                                        @ViewBuilder content:()->Content) -> some View {
-        VStack(alignment:.leading,spacing:13) {
-            Label(title,systemImage:systemImage)
-                .font(.headline)
-            content()
-        }
-        .padding(16)
-        .frame(maxWidth:.infinity,alignment:.leading)
-        .background(Color(uiColor:.secondarySystemGroupedBackground),
-                    in:RoundedRectangle(cornerRadius:18))
+    private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 13, content: content)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
     }
 
-    private func selectedURL(_ result: Result<[URL],Error>) throws -> URL {
-        guard let url=try result.get().first else {
-            throw DecryptionFailure.invalid("No file selected")
-        }
-        return url
-    }
-
-    private func handleIPA(_ result:Result<[URL],Error>) {
+    private func handleImport(_ result: Result<[URL], Error>) {
         do {
-            let url=try selectedURL(result)
-            guard url.pathExtension.lowercased()=="ipa" else {
-                throw DecryptionFailure.invalid("Select a .ipa file.")
+            guard let url=try result.get().first, url.pathExtension.lowercased()=="ipa" else {
+                throw DecryptionFailure.invalid("Choose a valid .ipa file.")
             }
-            let access=url.startAccessingSecurityScopedResource()
-            defer { if access {url.stopAccessingSecurityScopedResource()} }
-            let dest=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".ipa")
-            try FileManager.default.copyItem(at:url,to:dest)
-            ipaURL=dest
-            inspection=nil
-            output=nil
+            let scope=url.startAccessingSecurityScopedResource()
+            defer { if scope {url.stopAccessingSecurityScopedResource()} }
+            let destination=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".ipa")
+            try FileManager.default.copyItem(at:url,to:destination)
+            fileName=url.lastPathComponent
+            inspected=nil
             error=nil
+            message="Inspecting Mach-O and FairPlay metadata…"
             busy=true
-            status="Inspecting IPA archive and Mach-O encryption…"
             Task {
                 do {
-                    let info=try await Task.detached(priority:.userInitiated) {
-                        try IPAService.inspect(ipa:dest)
+                    let value=try await Task.detached(priority: .userInitiated) {
+                        try IPAService.inspect(ipa: destination)
                     }.value
-                    inspection=info
-                    status=info.encryptedPages==0
-                        ? "This app's main executable is not FairPlay encrypted."
-                        : "Found \(info.encryptedPages) encrypted 4 KB page(s). Supply the matching credential."
+                    inspected=value
+                    message = value.encryptedPages>0 ?
+                        "FairPlay-encrypted. To use the credential-free backend, embed this licensed IPA in the helper build and install it on your device." :
+                        "Main executable is not FairPlay-encrypted."
                 } catch {
                     self.error=error.localizedDescription
-                    status="Inspection failed."
+                    message="Inspection failed."
                 }
                 busy=false
+                try? FileManager.default.removeItem(at:destination)
             }
         } catch {
             self.error=error.localizedDescription
-        }
-    }
-
-    private func handleCredential(_ result:Result<[URL],Error>) {
-        do {
-            let url=try selectedURL(result)
-            let access=url.startAccessingSecurityScopedResource()
-            defer { if access {url.stopAccessingSecurityScopedResource()} }
-            let bytes=try Data(contentsOf:url)
-            try FairPlayCore.require(bytes.count==16,"Credential file must be exactly 16 bytes. Do not choose a pairing plist.")
-            credential=bytes
-            output=nil
-            error=nil
-            status="Credential imported. Ready for offline FairPlay processing."
-        } catch {
-            self.error=error.localizedDescription
-        }
-    }
-
-    private func beginDecryption() {
-        guard let ipa=ipaURL, let key=credential, !busy else {return}
-        busy=true
-        output=nil
-        error=nil
-        status="Decrypting FairPlay pages and rebuilding Payload…"
-        Task {
-            do {
-                let result=try await Task.detached(priority:.userInitiated) {
-                    try IPAService.decrypt(ipa:ipa,credential:key)
-                }.value
-                output=result
-                status="Successful: generated a real decrypted IPA. Re-sign before installation."
-            } catch {
-                self.error=error.localizedDescription
-                status="Decryption stopped; no fake IPA was produced."
-            }
-            busy=false
         }
     }
 }

@@ -21,8 +21,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nightvibes33.ipadecrypter
+        PRODUCT_NAME: IPADecrypter
         SWIFT_VERSION: "5.10"
         SWIFT_OBJC_BRIDGING_HEADER: Sources/DeviceFairPlay.h
+        CODE_SIGN_ENTITLEMENTS: IPADecrypter.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: "IPA Decrypter"
@@ -30,3 +32,4 @@ targets:
         INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         CODE_SIGNING_ALLOWED: NO
+        CLANG_ENABLE_MODULES: YES
