@@ -70,7 +70,7 @@ struct DeviceAccessDiagnosticsView: View {
 
     private func probeWorseQuery() {
         guard !running else {return}
-        guard FileManager.default.containerURLForSecurityApplicationGroupIdentifier(groupID) != nil else {
+        guard FileManager.default.containerURL(forSecurityApplicationGroupIdentifier:groupID) != nil else {
             worseStatus="The App Group is unavailable. Sign with a provisioning profile that authorizes \(groupID); ordinary ad-hoc signatures will not grant the group."
             return
         }
@@ -88,7 +88,7 @@ struct DeviceAccessDiagnosticsView: View {
                 let os=ProcessInfo.processInfo.operatingSystemVersion
                 return paths.map { path -> String in
                     let alternative=os.majorVersion == 26 && path.contains("/Containers/Shared/AppGroup")
-                    let handle=worse_query(path as NSString,group as NSString,alternative,false)
+                    let handle=worse_query(path,group,alternative,false)
                     guard handle >= 0 else {
                         let messages:[Int64:String]=[
                             -255:"path not found",
