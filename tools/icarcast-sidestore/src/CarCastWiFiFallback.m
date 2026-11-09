@@ -14,6 +14,7 @@
 #import <Security/Security.h>
 #import <NetworkExtension/NetworkExtension.h>
 #import <objc/runtime.h>
+extern void CCLogEvent(NSString *format, ...) NS_FORMAT_FUNCTION(1,2);
 
 static NSString *const CCService = @"ai.rplay.carcast.manual-wifi.v1";
 static NSString *const CCAccount = @"selected-network";
@@ -32,7 +33,7 @@ static NSDictionary<NSString *, NSString *> *CCReadManualNetwork(void) {
     };
     CFTypeRef raw = NULL;
     OSStatus result = SecItemCopyMatching((__bridge CFDictionaryRef)request, &raw);
-    if (result != errSecSuccess || !raw) return nil;
+    if (result != errSecSuccess || !raw) { CCLogEvent(@"manual-network Keychain lookup status=%ld", (long)result); return nil; }
     NSData *bytes = CFBridgingRelease(raw);
     if (![bytes isKindOfClass:NSData.class]) return nil;
     NSDictionary *config = [NSPropertyListSerialization propertyListWithData:bytes options:NSPropertyListImmutable format:NULL error:nil];
@@ -66,7 +67,9 @@ static BOOL CCStoreManualNetwork(NSString *ssid, NSString *password) {
     NSMutableDictionary *add = match.mutableCopy;
     add[(__bridge id)kSecValueData] = data;
     add[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
-    return SecItemAdd((__bridge CFDictionaryRef)add, NULL) == errSecSuccess;
+    OSStatus result=SecItemAdd((__bridge CFDictionaryRef)add, NULL);
+    CCLogEvent(@"manual-network Keychain save status=%ld; credentials redacted", (long)result);
+    return result == errSecSuccess;
 }
 
 static NSDictionary *CCDetails(id obj) {
@@ -154,8 +157,9 @@ static void CCShowManualPrompt(void) {
     NSCAssert(NSThread.isMainThread, @"Wi-Fi prompt must run on main thread");
     if (CCShowingPrompt) return;
     UIViewController *presenter = CCTopViewController();
-    if (!presenter) { CCResolvePending(nil); return; }
+    if (!presenter) { CCLogEvent(@"fallback prompt: no foreground view controller"); CCResolvePending(nil); return; }
     CCShowingPrompt = YES;
+    CCLogEvent(@"manual Wi-Fi fallback prompt presented");
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Wi-Fi for CarPlay"
             message:@"iOS did not provide the current Wi-Fi name to this signed app. Enter the SSID of the Wi-Fi you are already joined to, and its real password. This does NOT join, reconfigure or verify a network."
             preferredStyle:UIAlertControllerStyleAlert];
@@ -171,12 +175,13 @@ static void CCShowManualPrompt(void) {
         field.autocapitalizationType = UITextAutocapitalizationTypeNone;
     }];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
-        (void)action; CCResolvePending(nil);
+        (void)action; CCLogEvent(@"manual Wi-Fi fallback cancelled"); CCResolvePending(nil);
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Use This Network" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         (void)action;
         NSString *ssid = alert.textFields.firstObject.text ?: @"";
         NSString *password = alert.textFields.count > 1 ? (alert.textFields[1].text ?: @"") : @"";
+        CCLogEvent(@"manual Wi-Fi fallback submitted (SSID/password redacted)");
         if (!CCStoreManualNetwork(ssid, password)) {
             CCResolvePending(nil);
             return;
@@ -190,15 +195,18 @@ static void CCShowManualPrompt(void) {
 
 static void CCFallbackFetch(id klass, SEL sel, void (^completion)(id)) {
     if (!completion) return;
-    if (!CCOriginalFetch) { completion(nil); return; }
+    CCLogEvent(@"NEHotspotNetwork.fetchCurrent called");
+    if (!CCOriginalFetch) { CCLogEvent(@"Wi-Fi hook original IMP unavailable"); completion(nil); return; }
     void (^saved)(id) = [completion copy];
     ((void (*)(id, SEL, id))CCOriginalFetch)(klass, sel, ^(id osNetwork) {
-        if (osNetwork) { saved(osNetwork); return; }
+        if (osNetwork) { CCLogEvent(@"OS returned current Wi-Fi network (name redacted)"); saved(osNetwork); return; }
+        CCLogEvent(@"OS current Wi-Fi lookup returned nil; fallback begins");
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!CCPendingCallbacks) CCPendingCallbacks = NSMutableArray.new;
             [CCPendingCallbacks addObject:saved];
             NSDictionary *manual = CCReadManualNetwork();
             if (manual) {
+                CCLogEvent(@"using saved manual Wi-Fi profile (values redacted)");
                 CCResolvePending(CCSyntheticNetwork(manual));
                 return;
             }
@@ -212,9 +220,10 @@ __attribute__((constructor)) static void CCInstallWiFiFallback(void) {
         // Link NetworkExtension and install only for applications explicitly
         // containing this shim. The original API is always called first.
         Class type = NSClassFromString(@"NEHotspotNetwork");
-        if (!type) return;
+        if (!type) { CCLogEvent(@"NEHotspotNetwork class missing; Wi-Fi hook not installed"); return; }
         Method fetch = class_getClassMethod(type, @selector(fetchCurrentWithCompletionHandler:));
-        if (!fetch) return;
+        if (!fetch) { CCLogEvent(@"fetchCurrentWithCompletionHandler: unavailable; Wi-Fi hook not installed"); return; }
         CCOriginalFetch = method_setImplementation(fetch, (IMP)CCFallbackFetch);
+        CCLogEvent(@"NEHotspotNetwork fetchCurrent method hook installed");
     }
 }

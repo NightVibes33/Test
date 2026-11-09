@@ -50,16 +50,31 @@ class RepackageTests(unittest.TestCase):
             self._fixture(ipa,fake_macho())
             shim.write_bytes(fake_macho())
             manifest=package(ipa,shim,out,path/'manifest.json')
-            self.assertTrue(manifest['reused_resources_unchanged'])
+            self.assertTrue(manifest['original_resources_except_executable_and_files_plist_preserved'])
             self.assertFalse(manifest['network_entitlements_automatically_granted'])
             with zipfile.ZipFile(ipa) as z0,zipfile.ZipFile(out) as z1:
                 self.assertEqual(z1.testzip(),None)
                 self.assertIn(APP+'Frameworks/CarCastAirPlay.framework/CarCastAirPlay',z1.namelist())
                 self.assertEqual(z1.getinfo(APP+'CarCast').external_attr,z0.getinfo(APP+'CarCast').external_attr)
-                self.assertEqual(z1.read(APP+'Info.plist'),z0.read(APP+'Info.plist'))
+                info0=plistlib.loads(z0.read(APP+'Info.plist'))
+                info1=plistlib.loads(z1.read(APP+'Info.plist'))
+                self.assertTrue(info1['UIFileSharingEnabled'])
+                self.assertTrue(info1['LSSupportsOpeningDocumentsInPlace'])
+                for key,value in info0.items():
+                    self.assertEqual(info1[key],value)
+                self.assertEqual(manifest['diagnostic_directory'],'Documents/CarCastDebug')
                 self.assertTrue(z1.getinfo(APP+'Frameworks/CarCastWiFiFallback.framework/CarCastWiFiFallback').external_attr>>16 & 0o111)
             with self.assertRaisesRegex(ValueError,'Refusing to overwrite'):
                 package(ipa,shim,out,path/'manifest2.json')
+
+    def test_reject_second_injection(self):
+        with tempfile.TemporaryDirectory() as work:
+            path=Path(work);ipa=path/'input.ipa';shim=path/'shim';out=path/'output.ipa'
+            self._fixture(ipa,fake_macho())
+            shim.write_bytes(fake_macho())
+            package(ipa,shim,out,path/'manifest.json')
+            with self.assertRaisesRegex(ValueError,'already packaged'):
+                package(out,shim,path/'again.ipa',path/'again.json')
 
     def _fixture(self,ipa,binary):
         with zipfile.ZipFile(ipa,'w') as z:

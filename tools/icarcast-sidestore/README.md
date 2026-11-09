@@ -44,3 +44,13 @@ The resulting IPA is **unsigned**. SideStore must sign both the newly added fram
 - If Apple supplies real network information, the runtime passes it through untouched.
 - IPA patcher rejects still-encrypted binaries, duplicate ZIP entries, non-empty header padding, and overwriting existing output.
 - Original app binaries/resources remain byte-for-byte preserved except for the added Mach-O load command and new framework; all files keep original ZIP metadata and executable permissions.
+
+## Files export + persistent debug sessions
+
+The SideStore repackager enables `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` on the main iCarCast app. After installing and opening it, visit **Files > On My iPhone > iCarCast > CarCastDebug**.
+
+Each app launch creates `session-YYYYMMDD-HHMMSS-SSS-PID.log` and `README.txt` in that folder. The framework records an explicit startup marker, app lifecycle, network path changes, Wi-Fi lookup and manual fallback results, signed-entitlement inspection instructions, location authorization, and hotspot configuration callback error codes. Stdout and stderr are appended to the current session log. Older sessions are pruned after the newest eight.
+
+**Limits:** Logs are generated inside the installed app. They cannot collect the iOS kernel, Apple background services, or unified logs from other processes. A missing startup marker means the framework did not initialize, so a SideStore installer log or a system crash report is needed instead. The shim never intentionally prints SSIDs, passwords, pairing credentials or FairPlay keys; the app's own stdout/stderr can still contain sensitive values. Review logs before uploading them.
+
+The one-change exception to byte preservation is `Info.plist` (the two Files flags). The original executable gains only a Mach-O load command, and the new framework is separately signed by SideStore. No other original resources are modified. Files access does not grant entitlement privileges.

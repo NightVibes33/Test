@@ -30,8 +30,10 @@ jobs:
             -O2 -Wall -Wextra -Werror \
             -dynamiclib -Wl,-install_name,@rpath/CarCastWiFiFallback.framework/CarCastWiFiFallback \
             -framework Foundation -framework UIKit -framework Security -framework NetworkExtension \
+            -framework Network -framework CoreLocation \
             -o out/CarCastWiFiFallback.framework/CarCastWiFiFallback \
-            tools/icarcast-sidestore/src/CarCastWiFiFallback.m
+            tools/icarcast-sidestore/src/CarCastWiFiFallback.m \
+            tools/icarcast-sidestore/src/CarCastDiagnostics.m
           test -s out/CarCastWiFiFallback.framework/CarCastWiFiFallback
           file out/CarCastWiFiFallback.framework/CarCastWiFiFallback
           xcrun --sdk iphoneos dwarfdump --uuid out/CarCastWiFiFallback.framework/CarCastWiFiFallback

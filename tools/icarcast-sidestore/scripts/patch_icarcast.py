@@ -7,6 +7,7 @@ one LC_LOAD_DYLIB record in the main executable. It never reads FairPlay keys,
 never modifies original assets, and does not change granted entitlements.
 """
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -126,6 +127,11 @@ def package(input_path, shim_path, output_path, manifest_path):
         info = plistlib.loads(source.read(APP+'Info.plist'))
         if info.get('CFBundleExecutable') != 'CarCast':
             raise ValueError('Unexpected main executable')
+        # Both flags expose the app's own Documents directory in Files.
+        # Neither flag grants external sandbox or code-bundle access.
+        info['UIFileSharingEnabled'] = True
+        info['LSSupportsOpeningDocumentsInPlace'] = True
+        files_info = plistlib.dumps(info, fmt=plistlib.FMT_BINARY, sort_keys=False)
         original_bin = source.read(target)
         # Find and require LC_ENCRYPTION_INFO_64 cryptid 0.
         info_commands = [(off, cmd, length) for off, cmd, length in commands(original_bin) if cmd == 0x2c]
@@ -138,12 +144,13 @@ def package(input_path, shim_path, output_path, manifest_path):
             with zipfile.ZipFile(output_path,'w') as dest:
                 for item in source.infolist():
                     content = source.read(item.filename)
-                    if item.filename == target:content = patched
+                    if item.filename == target: content = patched
+                    if item.filename == APP+'Info.plist': content = files_info
                     # Avoid copying old signatures when adding a framework.
                     # SideStore will create new CodeResources and CodeDirectories.
                     if '/_CodeSignature/' in item.filename:
                         continue
-                    dest.writestr(item, content)
+                    dest.writestr(copy.copy(item), content)
                 for suffix, content, is_executable in [
                     ('Info.plist',fw_info,False),
                     ('CarCastWiFiFallback',shim,True),
@@ -160,9 +167,15 @@ def package(input_path, shim_path, output_path, manifest_path):
                 assert check.read(APP+LINK_SUFFIX)==shim
                 assert len(set(check.namelist()))==len(check.namelist())
                 for entry in source.infolist():
-                    if '/_CodeSignature/' in entry.filename or entry.filename==target:continue
+                    if '/_CodeSignature/' in entry.filename or entry.filename in (target, APP+'Info.plist'): continue
                     assert check.read(entry.filename)==source.read(entry.filename)
                 assert commands(check.read(target))[-1][1] == LC_LOAD_DYLIB
+                shared_info = plistlib.loads(check.read(APP+'Info.plist'))
+                assert shared_info.get('UIFileSharingEnabled') is True
+                assert shared_info.get('LSSupportsOpeningDocumentsInPlace') is True
+                original_info = plistlib.loads(source.read(APP+'Info.plist'))
+                assert all(shared_info[k] == v for k, v in original_info.items()
+                           if k not in ('UIFileSharingEnabled', 'LSSupportsOpeningDocumentsInPlace'))
             manifest = {
                 'input_sha256': sha256(Path(input_path).read_bytes()),
                 'output_sha256': sha256(output_path.read_bytes()),
@@ -171,7 +184,10 @@ def package(input_path, shim_path, output_path, manifest_path):
                 'main_executable_sha256_after':sha256(patched),
                 'original_entries':len(all_names),
                 'output_entries':len(zipfile.ZipFile(output_path).namelist()),
-                'reused_resources_unchanged':True,
+                'original_resources_except_executable_and_files_plist_preserved':True,
+                'Files_Documents_visible_after_first_launch':True,
+                'diagnostic_directory':'Documents/CarCastDebug',
+                'diagnostic_capture':'app lifecycle, network path, Wi-Fi lookup, hotspot callbacks, stdout/stderr; excludes system-wide unified logs',
                 'network_entitlements_automatically_granted':False,
                 'device_wi_fi_verified':False,
                 'requires_valid_provisioning':True,
