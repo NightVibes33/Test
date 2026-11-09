@@ -1,0 +1,70 @@
+name: iCarCast SideStore Wi-Fi fallback framework
+on:
+  push:
+    branches: ['temp/ios-native-ipa-decrypter-*']
+    paths:
+      - '.github/workflows/build-icarcast-sidestore-fallback.yml'
+      - 'tools/icarcast-sidestore/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show compiler and SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+      - name: Compile iOS 18+ arm64 framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          mkdir -p out/CarCastWiFiFallback.framework
+          xcrun --sdk iphoneos clang \
+            -arch arm64 -miphoneos-version-min=18.0 \
+            -isysroot "$sdk" -fobjc-arc -fmodules \
+            -O2 -Wall -Wextra -Werror \
+            -dynamiclib -Wl,-install_name,@rpath/CarCastWiFiFallback.framework/CarCastWiFiFallback \
+            -framework Foundation -framework UIKit -framework Security -framework NetworkExtension \
+            -o out/CarCastWiFiFallback.framework/CarCastWiFiFallback \
+            tools/icarcast-sidestore/src/CarCastWiFiFallback.m
+          test -s out/CarCastWiFiFallback.framework/CarCastWiFiFallback
+          file out/CarCastWiFiFallback.framework/CarCastWiFiFallback
+          xcrun --sdk iphoneos dwarfdump --uuid out/CarCastWiFiFallback.framework/CarCastWiFiFallback
+          # The framework must be a Mach-O dylib with an ARM64 slice.
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          obj=Path('out/CarCastWiFiFallback.framework/CarCastWiFiFallback').read_bytes()
+          assert struct.unpack_from('<I',obj,0)[0] == 0xfeedfacf
+          assert struct.unpack_from('<I',obj,4)[0] == 0x100000c
+          assert struct.unpack_from('<I',obj,12)[0] == 6 # MH_DYLIB
+          print('Mach-O ARM64 dylib: validated')
+          PY
+      - name: Verify packaging tests
+        shell: bash
+        run: |
+          python3 -m unittest discover -s tools/icarcast-sidestore/tests -v
+          python3 -m py_compile tools/icarcast-sidestore/scripts/patch_icarcast.py
+      - name: Assemble framework and patching source artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tools/icarcast-sidestore/Framework-Info.plist out/CarCastWiFiFallback.framework/Info.plist
+          cp tools/icarcast-sidestore/scripts/patch_icarcast.py out/patch_icarcast.py
+          cp tools/icarcast-sidestore/README.md out/README.md
+          (cd out && /usr/bin/zip -q -r ../CarCastWiFiFallback-iOS27.zip .)
+          unzip -t CarCastWiFiFallback-iOS27.zip | tail -2
+          shasum -a 256 CarCastWiFiFallback-iOS27.zip > CarCastWiFiFallback-iOS27.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CarCastWiFiFallback-iOS27-arm64
+          path: |
+            CarCastWiFiFallback-iOS27.zip
+            CarCastWiFiFallback-iOS27.sha256
+          if-no-files-found: error
+          retention-days: 7
