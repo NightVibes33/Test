@@ -54,3 +54,9 @@ Each app launch creates `session-YYYYMMDD-HHMMSS-SSS-PID.log` and `README.txt` i
 **Limits:** Logs are generated inside the installed app. They cannot collect the iOS kernel, Apple background services, or unified logs from other processes. A missing startup marker means the framework did not initialize, so a SideStore installer log or a system crash report is needed instead. The shim never intentionally prints SSIDs, passwords, pairing credentials or FairPlay keys; the app's own stdout/stderr can still contain sensitive values. Review logs before uploading them.
 
 The one-change exception to byte preservation is `Info.plist` (the two Files flags). The original executable gains only a Mach-O load command, and the new framework is separately signed by SideStore. No other original resources are modified. Files access does not grant entitlement privileges.
+
+## 2026-11-09: iOS 27.0.1 device log fix
+
+The initial device logs showed `NEHotspotNetwork.fetchCurrent` returning nil (despite a satisfied Wi-Fi path and granted location) and `SecItemCopyMatching` returning `-50` immediately after a successful credential save. The latter was a real Keychain query bug: `kSecReturnData: @1` passed a boxed number instead of the required `CFBooleanRef`.
+
+The read query now passes `kCFBooleanTrue`, updates existing Keychain items without first deleting them, and verifies a redacted read-after-save round-trip. The debug log also reports when the user-supplied network object is returned and its broad security category (never SSID/password). This does not grant the Access Wi-Fi Information entitlement or establish that a network is actually joined. The on-device CarPlay connection still needs a physical test.

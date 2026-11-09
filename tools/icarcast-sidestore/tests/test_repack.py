@@ -26,6 +26,15 @@ def fake_macho(cryptid=0):
 
 
 class RepackageTests(unittest.TestCase):
+    def test_keychain_boolean_and_roundtrip_regression(self):
+        source=(Path(__file__).resolve().parents[1]/'src'/'CarCastWiFiFallback.m').read_text()
+        # @1 bridges to CFNumber, not the CFBooleanRef required by Security.framework.
+        self.assertIn('(__bridge id)kSecReturnData: (__bridge id)kCFBooleanTrue',source)
+        self.assertNotIn('(__bridge id)kSecReturnData: @1',source)
+        self.assertIn('SecItemUpdate',source)
+        self.assertIn('Keychain read-after-save',source)
+        self.assertIn('fallback constructed=',source)
+
     def test_add_load_command_does_not_change_text(self):
         src=fake_macho()
         patched,p=append_load_command(src)

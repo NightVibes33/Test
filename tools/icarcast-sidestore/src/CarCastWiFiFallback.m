@@ -28,12 +28,23 @@ static NSDictionary<NSString *, NSString *> *CCReadManualNetwork(void) {
         (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
         (__bridge id)kSecAttrService: CCService,
         (__bridge id)kSecAttrAccount: CCAccount,
-        (__bridge id)kSecReturnData: @1,
+        // kSecReturnData requires CFBooleanRef: boxed @1 is CFNumber and fails with errSecParam (-50).
+        (__bridge id)kSecReturnData: (__bridge id)kCFBooleanTrue,
         (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne
     };
     CFTypeRef raw = NULL;
     OSStatus result = SecItemCopyMatching((__bridge CFDictionaryRef)request, &raw);
-    if (result != errSecSuccess || !raw) { CCLogEvent(@"manual-network Keychain lookup status=%ld", (long)result); return nil; }
+    if (result != errSecSuccess || !raw) {
+        CCLogEvent(@"manual-network Keychain lookup status=%ld", (long)result);
+        if (raw) CFRelease(raw);
+        return nil;
+    }
+    if (CFGetTypeID(raw) != CFDataGetTypeID()) {
+        CCLogEvent(@"manual-network Keychain lookup returned unexpected data type");
+        CFRelease(raw);
+        return nil;
+    }
+    CCLogEvent(@"manual-network Keychain lookup status=0; payload redacted");
     NSData *bytes = CFBridgingRelease(raw);
     if (![bytes isKindOfClass:NSData.class]) return nil;
     NSDictionary *config = [NSPropertyListSerialization propertyListWithData:bytes options:NSPropertyListImmutable format:NULL error:nil];
@@ -63,13 +74,22 @@ static BOOL CCStoreManualNetwork(NSString *ssid, NSString *password) {
         (__bridge id)kSecAttrService: CCService,
         (__bridge id)kSecAttrAccount: CCAccount
     };
-    SecItemDelete((__bridge CFDictionaryRef)match);
-    NSMutableDictionary *add = match.mutableCopy;
-    add[(__bridge id)kSecValueData] = data;
-    add[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
-    OSStatus result=SecItemAdd((__bridge CFDictionaryRef)add, NULL);
+    // Update without deleting the existing credentials first. On a new install, add.
+    NSDictionary *replacement = @{(__bridge id)kSecValueData: data};
+    OSStatus result = SecItemUpdate((__bridge CFDictionaryRef)match, (__bridge CFDictionaryRef)replacement);
+    if (result == errSecItemNotFound) {
+        NSMutableDictionary *add = match.mutableCopy;
+        add[(__bridge id)kSecValueData] = data;
+        add[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+        result = SecItemAdd((__bridge CFDictionaryRef)add, NULL);
+    }
     CCLogEvent(@"manual-network Keychain save status=%ld; credentials redacted", (long)result);
-    return result == errSecSuccess;
+    if (result != errSecSuccess) return NO;
+    NSDictionary *roundTrip = CCReadManualNetwork();
+    BOOL verified = [roundTrip[@"ssid"] isEqualToString:ssid] &&
+                    [roundTrip[@"password"] isEqualToString:password];
+    CCLogEvent(@"manual-network Keychain read-after-save=%@ (values redacted)", verified ? @"PASS" : @"FAIL");
+    return verified;
 }
 
 static NSDictionary *CCDetails(id obj) {
@@ -125,6 +145,8 @@ static id CCSyntheticNetwork(NSDictionary *network) {
     // Do not invoke NEHotspotNetwork's unavailable/private designated initializer.
     id obj = CFBridgingRelease((__bridge CFTypeRef)class_createInstance(fakeClass, 0));
     if (obj) objc_setAssociatedObject(obj, &CCManualNetworkAssociation, network, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    CCLogEvent(@"manual-network fallback constructed=%d securityType=%ld (user-provided, not system-verified)",
+               obj != nil, obj ? (long)CCGetSecurityType(obj, @selector(securityType)) : -1L);
     return obj;
 }
 
