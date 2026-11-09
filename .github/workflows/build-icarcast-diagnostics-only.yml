@@ -1,0 +1,59 @@
+name: iCarCast Original-Behavior Diagnostics (iOS arm64)
+on:
+  push:
+    branches:
+      - temp/ios-native-ipa-decrypter-20261108
+    paths:
+      - 'tools/icarcast-diagnostics-only/**'
+      - '.github/workflows/build-icarcast-diagnostics-only.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile iOS arm64 read-only logger
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          mkdir -p out/CarCastDiagnosticsOnly.framework
+          xcrun --sdk iphoneos clang \
+            -arch arm64 -miphoneos-version-min=18.0 -isysroot "$sdk" \
+            -fobjc-arc -fmodules -O2 -Wall -Wextra -Werror \
+            -dynamiclib -Wl,-install_name,@rpath/CarCastDiagnosticsOnly.framework/CarCastDiagnosticsOnly \
+            -framework Foundation -framework UIKit -framework CoreLocation \
+            -framework Network -framework NetworkExtension \
+            -o out/CarCastDiagnosticsOnly.framework/CarCastDiagnosticsOnly \
+            tools/icarcast-diagnostics-only/src/CarCastDiagnosticsOnly.m
+          cp tools/icarcast-diagnostics-only/Framework-Info.plist out/CarCastDiagnosticsOnly.framework/Info.plist
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          b=Path('out/CarCastDiagnosticsOnly.framework/CarCastDiagnosticsOnly').read_bytes()
+          assert struct.unpack_from('<I',b,0)[0] == 0xfeedfacf
+          assert struct.unpack_from('<I',b,4)[0] == 0x100000c
+          assert struct.unpack_from('<I',b,12)[0] == 6
+          print('Verified arm64 MH_DYLIB')
+          PY
+      - name: Test safe packaging and no networking API changes
+        run: |
+          python3 -m unittest discover -s tools/icarcast-diagnostics-only/tests -v
+          python3 -m py_compile tools/icarcast-diagnostics-only/scripts/patch_diagnostics.py
+      - name: Assemble reusable diagnostics framework (no user IPA included)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tools/icarcast-diagnostics-only/scripts/patch_diagnostics.py out/patch_diagnostics.py
+          cp tools/icarcast-diagnostics-only/README.md out/README.md
+          (cd out && zip -q -r ../CarCastDiagnosticsOnly-iOS27.zip .)
+          unzip -t CarCastDiagnosticsOnly-iOS27.zip | tail -2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CarCastDiagnosticsOnly-iOS27-arm64
+          path: CarCastDiagnosticsOnly-iOS27.zip
+          if-no-files-found: error
+          retention-days: 7
