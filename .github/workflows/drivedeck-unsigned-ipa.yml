@@ -1,0 +1,83 @@
+name: DriveDeck iOS unsigned IPA
+on:
+  push:
+    branches:
+      - 'temp/drivedeck-ios27-*'
+    paths:
+      - 'DriveDeck/**'
+      - '.github/workflows/drivedeck-unsigned-ipa.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Verify screenshot control checklist
+        run: python3 DriveDeck/scripts/ui_contract_test.py
+      - name: Draw DriveDeck app icon
+        run: python3 DriveDeck/scripts/create_icon.py DriveDeck/Resources/Assets.xcassets/AppIcon.appiconset/icon.png
+      - name: Generate project
+        run: cd DriveDeck && xcodegen generate
+      - name: Build unsigned iOS device app
+        run: |
+          xcodebuild -project DriveDeck/DriveDeck.xcodeproj -scheme DriveDeck -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/drivedeck-build" CODE_SIGNING_ALLOWED=NO build
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/drivedeck-build/Build/Products/Release-iphoneos/DriveDeck.app"
+          test -d "$APP"
+          mkdir -p "$RUNNER_TEMP/drivedeck-package/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/drivedeck-package/Payload/"
+          (cd "$RUNNER_TEMP/drivedeck-package" && zip -qr "$GITHUB_WORKSPACE/DriveDeck-unsigned.ipa" Payload)
+          unzip -l "$GITHUB_WORKSPACE/DriveDeck-unsigned.ipa" | grep 'Payload/DriveDeck.app/DriveDeck'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DriveDeck-1.2-receiver-viewer-IPA
+          path: DriveDeck-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+      - name: iPhone simulator screenshot smoke test
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          SIM=$(xcrun simctl list -j devices available | python3 -c 'import sys,json;d=json.load(sys.stdin);a=[x["udid"] for v in d["devices"].values() for x in v if "iPhone" in x["name"] and x.get("isAvailable",True)];print(a[0] if a else "")')
+          if [ -z "$SIM" ]; then
+            echo "No iPhone simulator runtime on this runner"
+            exit 0
+          fi
+          xcrun simctl boot "$SIM"
+          xcrun simctl bootstatus "$SIM" -b
+          xcodebuild -project DriveDeck/DriveDeck.xcodeproj -scheme DriveDeck -configuration Debug -sdk iphonesimulator -derivedDataPath "$RUNNER_TEMP/drivedeck-sim" CODE_SIGNING_ALLOWED=NO build
+          SIMAPP="$RUNNER_TEMP/drivedeck-sim/Build/Products/Debug-iphonesimulator/DriveDeck.app"
+          xcrun simctl install "$SIM" "$SIMAPP"
+          mkdir -p "$GITHUB_WORKSPACE/DriveDeck-screenshots"
+          xcrun simctl launch "$SIM" com.nightvibes33.drivedeck
+          sleep 3
+          xcrun simctl io "$SIM" screenshot "$GITHUB_WORKSPACE/DriveDeck-screenshots/home.png"
+          xcrun simctl terminate "$SIM" com.nightvibes33.drivedeck
+          xcrun simctl launch "$SIM" com.nightvibes33.drivedeck --drive-screenshot-settings
+          sleep 4
+          xcrun simctl io "$SIM" screenshot "$GITHUB_WORKSPACE/DriveDeck-screenshots/settings.png"
+          xcrun simctl terminate "$SIM" com.nightvibes33.drivedeck
+          xcrun simctl launch "$SIM" com.nightvibes33.drivedeck --drive-screenshot-dashboard
+          sleep 4
+          xcrun simctl io "$SIM" screenshot "$GITHUB_WORKSPACE/DriveDeck-screenshots/dashboard.png"
+          xcrun simctl terminate "$SIM" com.nightvibes33.drivedeck
+          xcrun simctl launch "$SIM" com.nightvibes33.drivedeck --drive-screenshot-peer
+          sleep 4
+          xcrun simctl io "$SIM" screenshot "$GITHUB_WORKSPACE/DriveDeck-screenshots/receiver-viewer.png"
+          xcrun simctl shutdown "$SIM"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DriveDeck-UI-screenshots
+          path: DriveDeck-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 14
