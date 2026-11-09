@@ -23,7 +23,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.nightvibes33.ipadecrypter
         PRODUCT_NAME: IPADecrypter
         SWIFT_VERSION: "5.10"
-        SWIFT_OBJC_BRIDGING_HEADER: Sources/DeviceFairPlay.h
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/IPADecrypter-Bridging-Header.h
         CODE_SIGN_ENTITLEMENTS: IPADecrypter.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
