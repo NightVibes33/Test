@@ -1,0 +1,90 @@
+name: iCarCast authorized FairPlay decryption
+
+on:
+  push:
+    branches:
+      - temp/icarcast-real-fairplay-decrypt-20261108
+    paths:
+      - .github/workflows/icarcast-fairplay-decrypt.yml
+      - tools/icarcast/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decrypt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test verifier (cryptid-only patch must fail)
+        run: python -m unittest discover -s tools/icarcast -p 'test_*.py' -v
+      - name: Require authorized private input material
+        shell: bash
+        env:
+          IPA_URL: ${{ secrets.ICARCAST_IPA_URL }}
+          FAIRPLAY_CREDENTIAL_B64: ${{ secrets.FAIRPLAY_CREDENTIAL_B64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$IPA_URL" || -z "$FAIRPLAY_CREDENTIAL_B64" ]]; then
+            echo 'BLOCKED: configure ICARCAST_IPA_URL and FAIRPLAY_CREDENTIAL_B64 repository secrets.' >&2
+            echo 'No credentials => no real decryption. Refusing fake cryptid patch.' >&2
+            exit 2
+          fi
+          mkdir -p "$RUNNER_TEMP/icarcast" && chmod 700 "$RUNNER_TEMP/icarcast"
+          umask 077
+          printf '%s' "$FAIRPLAY_CREDENTIAL_B64" | base64 --decode > "$RUNNER_TEMP/icarcast/credential.bin"
+          test "$(wc -c < "$RUNNER_TEMP/icarcast/credential.bin")" -eq 16 || { echo 'Credential must decode to 16 bytes' >&2; exit 2; }
+      - name: Download original encrypted IPA privately
+        shell: bash
+        env:
+          IPA_URL: ${{ secrets.ICARCAST_IPA_URL }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --retry 2 --max-time 180 \
+            --output "$RUNNER_TEMP/icarcast/original.ipa" "$IPA_URL"
+          python - "$RUNNER_TEMP/icarcast/original.ipa" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert 'Payload/CarCast.app/CarCast' in z.namelist(), 'wrong IPA'
+              assert 'Payload/CarCast.app/SC_Info/CarCast.sinf' in z.namelist(), 'missing FairPlay records'
+          PY
+      - name: Install pinned offline decryptor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/EthanArbuckle/fairplay-decrypt.git "$RUNNER_TEMP/fairplay-decrypt"
+          git -C "$RUNNER_TEMP/fairplay-decrypt" checkout --quiet d81d98b13656c9dbb340f04dd0838137278f44a5
+          python -m pip install --disable-pip-version-check -r "$RUNNER_TEMP/fairplay-decrypt/requirements.txt"
+      - name: Decrypt FairPlay pages with authorized owner credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/fairplay-decrypt/decrypt.py" \
+            "$RUNNER_TEMP/icarcast/original.ipa" "$RUNNER_TEMP/icarcast/iCarCast-decrypted.ipa" \
+            --credential "$RUNNER_TEMP/icarcast/credential.bin"
+      - name: Require actual changed plaintext and no SC_Info
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/icarcast/verify_ipa.py \
+            "$RUNNER_TEMP/icarcast/original.ipa" "$RUNNER_TEMP/icarcast/iCarCast-decrypted.ipa" \
+            --report "$RUNNER_TEMP/icarcast/verification.json"
+      - name: Upload decrypted IPA (public repo; artifact expires in 1 day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: iCarCast-decrypted-verified
+          path: |
+            ${{ runner.temp }}/icarcast/iCarCast-decrypted.ipa
+            ${{ runner.temp }}/icarcast/verification.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Clean up owner credential and original IPA
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/icarcast/credential.bin" "$RUNNER_TEMP/icarcast/original.ipa"
