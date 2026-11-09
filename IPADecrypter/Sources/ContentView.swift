@@ -132,6 +132,8 @@ struct ContentView: View {
 
                     DeviceFairPlayView()
 
+                    DeviceAccessDiagnosticsView()
+
                     Label {
                         Text("Stock iOS does not grant access to other apps' decrypted runtime memory. This app performs real offline decryption only when the correct FairPlay credential is supplied. The resulting IPA needs a fresh signature before normal installation.")
                             .font(.footnote)
