@@ -11,7 +11,7 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: xcode-27
+    runs-on: macos-15
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -87,10 +87,13 @@ jobs:
                  'CFBundleName':'CarCastDiagSmoke','CFBundleVersion':'1',
                  'CFBundleShortVersionString':'1.0','LSRequiresIPhoneOS':True,
                  'MinimumOSVersion':'18.0','UIDeviceFamily':[1],
+                 'CFBundleSupportedPlatforms':['iPhoneSimulator'],
                  'NSLocationWhenInUseUsageDescription':'Read-only diagnostics for simulator test.'}
           (base/'Info.plist').write_bytes(plistlib.dumps(plist))
+          framework=plistlib.loads(Path('tools/icarcast-diagnostics-only/Framework-Info.plist').read_bytes())
+          framework['CFBundleSupportedPlatforms']=['iPhoneSimulator']
           (base/'Frameworks/CarCastDiagnosticsOnly.framework/Info.plist').write_bytes(
-              Path('tools/icarcast-diagnostics-only/Framework-Info.plist').read_bytes())
+              plistlib.dumps(framework))
           PY
           codesign --force --sign - --timestamp=none simhost/CarCastDiagSmoke.app/Frameworks/CarCastDiagnosticsOnly.framework
           codesign --force --sign - --timestamp=none simhost/CarCastDiagSmoke.app
