@@ -20,10 +20,12 @@ class PairingTests(unittest.TestCase):
             # A loadable MH_BUNDLE (type 8) must never ship as an .appex.
             payload=bytearray(4096)
             struct.pack_into('<IIIIIIII',payload,0,0xfeedfacf,0x0100000c,0,8,0,0,0,0)
+            framework=path/'valid-framework'
+            framework.write_bytes(bytes(payload))
             bundle=path/'invalid-extension'
             bundle.write_bytes(payload)
             with self.assertRaisesRegex(ValueError,'MH_EXECUTE'):
-                package(path/'ignored.ipa',path/'ignored.framework',bundle,path/'out.ipa',path/'audit.json')
+                package(path/'ignored.ipa',framework,bundle,path/'out.ipa',path/'audit.json')
 
     def test_built_in_vpn_not_faked(self):
         s=(PATH/'src/CarCastLocalTunnel.m').read_text()
