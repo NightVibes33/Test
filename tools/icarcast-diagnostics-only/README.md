@@ -22,3 +22,11 @@ python3 patch_diagnostics.py --input iCarCast-Original-Decrypted-Minimal.ipa \
 The output is unsigned; SideStore must sign the main executable and nested framework. On device, the app writes session logs under Files > On My iPhone > iCarCast > CarCastDebug. Logs include original app stdout/stderr, lifecycle, independent read-only Wi-Fi probe, network path, and Objective-C uncaught exceptions. They do **not** include all native crashes or system daemon logs. Review for sensitive information before sharing.
 
 Neither a successful CI build nor an independently loaded framework proves CarPlay will start. The final SideStore-signed app must have a provisioning profile granting the capabilities that its original TestFlight distribution had, including com.apple.developer.networking.wifi-info.
+
+## November 2026: on-device-only feasibility and simulator validation
+
+The iCarCast public source code is unavailable. The proprietary original IPA is a physical-device iOS ARM64 Mach-O (LC_BUILD_VERSION platform=2), not an iOS Simulator binary (platform=7). The developer's This iPhone guide explicitly says the iPhone must join a Wi-Fi network even when the screen is local. Do not claim that Bonjour, localhost, synthetic NEHotspotNetwork, or removing hotspot permissions eliminates that wireless CarPlay dependency.
+
+This build preserves the real proprietary This iPhone implementation and receiver. A new read-only runtime check attempts to query the installed signature's three networking entitlements by dynamically resolving SecTask* functions. If unavailable or blocked, it logs NOT_QUERYABLE / NOT_REPORTED and instructs comparing the final SideStore signature and embedded.mobileprovision. No values/secrets are logged.
+
+GitHub's Xcode runner also compiles the same diagnostics framework for the iOS simulator and boots a SIMULATOR DIAGNOSTIC HOST to verify the framework emits session logs. This host is explicitly NOT iCarCast or a CarPlay simulator. On-device iCarCast CarPlay functionality is still unverified and cannot be proven in the iOS Simulator without a simulator-buildable original receiver.

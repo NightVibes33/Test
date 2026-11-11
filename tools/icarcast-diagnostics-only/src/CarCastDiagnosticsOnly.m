@@ -9,6 +9,7 @@
 #import <fcntl.h>
 #import <unistd.h>
 #import <stdarg.h>
+#import <dlfcn.h>
 
 static int CCLogFD = -1;
 static NSUncaughtExceptionHandler *CCPreviousHandler = NULL;
@@ -34,10 +35,39 @@ static void CCException(NSException *exception) {
     if (CCPreviousHandler) CCPreviousHandler(exception);
 }
 
+// Read-only runtime evidence. SecTask symbols are dynamically looked up because
+// their availability differs between SDKs and execution environments.
+// Never conflate "not queryable" with "missing from the signed app".
+typedef CFTypeRef (*CCSecTaskFromSelfFn)(CFAllocatorRef);
+typedef CFTypeRef (*CCSecTaskValueFn)(CFTypeRef, CFStringRef, CFErrorRef *);
 static void CCLogEntitlement(NSString *name) {
-    // SecTask entitlement inspection is not available through the public iOS SDK
-    // used by this runner. Inspect the actual SideStore-signed IPA instead.
-    CCLogEvent(@"entitlement %@ = inspect signed IPA externally (not queried in-app)", name);
+    CCSecTaskFromSelfFn createTask = (CCSecTaskFromSelfFn)dlsym(RTLD_DEFAULT, "SecTaskCreateFromSelf");
+    CCSecTaskValueFn valueForKey = (CCSecTaskValueFn)dlsym(RTLD_DEFAULT, "SecTaskCopyValueForEntitlement");
+    if (!createTask || !valueForKey) {
+        CCLogEvent(@"runtime entitlement %@ = NOT_QUERYABLE (inspect signed profile externally)", name);
+        return;
+    }
+    CFTypeRef task = createTask(kCFAllocatorDefault);
+    if (!task) {
+        CCLogEvent(@"runtime entitlement %@ = TASK_UNAVAILABLE", name);
+        return;
+    }
+    CFErrorRef error = NULL;
+    CFTypeRef value = valueForKey(task, (__bridge CFStringRef)name, &error);
+    if (value) {
+        if (CFGetTypeID(value) == CFBooleanGetTypeID()) {
+            CCLogEvent(@"runtime entitlement %@ = %@", name,
+                CFBooleanGetValue((CFBooleanRef)value) ? @"TRUE" : @"FALSE");
+        } else {
+            CCLogEvent(@"runtime entitlement %@ = PRESENT_NON_BOOLEAN (value redacted)", name);
+        }
+        CFRelease(value);
+    } else {
+        CCLogEvent(@"runtime entitlement %@ = NOT_REPORTED (code=%ld; inspect profile)",
+                   name, error ? (long)CFErrorGetCode(error) : 0L);
+    }
+    if (error) CFRelease(error);
+    CFRelease(task);
 }
 static void CCSystemState(void) {
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;

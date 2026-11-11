@@ -26,6 +26,16 @@ def fake_macho(cryptid=0):
 
 
 class RepackageTests(unittest.TestCase):
+    def test_runtime_entitlement_inspection_is_read_only(self):
+        source=(Path(__file__).resolve().parents[1]/'src'/'CarCastDiagnosticsOnly.m').read_text()
+        self.assertIn('SecTaskCopyValueForEntitlement',source)
+        self.assertIn('SecTaskCreateFromSelf',source)
+        self.assertIn('PRESENT_NON_BOOLEAN',source)
+        self.assertIn('NOT_QUERYABLE',source)
+        self.assertIn('NOT_REPORTED',source)
+        self.assertNotIn('SecItemAdd(',source)
+        self.assertNotIn('method_setImplementation',source)
+
     def test_network_methods_untouched(self):
         source=(Path(__file__).resolve().parents[1]/'src'/'CarCastDiagnosticsOnly.m').read_text()
         self.assertIn('CCReadOnlyWiFiProbe',source)

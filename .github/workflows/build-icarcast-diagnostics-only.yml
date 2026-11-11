@@ -51,9 +51,79 @@ jobs:
           cp tools/icarcast-diagnostics-only/README.md out/README.md
           (cd out && zip -q -r ../CarCastDiagnosticsOnly-iOS27.zip .)
           unzip -t CarCastDiagnosticsOnly-iOS27.zip | tail -2
+      - name: Compile diagnostic framework and host for iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          arch="$(uname -m)"
+          if [[ "$arch" != arm64 && "$arch" != x86_64 ]]; then
+            echo "Unsupported simulator host architecture: $arch"
+            exit 1
+          fi
+          mkdir -p simhost/CarCastDiagSmoke.app/Frameworks/CarCastDiagnosticsOnly.framework
+          xcrun --sdk iphonesimulator clang \
+            -arch "$arch" -mios-simulator-version-min=18.0 -isysroot "$sdk" \
+            -fobjc-arc -fmodules -O2 -Wall -Wextra -Werror -dynamiclib \
+            -Wl,-install_name,@rpath/CarCastDiagnosticsOnly.framework/CarCastDiagnosticsOnly \
+            -framework Foundation -framework UIKit -framework CoreLocation \
+            -framework Network -framework NetworkExtension \
+            -o simhost/CarCastDiagSmoke.app/Frameworks/CarCastDiagnosticsOnly.framework/CarCastDiagnosticsOnly \
+            tools/icarcast-diagnostics-only/src/CarCastDiagnosticsOnly.m
+          xcrun --sdk iphonesimulator clang \
+            -arch "$arch" -mios-simulator-version-min=18.0 -isysroot "$sdk" \
+            -fobjc-arc -fmodules -O2 -Wall -Wextra -Werror \
+            -F simhost/CarCastDiagSmoke.app/Frameworks -framework CarCastDiagnosticsOnly \
+            -framework Foundation -framework UIKit \
+            -Wl,-rpath,@executable_path/Frameworks \
+            -o simhost/CarCastDiagSmoke.app/CarCastDiagSmoke \
+            tools/icarcast-diagnostics-only/simulator/SimulatorDiagnosticsHost.m
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          base=Path('simhost/CarCastDiagSmoke.app')
+          plist={'CFBundleIdentifier':'com.nightvibes.icarcast-diagnostics-smoke',
+                 'CFBundleExecutable':'CarCastDiagSmoke','CFBundlePackageType':'APPL',
+                 'CFBundleName':'CarCastDiagSmoke','CFBundleVersion':'1',
+                 'CFBundleShortVersionString':'1.0','LSRequiresIPhoneOS':True,
+                 'MinimumOSVersion':'18.0','UIDeviceFamily':[1],
+                 'NSLocationWhenInUseUsageDescription':'Read-only diagnostics for simulator test.'}
+          (base/'Info.plist').write_bytes(plistlib.dumps(plist))
+          (base/'Frameworks/CarCastDiagnosticsOnly.framework/Info.plist').write_bytes(
+              Path('tools/icarcast-diagnostics-only/Framework-Info.plist').read_bytes())
+          PY
+          codesign --force --sign - --timestamp=none simhost/CarCastDiagSmoke.app/Frameworks/CarCastDiagnosticsOnly.framework
+          codesign --force --sign - --timestamp=none simhost/CarCastDiagSmoke.app
+      - name: Boot an actual iOS Simulator and run diagnostics smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available
+          id="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; j=json.load(sys.stdin); print(next((d["udid"] for group in j["devices"].values() for d in group if "iPhone" in d["name"] and d.get("isAvailable",True)), ""))')"
+          if [[ -z "$id" ]]; then
+            echo "No available iPhone simulator runtime on Xcode runner."
+            exit 1
+          fi
+          xcrun simctl boot "$id"
+          xcrun simctl bootstatus "$id" -b
+          xcrun simctl install "$id" simhost/CarCastDiagSmoke.app
+          xcrun simctl launch "$id" com.nightvibes.icarcast-diagnostics-smoke
+          sleep 4
+          data="$(xcrun simctl get_app_container "$id" com.nightvibes.icarcast-diagnostics-smoke data)"
+          echo "Simulator diagnostics log files:"
+          find "$data/Documents/CarCastDebug" -type f -maxdepth 1 -name 'session-*.log'
+          grep -r 'SIMULATOR_HOST_STARTED' "$data/Documents/CarCastDebug"/*.log
+          grep -r 'Original iCarCast diagnostic-only framework loaded' "$data/Documents/CarCastDebug"/*.log
+          echo "PASS: simulator launched diagnostic host and emitted persistent log."
+          echo "NOTE: no original CarCast app or genuine CarPlay session was simulated."
+          mkdir -p out/simulator-evidence
+          cp "$data/Documents/CarCastDebug"/*.log out/simulator-evidence/
+          xcrun simctl shutdown "$id"
       - uses: actions/upload-artifact@v4
         with:
           name: CarCastDiagnosticsOnly-iOS27-arm64
-          path: CarCastDiagnosticsOnly-iOS27.zip
+          path: |
+            CarCastDiagnosticsOnly-iOS27.zip
+            out/simulator-evidence/*.log
           if-no-files-found: error
           retention-days: 7
