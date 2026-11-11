@@ -50,12 +50,35 @@ jobs:
           cp tools/icarcast-ondevice-pairing/Framework-Info.plist out/CarCastPairing.framework/Info.plist
           xcrun --sdk iphoneos clang \
             -arch arm64 -miphoneos-version-min=18.0 -isysroot "$sdk" \
-            -fobjc-arc -fmodules -O2 -Wall -Wextra -bundle \
+            -fobjc-arc -fmodules -fapplication-extension -O2 -Wall -Wextra \
+            -Wl,-e,_NSExtensionMain \
             -framework Foundation -framework NetworkExtension \
             -o out/CarCastLocalTunnel.appex/CarCastLocalTunnel \
             tools/icarcast-ondevice-pairing/src/CarCastLocalTunnel.m
           cp tools/icarcast-ondevice-pairing/Tunnel-Info.plist out/CarCastLocalTunnel.appex/Info.plist
           file out/CarCastPairing.framework/CarCastPairing out/CarCastLocalTunnel.appex/CarCastLocalTunnel
+          python3 - <<'PY'
+          import plistlib,struct
+          from pathlib import Path
+          b=Path('out/CarCastLocalTunnel.appex/CarCastLocalTunnel').read_bytes()
+          magic,cputype,cpusubtype,filetype=struct.unpack_from('<IIII',b)
+          assert magic == 0xfeedfacf, 'VPN extension must be thin ARM64 Mach-O'
+          assert cputype == 0x0100000c, 'VPN extension must target iPhone arm64'
+          assert filetype == 2, f'VPN .appex must be MH_EXECUTE (2), got {filetype}'
+          count=struct.unpack_from('<I',b,16)[0]
+          offset=32
+          cmds=[]
+          for _ in range(count):
+              cmd,size=struct.unpack_from('<II',b,offset)
+              assert size >= 8 and offset+size <= len(b)
+              cmds.append(cmd)
+              offset+=size
+          assert 0x80000028 in cmds or 0x5 in cmds, 'App extension missing entry point'
+          info=plistlib.loads(Path('out/CarCastLocalTunnel.appex/Info.plist').read_bytes())
+          assert info['NSExtension']['NSExtensionPointIdentifier']=='com.apple.networkextension.packet-tunnel'
+          assert info['NSExtension']['NSExtensionPrincipalClass']=='CCPacketTunnelProvider'
+          print('PASS: VPN app extension contains device ARM64 MH_EXECUTE and launch entry point')
+          PY
           xcrun --sdk iphoneos nm -g out/CarCastPairing.framework/CarCastPairing | \
             grep '_tunnel_create_rppairing' || {
               echo 'Final framework missing real idevice handshake'; exit 1;

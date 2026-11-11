@@ -24,3 +24,7 @@ The floating **Pairing** button is injected via a separate framework into the *e
 ## Build and test
 
 Run `.github/workflows/build-icarcast-ondevice-pairing.yml` on a hosted macOS runner. It compiles the device framework with the real idevice FFI, compiles the embedded PacketTunnel extension, builds a simulator-only test host (its actual RSD pairing calls are excluded by TARGET_OS_SIMULATOR), and publishes an artifact with executable blobs, plists, signing templates and a repack script. Packaging with your **local** decrypted IPA is performed off GitHub to keep private materials out of the public repository. Simulation is not a genuine CarPlay test.
+
+## Install fix: nonrunnable .appex (November 11, 2026)
+
+The first SideStore IPA accidentally linked `CarCastLocalTunnel.appex/CarCastLocalTunnel` with `clang -bundle`, creating Mach-O `MH_BUNDLE` (filetype 8) rather than an iOS app-extension executable. iOS `installd` rejected it with “does not contain any code that is runnable on this device.” The build now uses `-fapplication-extension -Wl,-e,_NSExtensionMain` without `-bundle`, and fails CI unless the result is arm64 `MH_EXECUTE` with a valid entry point. The IPA repacker also rejects a non-executable .appex. A valid Apple-authorized packet-tunnel provisioning profile is **still required** for SideStore to sign/install/start the VPN extension.

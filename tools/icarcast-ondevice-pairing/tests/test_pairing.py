@@ -11,6 +11,20 @@ class PairingTests(unittest.TestCase):
         self.assertNotIn('method_setImplementation',s)
         self.assertNotIn('CCSyntheticNetwork',s)
         self.assertIn('NSFileProtectionCompleteUntilFirstUserAuthentication',s)
+    def test_repacker_rejects_nonrunnable_extension(self):
+        from patch_pairing import package
+        from pathlib import Path
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)
+            # A loadable MH_BUNDLE (type 8) must never ship as an .appex.
+            payload=bytearray(4096)
+            struct.pack_into('<IIIIIIII',payload,0,0xfeedfacf,0x0100000c,0,8,0,0,0,0)
+            bundle=path/'invalid-extension'
+            bundle.write_bytes(payload)
+            with self.assertRaisesRegex(ValueError,'MH_EXECUTE'):
+                package(path/'ignored.ipa',path/'ignored.framework',bundle,path/'out.ipa',path/'audit.json')
+
     def test_built_in_vpn_not_faked(self):
         s=(PATH/'src/CarCastLocalTunnel.m').read_text()
         self.assertIn('NEPacketTunnelProvider',s)

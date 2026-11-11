@@ -101,6 +101,16 @@ def package(input_path, shim_path, tunnel_path, output_path, manifest_path):
     tunnel = Path(tunnel_path).read_bytes()
     if len(tunnel) < 1024 or not tunnel.startswith(b'\xcf\xfa\xed\xfe'):
         raise ValueError('Compiled ARM64 app extension binary is required')
+    # App extensions are runnable executables (MH_EXECUTE, type 2), not
+    # loadable bundles (MH_BUNDLE, type 8). iOS installd rejects MH_BUNDLE.
+    extension_type = struct.unpack_from('<I', tunnel, 12)[0]
+    if extension_type != 2:
+        raise ValueError(f'CarCastLocalTunnel.appex must be MH_EXECUTE (2), got {extension_type}')
+    if struct.unpack_from('<I', tunnel, 4)[0] != 0x0100000c:
+        raise ValueError('CarCastLocalTunnel.appex executable is not ARM64')
+    ext_cmds = commands(tunnel)
+    if not any(cmd in (0x80000028, 0x5) for _, cmd, _ in ext_cmds):
+        raise ValueError('CarCastLocalTunnel.appex missing executable entry point')
     if len(shim) < 4096 or not shim.startswith(b'\xcf\xfa\xed\xfe'):
         raise ValueError('Compiled iOS arm64 Mach-O dynamic framework is required')
     if Path(input_path).resolve() == Path(output_path).resolve():
