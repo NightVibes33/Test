@@ -1,0 +1,142 @@
+name: iCarCast embedded iDevicePair + local VPN build
+on:
+  push:
+    branches:
+      - temp/ios-native-ipa-decrypter-20261108
+    paths:
+      - 'tools/icarcast-ondevice-pairing/**'
+      - '.github/workflows/build-icarcast-ondevice-pairing.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch MIT-licensed idevice ARM64 static library
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor
+          curl -fL --retry 3 --connect-timeout 30 -o vendor/libidevice_ffi.a \
+            https://raw.githubusercontent.com/StikDebug/StikDebug/main/StikDebug/idevice/libidevice_ffi.a
+          test "$(stat -f%z vendor/libidevice_ffi.a)" -gt 100000
+          file vendor/libidevice_ffi.a
+          ar -t vendor/libidevice_ffi.a | head -5 || true
+          xcrun --sdk iphoneos nm -gU vendor/libidevice_ffi.a | \
+            grep '_tunnel_create_rppairing' || {
+              echo 'idevice static library lacks required real RPPairing symbol'; exit 1;
+            }
+      - name: Build iPhone arm64 dynamic pairing framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          mkdir -p out/CarCastPairing.framework out/CarCastLocalTunnel.appex
+          xcrun --sdk iphoneos clang \
+            -arch arm64 -miphoneos-version-min=18.0 -isysroot "$sdk" \
+            -fobjc-arc -fmodules -O2 -Wall -Wextra \
+            -dynamiclib -Wl,-dead_strip \
+            -Wl,-install_name,@rpath/CarCastPairing.framework/CarCastPairing \
+            -framework Foundation -framework UIKit -framework CoreLocation \
+            -framework UniformTypeIdentifiers -framework Network -framework NetworkExtension \
+            -framework Security -framework SystemConfiguration -lresolv -liconv -lz \
+            -o out/CarCastPairing.framework/CarCastPairing \
+            tools/icarcast-diagnostics-only/src/CarCastDiagnosticsOnly.m \
+            tools/icarcast-ondevice-pairing/src/CarCastPairing.m \
+            vendor/libidevice_ffi.a
+          cp tools/icarcast-ondevice-pairing/Framework-Info.plist out/CarCastPairing.framework/Info.plist
+          xcrun --sdk iphoneos clang \
+            -arch arm64 -miphoneos-version-min=18.0 -isysroot "$sdk" \
+            -fobjc-arc -fmodules -O2 -Wall -Wextra -bundle \
+            -framework Foundation -framework NetworkExtension \
+            -o out/CarCastLocalTunnel.appex/CarCastLocalTunnel \
+            tools/icarcast-ondevice-pairing/src/CarCastLocalTunnel.m
+          cp tools/icarcast-ondevice-pairing/Tunnel-Info.plist out/CarCastLocalTunnel.appex/Info.plist
+          file out/CarCastPairing.framework/CarCastPairing out/CarCastLocalTunnel.appex/CarCastLocalTunnel
+          xcrun --sdk iphoneos nm -g out/CarCastPairing.framework/CarCastPairing | \
+            grep '_tunnel_create_rppairing' || {
+              echo 'Final framework missing real idevice handshake'; exit 1;
+            }
+      - name: Python packaging integrity tests
+        run: |
+          python3 -m py_compile tools/icarcast-ondevice-pairing/scripts/patch_pairing.py
+          python3 -m unittest discover -s tools/icarcast-ondevice-pairing/tests -v
+      - name: Upload compiled framework, tunnel extension and repacker
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tools/icarcast-ondevice-pairing/scripts/patch_pairing.py out/patch_pairing.py
+          cp tools/icarcast-ondevice-pairing/Tunnel.entitlements out/Tunnel.entitlements
+          cp tools/icarcast-ondevice-pairing/README.md out/README.md
+          (cd out && zip -q -r ../CarCastOnDevicePairing-iOS27.zip .)
+          unzip -t CarCastOnDevicePairing-iOS27.zip | tail -2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CarCastOnDevicePairing-iOS27
+          path: CarCastOnDevicePairing-iOS27.zip
+          if-no-files-found: error
+          retention-days: 7
+      - name: Compile simulator host and run a real iPhone Simulator smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          arch="$(uname -m)"
+          mkdir -p sim/CarCastPairingSmoke.app/Frameworks/CarCastPairing.framework
+          xcrun --sdk iphonesimulator clang -arch "$arch" -mios-simulator-version-min=18.0 \
+            -isysroot "$sdk" -fobjc-arc -fmodules -O2 -dynamiclib \
+            -Wl,-install_name,@rpath/CarCastPairing.framework/CarCastPairing \
+            -framework Foundation -framework UIKit -framework CoreLocation \
+            -framework UniformTypeIdentifiers -framework Network -framework NetworkExtension \
+            -framework Security \
+            -o sim/CarCastPairingSmoke.app/Frameworks/CarCastPairing.framework/CarCastPairing \
+            tools/icarcast-diagnostics-only/src/CarCastDiagnosticsOnly.m \
+            tools/icarcast-ondevice-pairing/src/CarCastPairing.m
+          cp tools/icarcast-ondevice-pairing/Framework-Info.plist \
+            sim/CarCastPairingSmoke.app/Frameworks/CarCastPairing.framework/Info.plist
+          xcrun --sdk iphonesimulator clang -arch "$arch" -mios-simulator-version-min=18.0 \
+            -isysroot "$sdk" -fobjc-arc -fmodules -O2 -Wall \
+            -F sim/CarCastPairingSmoke.app/Frameworks \
+            -framework CarCastPairing -framework UIKit -framework Foundation \
+            -Wl,-rpath,@executable_path/Frameworks \
+            -o sim/CarCastPairingSmoke.app/CarCastPairingSmoke \
+            tools/icarcast-ondevice-pairing/simulator/SmokeHost.m
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib
+          app=Path('sim/CarCastPairingSmoke.app')
+          p={'CFBundleIdentifier':'com.nightvibes.carcast.pairing.smoke',
+             'CFBundleExecutable':'CarCastPairingSmoke','CFBundlePackageType':'APPL',
+             'CFBundleName':'CarCastPairingSmoke','CFBundleVersion':'1',
+             'CFBundleShortVersionString':'1.0','MinimumOSVersion':'18.0',
+             'UIDeviceFamily':[1],'LSRequiresIPhoneOS':True,
+             'NSLocationWhenInUseUsageDescription':'Read-only simulator test',
+             'NSLocalNetworkUsageDescription':'Find local Remote Pairing service',
+             'NSBonjourServices':['_remotepairing._tcp'],
+             'CFBundleSupportedPlatforms':['iPhoneSimulator']}
+          (app/'Info.plist').write_bytes(plistlib.dumps(p))
+          fw=app/'Frameworks/CarCastPairing.framework/Info.plist'
+          meta=plistlib.loads(fw.read_bytes())
+          meta['CFBundleSupportedPlatforms']=['iPhoneSimulator']
+          fw.write_bytes(plistlib.dumps(meta))
+          PY
+          codesign --force --sign - --timestamp=none sim/CarCastPairingSmoke.app/Frameworks/CarCastPairing.framework
+          codesign --force --sign - --timestamp=none sim/CarCastPairingSmoke.app
+          id="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; j=json.load(sys.stdin); print(next((d["udid"] for arr in j["devices"].values() for d in arr if "iPhone" in d["name"] and d.get("isAvailable",True)), ""))')"
+          test -n "$id"
+          xcrun simctl boot "$id"
+          xcrun simctl bootstatus "$id" -b
+          xcrun simctl install "$id" sim/CarCastPairingSmoke.app
+          xcrun simctl launch "$id" com.nightvibes.carcast.pairing.smoke
+          sleep 4
+          data="$(xcrun simctl get_app_container "$id" com.nightvibes.carcast.pairing.smoke data)"
+          grep -r 'PAIRING_SIMULATOR_HOST_STARTED' "$data/Documents/CarCastDebug"/*.log
+          grep -r 'Embedded iDevicePair UI ready' "$data/Documents/CarCastDebug"/*.log
+          mkdir -p out/simulator-evidence
+          cp "$data/Documents/CarCastDebug"/*.log out/simulator-evidence/
+          xcrun simctl io "$id" screenshot out/simulator-evidence/PairingSmoke.png
+          xcrun simctl shutdown "$id"
+          echo 'PASS: pairing framework launched and displayed its UI in iPhone Simulator (NOT CarPlay)'
