@@ -2,12 +2,19 @@
 #import "worse_query.h"
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
+#import <UIKit/UIKit.h>
 #import <errno.h>
 #import <fcntl.h>
 #import <unistd.h>
 #import <sys/stat.h>
 #import <string.h>
 #import <stdlib.h>
+
+// SecTask prototypes are not surfaced by every iOS SDK header,
+// although the Security framework exports them (also used by WQFiles).
+typedef struct __SecTask *SecTaskRef;
+extern SecTaskRef SecTaskCreateFromSelf(CFAllocatorRef allocator);
+extern CFTypeRef SecTaskCopyValueForEntitlement(SecTaskRef task, CFStringRef entitlement, CFErrorRef *error);
 
 static NSString *A18Err(int e) {
     return [NSString stringWithFormat:@"errno=%d (%s)", e, strerror(e)];
