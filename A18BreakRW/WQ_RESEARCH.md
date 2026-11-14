@@ -21,6 +21,14 @@ On iPhone17,3 running 27.0.1 (24A446), after the SideStore-ready ad-hoc packagin
 
 This proves extra directory access on that **one path**, not arbitrary filesystem R/W.
 
+## v0.4 reporting fix
+
+The previous v0.3 picker only copied a child path into the text field and cleared the write toggle. It did **not** run a test when a child was tapped. Its JSON export serialized only the last `report` dictionary, so selecting a child did not create evidence of that selection or any subsequent write. The user's exported report has only the parent directory path and an app-level REFUSED marker.
+
+The updated interface makes each child row a **Run test on this child** action. The operator can explicitly enable temporary-marker writes before selecting a child; the toggle will not be silently reset. Every invoked probe is appended to an in-memory run history with its requested path and marker-requested boolean. JSON export now contains *all* recorded results, rather than just the current result. The UI shows the number of recorded tests and the most recent result. The app still never edits or deletes existing system files.
+
+Selecting a child while temporary-marker writes are enabled runs one exclusive-create, read-back, cleanup attempt on that chosen directory; this is explicitly labeled in the UI. The report distinguishes app-level REFUSED from system-level DENIED. No elevated system-wide read/write is implied.
+
 ## Next on-device evidence
 This version lists only immediate, actual child directories in the successful WQ result so the operator can choose a real path without guessing UUIDs. Selecting a row only copies its path into the target field. A separate opt-in toggle enables a single exclusive temporary marker (write/readback/unlink) in container descendants; it never overwrites existing files. `DENIED` is an iOS result, `REFUSED` denotes the app's own safety check. Do not conflate them.
 

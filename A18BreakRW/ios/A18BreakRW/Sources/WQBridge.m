@@ -64,6 +64,7 @@ static BOOL A18MarkerAllowed(NSString *canonical) {
 NSDictionary<NSString *, id> *A18WQProbe(NSString *path, BOOL attemptMarker) {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     result[@"path"] = path ?: @"";
+    result[@"markerRequested"] = @(attemptMarker);
     result[@"timeUTC"] = [[NSISO8601DateFormatter new] stringFromDate:[NSDate date]];
     result[@"device"] = [[UIDevice currentDevice] systemVersion];
     result[@"source"] = @"forcequitOS/worse_query GPL-3.0-or-later; independently integrated";

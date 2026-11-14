@@ -6,6 +6,8 @@ struct WQResearchView: View {
     @State private var enableMarker = false
     @State private var running = false
     @State private var report: [String: Any] = [:]
+    @State private var history: [[String: Any]] = []
+    @State private var discoveredChildren: [String] = []
     @State private var reportFile: URL?
     @State private var errorMessage: String?
 
@@ -15,85 +17,155 @@ struct WQResearchView: View {
         }
     }
 
-    private var childDirectoryOptions: [String] {
-        report["childDirectories"] as? [String] ?? []
-    }
-
     var body: some View {
         Form {
-            Section("Measured access, not a jailbreak") {
-                Text("worse_query requests a real sandbox extension using the app's signed App Group. This can reach selected containers on iOS 27, but not unrestricted root filesystem or kernel memory.")
-                    .font(.footnote)
+            Section("Real container access research") {
+                Text("Tests an actual worse_query sandbox extension. Not a root filesystem or kernel jailbreak.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 TextField("Existing target directory", text: $target)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.system(.footnote, design: .monospaced))
-                Toggle("Try an exclusive temporary marker", isOn: $enableMarker)
-                Text("A marker is only attempted in known data-container descendants. No existing file is modified or deleted. Some system-owned directories will still deny writes.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Button(running ? "Testing…" : "Attempt actual worse_query access") {
-                    let requestedPath = target
-                    let tryWrite = enableMarker
-                    reportFile = nil
-                    report = [:]
-                    running = true
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        let result = A18WQProbe(requestedPath, tryWrite) ?? [:]
-                        DispatchQueue.main.async {
-                            report = result
-                            running = false
-                            errorMessage = nil
-                        }
-                    }
-                }.disabled(running || target.isEmpty)
+
+                Toggle("Attempt a temporary write on tested children", isOn: $enableMarker)
+
+                Text("Writes require your explicit toggle. The test uses a random exclusive-create file, exact read-back and cleanup. It never overwrites or deletes existing files. Root-level marker writes are refused by the app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button(running ? "Running test..." : "Run test on path above") {
+                    runTest(path: target, tryMarker: enableMarker)
+                }
+                .disabled(running || target.isEmpty)
             }
-            if !report.isEmpty {
-                Section("Actual results") {
+
+            if !discoveredChildren.isEmpty {
+                Section("Discovered children: tap to RUN a test") {
+                    Text(enableMarker
+                        ? "Temporary writes ENABLED: tapping a child immediately runs a read and exclusive temporary-marker test on that child."
+                        : "Read-only: tapping a child immediately tests it and records the result. Enable the toggle above to attempt a temporary write too.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(discoveredChildren, id: \.self) { child in
+                        Button {
+                            runTest(path: child, tryMarker: enableMarker)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(URL(fileURLWithPath: child).lastPathComponent)
+                                    .font(.footnote)
+                                    .bold()
+                                Text(child)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                Text(enableMarker
+                                    ? "RUN child read + temporary write"
+                                    : "RUN child read")
+                                    .font(.caption2)
+                            }
+                        }
+                        .disabled(running)
+                    }
+                }
+            }
+
+            if !history.isEmpty {
+                Section("Recorded test history (\(history.count))") {
+                    ForEach(history.indices, id: \.self) { index in
+                        let entry = history[index]
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Test \(index + 1): \(String(describing: entry["requestedPath"] ?? "UNKNOWN"))")
+                                .font(.footnote)
+                                .bold()
+                            Text("Write requested: \((entry["markerRequested"] as? Bool) == true ? "YES" : "NO")")
+                            Text("Extension: \(String(describing: entry["extension"] ?? "NOT_RECORDED"))")
+                            Text("Read: \(String(describing: entry["extendedRead"] ?? "NOT_RECORDED"))")
+                            Text("Marker: \(String(describing: entry["marker"] ?? "NOT_RECORDED"))")
+                            Text("Cleanup: \(String(describing: entry["cleanup"] ?? "NOT_RECORDED"))")
+                        }
+                        .font(.caption)
+                        .textSelection(.enabled)
+                    }
+                }
+
+                Section("Most recent raw result") {
                     ForEach(outputRows, id: \.0) { row in
                         VStack(alignment: .leading, spacing: 3) {
                             Text(row.0).font(.caption).bold()
-                            Text(row.1).font(.system(.caption, design: .monospaced))
+                            Text(row.1)
+                                .font(.system(.caption, design: .monospaced))
                                 .textSelection(.enabled)
                         }
                     }
                 }
-                if !childDirectoryOptions.isEmpty {
-                    Section("Discovered child directories") {
-                        Text("These are direct subdirectories whose metadata was accessible after the extension was granted. Select one to test that exact path next. No changes occur on selection.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        ForEach(childDirectoryOptions, id: \.self) { child in
-                            Button {
-                                target = child
-                                enableMarker = false
-                                reportFile = nil
-                            } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(URL(fileURLWithPath: child).lastPathComponent).bold()
-                                    Text(child)
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+
+                Section("Export all tests, not just the last one") {
+                    Button("Prepare full JSON history (\(history.count) tests)") {
+                        prepareExport()
+                    }
+                    .disabled(running)
+
+                    if let reportFile {
+                        ShareLink(item: reportFile) {
+                            Label("Share all recorded results", systemImage: "square.and.arrow.up")
                         }
                     }
-                }
-                Section("Evidence export") {
-                    Button("Prepare JSON report") { prepareExport() }
-                    if let reportFile {
-                        ShareLink(item: reportFile) { Label("Share report", systemImage: "square.and.arrow.up") }
+                    if let errorMessage {
+                        Text(errorMessage).foregroundStyle(.red).font(.caption)
                     }
-                    if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
                 }
             }
-        }.navigationTitle("WQ access research")
+        }
+        .navigationTitle("WQ access research")
+    }
+
+    private func runTest(path: String, tryMarker: Bool) {
+        guard !running, !path.isEmpty else { return }
+
+        target = path
+        running = true
+        reportFile = nil
+        errorMessage = nil
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = A18WQProbe(path, tryMarker) ?? [:]
+            DispatchQueue.main.async {
+                var recorded = result
+                recorded["requestedPath"] = path
+                recorded["markerRequested"] = tryMarker
+                recorded["testIndex"] = history.count + 1
+                history.append(recorded)
+                report = recorded
+
+                if let children = result["childDirectories"] as? [String] {
+                    discoveredChildren = Array(Set(discoveredChildren).union(children)).sorted()
+                }
+
+                running = false
+            }
+        }
     }
 
     private func prepareExport() {
         do {
-            let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
-            let location = FileManager.default.temporaryDirectory.appendingPathComponent("A18Break-WQ-\(UUID().uuidString).json")
+            let payload: [String: Any] = [
+                "schemaVersion": 2,
+                "runCount": history.count,
+                "runs": history,
+                "latest": report,
+                "note": "Each run records its exact requested path and whether a marker write was requested. REFUSED is an app safeguard. DENIED is an OS error. No system-wide R/W is claimed."
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+            let location = FileManager.default.temporaryDirectory
+                .appendingPathComponent("A18Break-WQ-History-\(UUID().uuidString).json")
             try data.write(to: location, options: .atomic)
             reportFile = location
-        } catch { errorMessage = error.localizedDescription }
+            errorMessage = nil
+        } catch {
+            reportFile = nil
+            errorMessage = error.localizedDescription
+        }
     }
 }
