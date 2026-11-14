@@ -152,6 +152,11 @@ struct ProbeScreen: View {
                     Text("Expected: iPhone17,3 / 24A446. Results are specific to this signed app.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                Section("Experimental expanded container access") {
+                    NavigationLink("Test worse_query access") { WQResearchView() }
+                    Text("Uses a real sandbox-extension request. Requires a valid App Group entitlement at signing. This cannot grant kernel or whole-system read/write.")
+                      .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Actual read/write operations") {
                     Button("Run real R/W checks") {
                         evidence = RealAccessProbe.run()

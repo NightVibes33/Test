@@ -18,6 +18,8 @@ targets:
       - path: A18BreakRW/Sources
     settings:
       base:
+        CODE_SIGN_ENTITLEMENTS: A18BreakRW/A18BreakRW.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: A18BreakRW/Sources/A18BreakRW-Bridging-Header.h
         PRODUCT_BUNDLE_IDENTIFIER: dev.nightvibes33.a18break.rwprobe
         INFOPLIST_KEY_CFBundleDisplayName: A18Break RW
         INFOPLIST_KEY_UIFileSharingEnabled: YES
