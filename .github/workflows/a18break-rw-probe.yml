@@ -1,4 +1,4 @@
-name: A18Break real R-W probe unsigned IPA
+name: A18Break real R-W probe SideStore IPA
 on:
   push:
     branches: [a18break-rw-probe]
@@ -29,7 +29,22 @@ jobs:
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/A18BreakDerived" \
             CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/a18break-build.log"
-      - name: Assemble unsigned IPA
+      - name: Ad-hoc sign with requested App Group and verify
+        working-directory: A18BreakRW/ios
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/A18BreakDerived/Build/Products/Release-iphoneos/A18BreakRW.app"
+          ENTITLEMENTS="A18BreakRW/A18BreakRW.entitlements"
+          test -d "$APP"
+          plutil -lint "$ENTITLEMENTS"
+          codesign --force --sign - --entitlements "$ENTITLEMENTS" --generate-entitlement-der "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
+          codesign --display --entitlements :- "$APP" > "$RUNNER_TEMP/a18break-embedded-entitlements.plist"
+          plutil -lint "$RUNNER_TEMP/a18break-embedded-entitlements.plist"
+          grep -Fq 'group.dev.nightvibes33.a18break' "$RUNNER_TEMP/a18break-embedded-entitlements.plist"
+          echo 'Verified requested App Group is embedded in ad-hoc signature.'
+          echo 'SideStore must replace the signature with its own provisioning-compatible App Group.'
+      - name: Assemble SideStore-ready IPA
         working-directory: A18BreakRW/ios
         run: |
           set -euo pipefail
@@ -38,13 +53,13 @@ jobs:
           mkdir -p out/Payload
           ditto "$APP" out/Payload/A18BreakRW.app
           cd out
-          ditto -c -k --sequesterRsrc --keepParent Payload A18BreakRW-unsigned.ipa
-          test -s A18BreakRW-unsigned.ipa
-          shasum -a 256 A18BreakRW-unsigned.ipa > A18BreakRW-unsigned.sha256
+          ditto -c -k --sequesterRsrc --keepParent Payload A18BreakRW-SideStore-ready.ipa
+          test -s A18BreakRW-SideStore-ready.ipa
+          shasum -a 256 A18BreakRW-SideStore-ready.ipa > A18BreakRW-SideStore-ready.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: A18BreakRW-unsigned-ipa
+          name: A18BreakRW-SideStore-ipa
           path: |
-            A18BreakRW/ios/out/A18BreakRW-unsigned.ipa
-            A18BreakRW/ios/out/A18BreakRW-unsigned.sha256
+            A18BreakRW/ios/out/A18BreakRW-SideStore-ready.ipa
+            A18BreakRW/ios/out/A18BreakRW-SideStore-ready.sha256
           if-no-files-found: error
