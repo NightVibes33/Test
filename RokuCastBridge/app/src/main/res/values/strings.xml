@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">RokuCast Bridge</string>
+    <string name="service_description">Remaps buttons already received by Android TV. Only key codes are stored, never text or screen contents. Does not receive infrared or Roku wireless pairing signals by itself.</string>
+</resources>
