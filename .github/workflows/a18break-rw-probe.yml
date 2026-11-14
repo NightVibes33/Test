@@ -1,0 +1,50 @@
+name: A18Break real R-W probe unsigned IPA
+on:
+  push:
+    branches: [a18break-rw-probe]
+    paths:
+      - 'A18BreakRW/**'
+      - '.github/workflows/a18break-rw-probe.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Generate project
+        working-directory: A18BreakRW/ios
+        run: xcodegen generate --spec project.yml
+      - name: Build unsigned iOS application
+        working-directory: A18BreakRW/ios
+        run: |
+          set -euo pipefail
+          xcodebuild -project A18BreakRW.xcodeproj -scheme A18BreakRW \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/A18BreakDerived" \
+            CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/a18break-build.log"
+      - name: Assemble unsigned IPA
+        working-directory: A18BreakRW/ios
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/A18BreakDerived/Build/Products/Release-iphoneos/A18BreakRW.app"
+          test -d "$APP"
+          mkdir -p out/Payload
+          ditto "$APP" out/Payload/A18BreakRW.app
+          cd out
+          ditto -c -k --sequesterRsrc --keepParent Payload A18BreakRW-unsigned.ipa
+          test -s A18BreakRW-unsigned.ipa
+          shasum -a 256 A18BreakRW-unsigned.ipa > A18BreakRW-unsigned.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: A18BreakRW-unsigned-ipa
+          path: |
+            A18BreakRW/ios/out/A18BreakRW-unsigned.ipa
+            A18BreakRW/ios/out/A18BreakRW-unsigned.sha256
+          if-no-files-found: error
