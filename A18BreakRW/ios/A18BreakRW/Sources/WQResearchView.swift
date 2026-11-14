@@ -32,7 +32,7 @@ struct WQResearchView: View {
                     report = [:]
                     running = true
                     DispatchQueue.global(qos: .userInitiated).async {
-                        let result = A18WQProbe(requestedPath, tryWrite)
+                        let result = A18WQProbe(requestedPath, tryWrite) ?? [:]
                         DispatchQueue.main.async {
                             report = result
                             running = false
