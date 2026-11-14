@@ -13,7 +13,16 @@
 - A PASS means only that particular operation passed under this app's identity. It does **not** imply unrestricted system R/W.
 
 ## Verification status
-The earlier iPhone17,3 runtime report (24A446) had signedGroupCount=0 and usableGroup=NONE, so worse_query never initialized. The subsequent build embeds an ad-hoc App Group entitlement; re-signing and runtime results are not yet verified. Do not report expanded access until a real device JSON report demonstrates it.
+On iPhone17,3 running 27.0.1 (24A446), after the SideStore-ready ad-hoc packaging fix:
+- signedGroupCount=1 and the signed App Group resolved successfully;
+- baseline open of `/var/containers/Data/System` returned errno=1 (Operation not permitted);
+- worse_query produced a positive handle (2) and the directory opened and enumerated 33 entries;
+- marker write was `REFUSED` by A18Break's own path allowlist at the container root, so **no protected write success or failure was observed**.
+
+This proves extra directory access on that **one path**, not arbitrary filesystem R/W.
+
+## Next on-device evidence
+This version lists only immediate, actual child directories in the successful WQ result so the operator can choose a real path without guessing UUIDs. Selecting a row only copies its path into the target field. A separate opt-in toggle enables a single exclusive temporary marker (write/readback/unlink) in container descendants; it never overwrites existing files. `DENIED` is an iOS result, `REFUSED` denotes the app's own safety check. Do not conflate them.
 
 ## Upstream
 - https://github.com/forcequitOS/worse_query

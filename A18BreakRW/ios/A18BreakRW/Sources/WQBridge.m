@@ -102,6 +102,22 @@ NSDictionary<NSString *, id> *A18WQProbe(NSString *path, BOOL attemptMarker) {
             if (listing) {
                 result[@"extendedRead"] = @"PASS: directory opened and enumerated";
                 result[@"entryCount"] = @(listing.count);
+                // Offer only real, immediate child directories for the next
+                // on-device test. Never recurse or read private file contents.
+                NSMutableArray<NSString *> *children = [NSMutableArray array];
+                for (id name in [listing sortedArrayUsingSelector:@selector(compare:)]) {
+                    if (![name isKindOfClass:NSString.class]) continue;
+                    NSString *component = (NSString *)name;
+                    if ([component isEqualToString:@"."] || [component isEqualToString:@".."] ||
+                        [component containsString:@"/"]) continue;
+                    NSString *child = [path stringByAppendingPathComponent:component];
+                    struct stat cst;
+                    if (lstat(child.fileSystemRepresentation, &cst) == 0 && S_ISDIR(cst.st_mode)) {
+                        [children addObject:child];
+                        if (children.count >= 128) break;
+                    }
+                }
+                result[@"childDirectories"] = children;
             } else result[@"extendedRead"] = [NSString stringWithFormat:@"PARTIAL: open succeeded, enumeration failed: %@", err.localizedDescription ?: @"unknown"];
         }
         if (!attemptMarker) {

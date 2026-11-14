@@ -16,9 +16,9 @@ For a paid Apple developer signing workflow: register a real App Group in Apple 
 
 1. Download `A18BreakRW-SideStore-ready.ipa` from the latest successful GitHub Actions run and install using SideStore.
 2. Open **Test worse_query access** and run the default `/var/containers/Data/System` path.
-3. Export the WQ JSON report and inspect `signedGroupCount`, `usableGroup`, `extensionHandleStatus`, `normalRead`, and `extendedRead`.
-4. Only if a sandbox extension is actually consumed, test more specific existing container directories. Optional temporary-marker writes are restricted to data-container descendants.
-5. Share the JSON (after redacting sensitive paths) for analysis.
+3. The app can now show the real immediate child directories it managed to stat after gaining the extension. Tap a child row to set the target path.
+4. Tap **Attempt actual worse_query access** for that child. To separately check a tiny temporary file write, opt in to **Try an exclusive temporary marker** before tapping the button. Only allowed data-container descendants are eligible.
+5. Export both the resulting JSON and any earlier WQ report if useful. Redact sensitive path details before sharing.
 
 Regular R/W checks are a separate baseline and do not indicate sandbox escape.
 

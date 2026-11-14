@@ -10,7 +10,13 @@ struct WQResearchView: View {
     @State private var errorMessage: String?
 
     private var outputRows: [(String, String)] {
-        report.keys.sorted().map { ($0, String(describing: report[$0] ?? "")) }
+        report.keys.filter { $0 != "childDirectories" }.sorted().map {
+            ($0, String(describing: report[$0] ?? ""))
+        }
+    }
+
+    private var childDirectoryOptions: [String] {
+        report["childDirectories"] as? [String] ?? []
     }
 
     var body: some View {
@@ -48,6 +54,26 @@ struct WQResearchView: View {
                             Text(row.0).font(.caption).bold()
                             Text(row.1).font(.system(.caption, design: .monospaced))
                                 .textSelection(.enabled)
+                        }
+                    }
+                }
+                if !childDirectoryOptions.isEmpty {
+                    Section("Discovered child directories") {
+                        Text("These are direct subdirectories whose metadata was accessible after the extension was granted. Select one to test that exact path next. No changes occur on selection.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        ForEach(childDirectoryOptions, id: \.self) { child in
+                            Button {
+                                target = child
+                                enableMarker = false
+                                reportFile = nil
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(URL(fileURLWithPath: child).lastPathComponent).bold()
+                                    Text(child)
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
                     }
                 }
