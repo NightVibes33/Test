@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from yt_dlp import YoutubeDL
+import imageio_ffmpeg
 
 VIDEO_ID = "Q8RQ7D5MzW8"
 VIDEO_URL = f"https://www.youtube.com/watch?v={VIDEO_ID}"
@@ -92,7 +93,7 @@ def download(height: int = 2160):
             safe = [(k, str(value).replace("\r","").replace("\n","")) for k,value in headers.items() if re.match(r"^[A-Za-z0-9-]+$",k)]
             return ["-headers", "".join(f"{k}: {value}\r\n" for k,value in safe)] if safe else []
         cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+            imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-nostdin",
             *header_args(video), "-i", video["url"],
             *header_args(audio), "-i", audio["url"],
             "-map", "0:v:0", "-map", "1:a:0",
