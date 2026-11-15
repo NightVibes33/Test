@@ -1,7 +1,23 @@
-# Native 4K video download site
-Vercel hosts the static UI. Render hosts the Python FastAPI streaming service running yt-dlp + FFmpeg. The backend is deliberately locked to the single linked video (Q8RQ7D5MzW8) to avoid an open video conversion proxy.
-## Endpoints
-GET /api/health: liveness
-GET /api/info: returns exact native stream heights
-GET /api/download?height=2160: remuxes original video+audio on the fly to a fragmented MP4 without upscaling or buffering full files to disk.
-If YouTube blocks datacenter access, this endpoint returns an error. A resolution is shown only after a successful format inspection. A valid 2160p stream is not guaranteed.
+# Native4K Studio
+
+A Vercel-first personal downloader for the linked YouTube video `Q8RQ7D5MzW8`. **This is source code, not a live deployment.** The Vercel connection returned HTTP 403 for project creation. 
+
+## Deploy on Vercel
+1. In [Vercel New Project](https://vercel.com/new), import `NightVibes33/Test`.
+2. Choose branch `feature/native-4k-video-site` (set it as the production branch if you want the production URL to use it).
+3. Set the project **Root Directory** to `video-4k`.
+4. Deploy with the Python runtime enabled. `vercel.json` configures a 300-second maximum function duration.
+
+## How it works
+- `index.html`: responsive single-video UI, checks real available source heights and offers native 4K only if the stream exists.
+- `api/index.py` and `server.py`: FastAPI, yt-dlp, imageio-ffmpeg. YouTube separate video/audio streams are remuxed into a fragmented MP4 by FFmpeg and returned as a streaming response. No deliberate upscaling or full-file buffering.
+- `Dockerfile`: optional long-running deployment on a separate container host. Not required for the Vercel version.
+- Endpoint `GET /api/health` for liveness and `GET /api/info` for availability.
+- Endpoint `GET /api/download?height=2160` only succeeds when a 2160p source and a separate audio stream are accessible.
+
+## Known limits
+- YouTube may refuse playback/extraction from cloud data center IPs; this cannot be bypassed by UI code.
+- An 11:51 4K download may exceed Vercel Hobby's 300-second function duration or streaming constraints.
+- The project deliberately allows **only** this video ID to prevent an open download proxy and limit traffic costs.
+- Do not claim 4K availability until `/api/info` confirms it. The actual live 4K download has not been end-to-end tested.
+- Original codecs are copied without transcoding; codec/container combinations may be incompatible with some video players.
