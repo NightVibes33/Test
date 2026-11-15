@@ -6,13 +6,15 @@ import subprocess
 from urllib.parse import urlparse, parse_qs
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from pathlib import Path
 from yt_dlp import YoutubeDL
 import imageio_ffmpeg
 
 VIDEO_ID = "Q8RQ7D5MzW8"
 VIDEO_URL = f"https://www.youtube.com/watch?v={VIDEO_ID}"
 APP_NAME = "Native4K Streamer"
+SITE_FILE = Path(__file__).resolve().parent / "index.html"
 app = FastAPI(title=APP_NAME)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 _cache = {"timestamp": 0, "video": None}
@@ -48,6 +50,12 @@ def allowed_source(f):
     host = urlparse(f["url"]).hostname or ""
     return host.endswith(".googlevideo.com") or host == "googlevideo.com"
 
+@app.get("/", include_in_schema=False)
+def homepage():
+    if not SITE_FILE.is_file():
+        raise HTTPException(status_code=503, detail="Website static asset not found.")
+    return FileResponse(SITE_FILE, media_type="text/html")
+
 @app.get("/api/health")
 def health():
     return {"ok": True, "service": APP_NAME, "streaming": True}
@@ -56,7 +64,7 @@ def health():
 def info():
     v = extract_video()
     videos, audios = playable_formats(v)
-    available = sorted(set(int(f["height"]) for f in videos))
+    available = sorted(set(int(f["height"]) for f in videos if allowed_source(f))) if any(allowed_source(f) for f in audios) else []
     return {
         "id": VIDEO_ID,
         "title": v.get("title") or "Your video",
@@ -64,7 +72,7 @@ def info():
         "duration": v.get("duration"),
         "thumbnail": v.get("thumbnail") or f"https://i.ytimg.com/vi/{VIDEO_ID}/maxresdefault.jpg",
         "resolutions": available,
-        "hasAudio": bool(audios),
+        "hasAudio": any(allowed_source(f) for f in audios),
         "native4k": 2160 in available,
         "message": None if available else "No accessible direct video formats were returned by YouTube.",
     }
