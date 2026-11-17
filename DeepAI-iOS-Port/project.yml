@@ -7,11 +7,15 @@ options:
 settings:
   base:
     SWIFT_VERSION: '5.9'
+    SWIFT_OBJC_BRIDGING_HEADER: Sources/DeepAI-Bridging-Header.h
     IPHONEOS_DEPLOYMENT_TARGET: '17.0'
     TARGETED_DEVICE_FAMILY: '1,2'
     CODE_SIGN_STYLE: Automatic
     SUPPORTS_MACCATALYST: NO
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CLANG_CXX_LANGUAGE_STANDARD: c++17
+    OTHER_LDFLAGS: $(inherited) -lc++ -lsqlite3 -lz
+    ENABLE_BITCODE: NO
 targets:
   DeepAICodeIOS:
     type: application
@@ -21,14 +25,21 @@ targets:
       - path: OriginalWebClient
         type: folder
         buildPhase: resources
+      - path: OriginalServer
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - framework: Frameworks/NodeMobile.xcframework
+        embed: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.deepai.code.ios.port
+        PRODUCT_BUNDLE_IDENTIFIER: org.deepai.code.ios.embedded
         PRODUCT_NAME: DeepAICodeIOS
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: DeepAI Code
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Connect to your own DeepAI Code coding-agent server on the local network.
+        INFOPLIST_KEY_UIFileSharingEnabled: YES
+        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_NSSupportsLiveActivities: NO
@@ -37,8 +48,9 @@ targets:
       properties:
         CFBundleDisplayName: DeepAI Code
         LSRequiresIPhoneOS: true
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         UILaunchScreen: {}
-        NSLocalNetworkUsageDescription: Connect to your DeepAI Code server on your own computer.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UISupportedInterfaceOrientations:

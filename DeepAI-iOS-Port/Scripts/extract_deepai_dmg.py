@@ -179,10 +179,73 @@ def extract_asar_client(asar: Path, destination: Path):
         return package, exported
 
 
+
+def extract_asar_server(asar: Path, destination: Path):
+    """Recover the original bundled Node server and JS dependencies.
+
+    Native macOS `.node` add-ons are intentionally not treated as iOS binaries.
+    Source stays inside the build workspace; the repository does not publish
+    copied DeepAI server files.
+    """
+    with asar.open('rb') as archive:
+        prefix = archive.read(16)
+        header_size = int.from_bytes(prefix[4:8], 'little')
+        json_size = int.from_bytes(prefix[12:16], 'little')
+        if prefix[:4] != b"\x04\x00\x00\x00" or json_size > header_size or header_size > 10_000_000:
+            raise ValueError('Invalid Electron ASAR header')
+        header = json.loads(archive.read(json_size))
+        base = header_size + 8
+        def locate(path):
+            node = None
+            children = header['files']
+            for segment in path.split('/'):
+                node = children[segment]
+                children = node.get('files', {})
+            return node
+        total, bytes_read = 0, 0
+        def walk(entries, segments):
+            nonlocal total, bytes_read
+            for name, meta in entries.items():
+                if not name or name in ('.', '..') or any(ch in name for ch in ('/', '\\', '\x00')):
+                    raise ValueError('Unsafe ASAR filename')
+                parts = segments + [name]
+                if 'files' in meta:
+                    walk(meta['files'], parts)
+                    continue
+                if meta.get('unpacked'):
+                    # macOS executables and add-ons cannot execute on iOS.
+                    continue
+                if 'offset' not in meta: continue
+                size = int(meta['size'])
+                offset = int(meta['offset'])
+                if size < 0 or size > 40_000_000 or offset < 0:
+                    raise ValueError('ASAR entry exceeds size limit')
+                archive.seek(base + offset)
+                blob = archive.read(size)
+                if len(blob) != size:
+                    raise ValueError('Truncated original server component')
+                target = destination.joinpath(*parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(blob)
+                total += 1
+                bytes_read += size
+        for path in ('apps/server/dist', 'node_modules'):
+            node = locate(path)
+            walk(node['files'], path.split('/'))
+        pkg = locate('package.json')
+        archive.seek(base + int(pkg['offset']))
+        (destination / 'package.json').write_bytes(archive.read(pkg['size']))
+        total += 1
+        if not (destination / 'apps/server/dist/bin.mjs').is_file():
+            raise ValueError('Original server entry point missing')
+        return {'files': total, 'bytes': bytes_read, 'entry': 'apps/server/dist/bin.mjs'}
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('dmg', type=Path)
     parser.add_argument('--destination', type=Path, default=Path(__file__).resolve().parent.parent / 'OriginalWebClient')
+    parser.add_argument('--with-server', action='store_true', help='also extract the original Node backend to OriginalServer')
+    parser.add_argument('--server-destination', type=Path, default=Path(__file__).resolve().parent.parent / 'OriginalServer')
     args = parser.parse_args()
     src = args.dmg.resolve()
     if not src.is_file(): parser.error(f'No file: {src}')
@@ -197,9 +260,11 @@ def main():
         asar.write_bytes(volume.getfile(matches[0][1]))
         volume.fp.close()
         package, files = extract_asar_client(asar, args.destination)
+        server = extract_asar_server(asar, args.server_destination) if args.with_server else None
     result = {'source': src.name, 'sha256': digest, 'dmg_hfs_bytes': size, 'original_app': package.get('name'),
               'version': package.get('version'), 'upstream_hash': package.get('t3codeCommitHash'),
-              'original_client_files': files, 'output': str(args.destination.resolve())}
+              'original_client_files': files, 'output': str(args.destination.resolve()),
+              'original_server': server}
     if not (args.destination / 'index.html').is_file(): raise ValueError('Client entrypoint is missing')
     print(json.dumps(result, indent=2))
     return result

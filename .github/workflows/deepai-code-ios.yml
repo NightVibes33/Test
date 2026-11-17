@@ -1,82 +1,84 @@
-name: DeepAI Code 0.3.40 iOS unsigned IPA
+name: DeepAI Code 0.3.40 embedded Node iOS
 on:
   workflow_dispatch:
   push:
-    branches: [deepai-ios, deepai-ios-port]
+    branches: [deepai-ios-port]
     paths:
-      - 'DeepAI-iOS-Port/Sources/**'
-      - 'DeepAI-iOS-Port/Scripts/**'
-      - 'DeepAI-iOS-Port/project.yml'
+      - 'DeepAI-iOS-Port/**'
       - '.github/workflows/deepai-code-ios.yml'
-  pull_request:
-    paths:
-      - 'DeepAI-iOS-Port/Sources/**'
-      - 'DeepAI-iOS-Port/Scripts/**'
-      - 'DeepAI-iOS-Port/project.yml'
-      - '.github/workflows/deepai-code-ios.yml'
+
 jobs:
-  iphoneos:
-    name: Original UI + iOS ARM64
+  ios:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
-      - name: Install project generator
+      - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Download official macOS DMG
+      - name: Download official DeepAI 0.3.40 DMG
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 3 --connect-timeout 30 \
-            'https://deepai.org/download/deepai-code/mac-apple-silicon' -o "$RUNNER_TEMP/deepai-code.dmg"
-          file "$RUNNER_TEMP/deepai-code.dmg"
-      - name: Verify original 0.3.40 DMG
+          curl -fL --retry 3 --connect-timeout 30 'https://deepai.org/download/deepai-code/mac-apple-silicon' -o "$RUNNER_TEMP/deepai.dmg"
+          echo "12fc7d32446abbb4e9571c6da977890b2da12d3bca3780053ef0584963ccb973  $RUNNER_TEMP/deepai.dmg" | shasum -a 256 -c -
+      - name: Extract original frontend and original coding engine
+        run: python3 DeepAI-iOS-Port/Scripts/extract_deepai_dmg.py "$RUNNER_TEMP/deepai.dmg" --with-server
+      - name: Obtain and verify iOS Node.js 24 runtime
+        run: bash DeepAI-iOS-Port/Scripts/get-node-mobile.sh
+      - name: Check source and original runtime entry
         shell: bash
         run: |
-          echo '12fc7d32446abbb4e9571c6da977890b2da12d3bca3780053ef0584963ccb973  '"$RUNNER_TEMP/deepai-code.dmg" | shasum -a 256 -c -
-      - name: Extract original UI (not a recreation)
-        run: python3 DeepAI-iOS-Port/Scripts/extract_deepai_dmg.py "$RUNNER_TEMP/deepai-code.dmg"
-      - name: Parse Swift source
-        run: swiftc -frontend -parse DeepAI-iOS-Port/Sources/*.swift
-      - name: Build iOS simulator target
+          set -euo pipefail
+          swiftc -frontend -parse DeepAI-iOS-Port/Sources/*.swift
+          test -s DeepAI-iOS-Port/OriginalServer/apps/server/dist/bin.mjs
+          test -s DeepAI-iOS-Port/OriginalWebClient/index.html
+      - name: Generate Xcode project
         shell: bash
         run: |
           cd DeepAI-iOS-Port
           xcodegen generate --spec project.yml
-          xcodebuild -project DeepAICodeIOS.xcodeproj -scheme DeepAICodeIOS \
-            -configuration Debug -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO \
-            -derivedDataPath build/Simulator build
-      - name: Simulator launch smoke test
-        id: simulator_smoke
+      - name: Compile simulator target
+        shell: bash
+        run: |
+          cd DeepAI-iOS-Port
+          xcodebuild -project DeepAICodeIOS.xcodeproj -scheme DeepAICodeIOS -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/Simulator CODE_SIGNING_ALLOWED=NO build
+      - name: Simulator launch and backend diagnostics
+        id: launch
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euo pipefail
-          SIM=$(xcrun simctl list devices available --json | python3 -c 'import sys,json; d=json.load(sys.stdin)["devices"]; a=[v for vs in d.values() for v in vs if v["name"].startswith("iPhone") and v["state"]=="Shutdown"]; print(a[0]["udid"] if a else "")')
-          test -n "$SIM" || { echo 'No available iPhone simulator'; exit 1; }
+          SIM=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; x=json.load(sys.stdin)["devices"]; d=[v for vs in x.values() for v in vs if v["name"].startswith("iPhone") and v["state"]=="Shutdown"]; print(d[0]["udid"] if d else "")')
+          test -n "$SIM"
           xcrun simctl boot "$SIM"
           xcrun simctl bootstatus "$SIM" -b
           xcrun simctl install "$SIM" DeepAI-iOS-Port/build/Simulator/Build/Products/Debug-iphonesimulator/DeepAICodeIOS.app
-          xcrun simctl launch "$SIM" org.deepai.code.ios.port
-          sleep 4
-          xcrun simctl io "$SIM" screenshot DeepAI-iOS-Port/build/simulator-smoke.png
-      - name: Upload simulator screenshot
+          xcrun simctl launch "$SIM" org.deepai.code.ios.embedded
+          sleep 9
+          xcrun simctl io "$SIM" screenshot DeepAI-iOS-Port/build/embedded-node-simulator.png
+          mkdir -p DeepAI-iOS-Port/build/diagnostics
+          xcrun simctl get_app_container "$SIM" org.deepai.code.ios.embedded data > DeepAI-iOS-Port/build/diagnostics/container.txt
+          DATA=$(cat DeepAI-iOS-Port/build/diagnostics/container.txt)
+          test -f "$DATA/Library/Application Support/DeepAI/embedded-node.log" && cp "$DATA/Library/Application Support/DeepAI/embedded-node.log" DeepAI-iOS-Port/build/diagnostics/embedded-node.log || true
+      - name: Upload simulator diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: DeepAI-Code-iOS-simulator-smoke
-          path: DeepAI-iOS-Port/build/simulator-smoke.png
+          name: DeepAI-embedded-node-simulator-diagnostics
+          path: |
+            DeepAI-iOS-Port/build/embedded-node-simulator.png
+            DeepAI-iOS-Port/build/diagnostics/
           if-no-files-found: ignore
-          retention-days: 14
-      - name: Build unsigned device IPA
+          retention-days: 7
+      - name: Build unsigned real-device IPA
         run: bash DeepAI-iOS-Port/Scripts/build-ipa.sh
-      - name: Upload device IPA
-        if: success()
+      - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: DeepAI-Code-iOS-0.3.40-unsigned
+          name: DeepAI-Code-0.3.40-Embedded-Node-iOS-unsigned
           path: DeepAI-iOS-Port/build/DeepAI-Code-iOS-0.3.40-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
