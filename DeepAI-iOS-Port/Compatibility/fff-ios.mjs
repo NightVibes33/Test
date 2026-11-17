@@ -91,10 +91,11 @@ export class FileFinder {
         for(let i=0;i<lines.length;i++) {
           const line=lines[i], ranges=[];
           if(re) {re.lastIndex=0;let m;while((m=re.exec(line)) && ranges.length<30){if(!m[0])break;ranges.push([Buffer.byteLength(line.slice(0,m.index)),Buffer.byteLength(line.slice(0,m.index+m[0].length))]);}}
-          else{const hay=opts.smartCase?line.toLowerCase():line; let from=0,pos;while((pos=hay.indexOf(needle,from))>=0 && ranges.length<30){yranges.push([Buffer.byteLength(line.slice(0,pos)),Buffer.byteLength(line.slice(0,pos+needle.length))]);from=pos+Math.max(1,needle.length);}}
+          else{const hay=opts.smartCase?line.toLowerCase():line; let from=0,pos;while((pos=hay.indexOf(needle,from))>=0 && ranges.length<30){ranges.push([Buffer.byteLength(line.slice(0,pos)),Buffer.byteLength(line.slice(0,pos+needle.length))]);from=pos+Math.max(1,needle.length);}}
           if(ranges.length){matches.push({relativePath:file.relativePath,lineNumber:i+1,lineContent:line,matchRanges:ranges});found++;}
           if(found>=(opts.maxMatchesPerFile||100)) break;
-        }catch{}
+        }
+      }catch{}
       if(matches.length>=offset+pageSize+1) break;
     }
     return OK({items:matches.slice(offset,offset+pageSize),nextCursor:matches.length>offset+pageSize?{_offset:offset+pageSize}:null});
