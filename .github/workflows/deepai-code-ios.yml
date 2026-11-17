@@ -63,7 +63,18 @@ jobs:
           echo "Simulator booted, installing app" >> DeepAI-iOS-Port/build/diagnostics/stages.txt
           xcrun simctl install "$SIM" DeepAI-iOS-Port/build/Simulator/Build/Products/Debug-iphonesimulator/DeepAICodeIOS.app
           echo "App installed, launching" >> DeepAI-iOS-Port/build/diagnostics/stages.txt
-          xcrun simctl launch "$SIM" org.deepai.code.ios.embedded
+          python3 - "$SIM" <<'PY'
+          import subprocess, sys
+          sim=sys.argv[1]
+          try:
+              p=subprocess.run(["xcrun","simctl","launch",sim,"org.deepai.code.ios.embedded"],text=True,capture_output=True,timeout=60)
+              result=f"simctl launch exit {p.returncode}\\n{p.stdout}\\n{p.stderr}"
+          except subprocess.TimeoutExpired as e:
+              result="simctl launch timed out after 60 seconds; collecting diagnostics regardless"
+          print(result)
+          with open("DeepAI-iOS-Port/build/diagnostics/launch-result.txt","w") as f:
+              f.write(result)
+          PY
           echo "App launch command returned" >> DeepAI-iOS-Port/build/diagnostics/stages.txt
           sleep 9
           xcrun simctl io "$SIM" screenshot DeepAI-iOS-Port/build/embedded-node-simulator.png
