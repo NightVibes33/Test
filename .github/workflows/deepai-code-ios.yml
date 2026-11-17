@@ -48,7 +48,7 @@ jobs:
             -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO \
             -derivedDataPath build/Simulator build
       - name: Build unsigned device IPA
-        run: DeepAI-iOS-Port/Scripts/build-ipa.sh
+        run: bash DeepAI-iOS-Port/Scripts/build-ipa.sh
       - name: Upload device IPA
         if: success()
         uses: actions/upload-artifact@v4
