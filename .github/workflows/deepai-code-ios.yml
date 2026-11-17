@@ -47,6 +47,29 @@ jobs:
             -configuration Debug -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO \
             -derivedDataPath build/Simulator build
+      - name: Simulator launch smoke test
+        id: simulator_smoke
+        continue-on-error: true
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIM=$(xcrun simctl list devices available --json | python3 -c 'import sys,json; d=json.load(sys.stdin)["devices"]; a=[v for vs in d.values() for v in vs if v["name"].startswith("iPhone") and v["state"]=="Shutdown"]; print(a[0]["udid"] if a else "")')
+          test -n "$SIM" || { echo 'No available iPhone simulator'; exit 1; }
+          xcrun simctl boot "$SIM"
+          xcrun simctl bootstatus "$SIM" -b
+          xcrun simctl install "$SIM" DeepAI-iOS-Port/build/Simulator/Build/Products/Debug-iphonesimulator/DeepAICodeIOS.app
+          xcrun simctl launch "$SIM" org.deepai.code.ios.port
+          sleep 4
+          xcrun simctl io "$SIM" screenshot DeepAI-iOS-Port/build/simulator-smoke.png
+      - name: Upload simulator screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepAI-Code-iOS-simulator-smoke
+          path: DeepAI-iOS-Port/build/simulator-smoke.png
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Build unsigned device IPA
         run: bash DeepAI-iOS-Port/Scripts/build-ipa.sh
       - name: Upload device IPA
