@@ -1,0 +1,1 @@
+{"name":"node-pty","version":"0.0.0-ios-compat","main":"index.js","description":"iOS startup compatibility: explicit failure for unavailable native PTY subprocesses"}

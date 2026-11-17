@@ -236,6 +236,19 @@ def extract_asar_server(asar: Path, destination: Path):
         archive.seek(base + int(pkg['offset']))
         (destination / 'package.json').write_bytes(archive.read(pkg['size']))
         total += 1
+        # Replace non-iOS ffi-rs fuzzy-finder with real on-device JS filesystem search.
+        compatibility = Path(__file__).resolve().parent.parent / 'Compatibility/fff-ios.mjs'
+        finder = destination / 'node_modules/@ff-labs/fff-node/dist/src/index.js'
+        if compatibility.is_file() and finder.is_file():
+            finder.with_name('index.js.desktop-original').write_bytes(finder.read_bytes())
+            finder.write_bytes(compatibility.read_bytes())
+        # node-pty is imported during boot; shell subprocesses are unavailable on iOS.
+        pty_source = Path(__file__).resolve().parent.parent / 'Compatibility/node-pty'
+        pty_dest = destination / 'node_modules/node-pty'
+        if pty_source.is_dir():
+            pty_dest.mkdir(exist_ok=True, parents=True)
+            for filename in ('package.json', 'index.js'):
+                (pty_dest / filename).write_bytes((pty_source / filename).read_bytes())
         if not (destination / 'apps/server/dist/bin.mjs').is_file():
             raise ValueError('Original server entry point missing')
         return {'files': total, 'bytes': bytes_read, 'entry': 'apps/server/dist/bin.mjs'}
