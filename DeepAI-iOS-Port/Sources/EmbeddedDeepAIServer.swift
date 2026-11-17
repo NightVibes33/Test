@@ -41,6 +41,8 @@ final class EmbeddedDeepAIServer: ObservableObject {
             phase = .failed("Could not initialize iOS workspace: \(error.localizedDescription)")
             return
         }
+        let marker = "[DeepAI iOS] SwiftUI initialized; original backend resources found at \(serverRoot.path)\\n"
+        try? marker.write(to: log, atomically: true, encoding: .utf8)
         phase = .booting
         let entry = serverRoot.appendingPathComponent("apps/server/dist/bin.mjs").path
         let thread = Thread {
