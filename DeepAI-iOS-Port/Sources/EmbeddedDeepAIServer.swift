@@ -19,7 +19,8 @@ final class EmbeddedDeepAIServer: ObservableObject {
     @Published private(set) var logTail = ""
     private var started = false
     private let endpoint = URL(string: "http://127.0.0.1:37730/")!
-    var localURL: URL { endpoint }
+    @Published private(set) var launchURL: URL = URL(string: "http://127.0.0.1:37730/")!
+    var localURL: URL { launchURL }
 
     func launch() {
         guard !started else { return }
@@ -68,7 +69,18 @@ final class EmbeddedDeepAIServer: ObservableObject {
             request.timeoutInterval = 1
             do {
                 let (_, response) = try await URLSession.shared.data(for: request)
-                if response is HTTPURLResponse {
+                if let http = response as? HTTPURLResponse, (200..<400).contains(http.statusCode) {
+                    // Use the ORIGINAL server-issued one-time pairing URL so
+                    // the embedded browser becomes an authorized client of
+                    // its own in-process server, without an external computer.
+                    if let output = try? String(contentsOfFile: log, encoding: .utf8),
+                       let part = output.components(separatedBy: "Pairing URL: ").last?.components(separatedBy: "\\n").first,
+                       let pairing = URL(string: part.trimmingCharacters(in: .whitespacesAndNewlines)),
+                       pairing.host == "127.0.0.1", pairing.port == 37730 {
+                        launchURL = pairing
+                    } else {
+                        launchURL = endpoint
+                    }
                     phase = .ready
                     return
                 }
