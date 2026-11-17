@@ -40,8 +40,8 @@
     std::vector<std::string> arguments = {
         "node", std::string(script.fileSystemRepresentation), "serve",
         "--host", "127.0.0.1", "--port", "37730", "--base-dir",
-        std::string(home.fileSystemRepresentation), "--cwd", std::string(workspace.fileSystemRepresentation),
-        "--no-browser"
+        std::string(home.fileSystemRepresentation), "--no-browser",
+        std::string(workspace.fileSystemRepresentation)
     };
     std::vector<char *> argv;
     argv.reserve(arguments.size() + 1);

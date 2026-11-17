@@ -32,6 +32,8 @@ jobs:
           swiftc -frontend -parse DeepAI-iOS-Port/Sources/*.swift
           node --check DeepAI-iOS-Port/Compatibility/fff-ios.mjs
           node --check DeepAI-iOS-Port/Compatibility/node-pty/index.js
+          node --check DeepAI-iOS-Port/Compatibility/ios-bootstrap.mjs
+          test -s DeepAI-iOS-Port/OriginalServer/ios-bootstrap.mjs
           test -s DeepAI-iOS-Port/OriginalServer/apps/server/dist/bin.mjs
           test -s DeepAI-iOS-Port/OriginalWebClient/index.html
       - name: Generate Xcode project

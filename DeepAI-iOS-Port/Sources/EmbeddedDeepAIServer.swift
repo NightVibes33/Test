@@ -45,7 +45,7 @@ final class EmbeddedDeepAIServer: ObservableObject {
         let marker = "[DeepAI iOS] SwiftUI initialized; original backend resources found at \(serverRoot.path)\n"
         try? marker.write(to: log, atomically: true, encoding: .utf8)
         phase = .booting
-        let entry = serverRoot.appendingPathComponent("apps/server/dist/bin.mjs").path
+        let entry = serverRoot.appendingPathComponent("ios-bootstrap.mjs").path
         let thread = Thread {
             let exitCode = EmbeddedNodeRunner.startScript(entry, workspace: workspace.path,
                                                           home: home.path, logFile: log.path)

@@ -249,6 +249,10 @@ def extract_asar_server(asar: Path, destination: Path):
             pty_dest.mkdir(exist_ok=True, parents=True)
             for filename in ('package.json', 'index.js'):
                 (pty_dest / filename).write_bytes((pty_source / filename).read_bytes())
+        # Keep DeepAI's original entry unchanged, but expose uncaught runtime failures.
+        bootstrap_src = Path(__file__).resolve().parent.parent / 'Compatibility/ios-bootstrap.mjs'
+        if bootstrap_src.is_file():
+            (destination / 'ios-bootstrap.mjs').write_bytes(bootstrap_src.read_bytes())
         if not (destination / 'apps/server/dist/bin.mjs').is_file():
             raise ValueError('Original server entry point missing')
         return {'files': total, 'bytes': bytes_read, 'entry': 'apps/server/dist/bin.mjs'}
