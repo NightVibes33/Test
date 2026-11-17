@@ -42,7 +42,7 @@ final class EmbeddedDeepAIServer: ObservableObject {
             phase = .failed("Could not initialize iOS workspace: \(error.localizedDescription)")
             return
         }
-        let marker = "[DeepAI iOS] SwiftUI initialized; original backend resources found at \(serverRoot.path)\\n"
+        let marker = "[DeepAI iOS] SwiftUI initialized; original backend resources found at \(serverRoot.path)\n"
         try? marker.write(to: log, atomically: true, encoding: .utf8)
         phase = .booting
         let entry = serverRoot.appendingPathComponent("apps/server/dist/bin.mjs").path
@@ -74,7 +74,7 @@ final class EmbeddedDeepAIServer: ObservableObject {
                     // the embedded browser becomes an authorized client of
                     // its own in-process server, without an external computer.
                     if let output = try? String(contentsOfFile: log, encoding: .utf8),
-                       let part = output.components(separatedBy: "Pairing URL: ").last?.components(separatedBy: "\\n").first,
+                       let part = output.components(separatedBy: "Pairing URL: ").last?.components(separatedBy: "\n").first,
                        let pairing = URL(string: part.trimmingCharacters(in: .whitespacesAndNewlines)),
                        pairing.host == "127.0.0.1", pairing.port == 37730 {
                         launchURL = pairing
