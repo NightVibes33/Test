@@ -30,6 +30,8 @@ jobs:
         run: |
           set -euo pipefail
           swiftc -frontend -parse DeepAI-iOS-Port/Sources/*.swift
+          node --check DeepAI-iOS-Port/Compatibility/fff-ios.mjs
+          node --check DeepAI-iOS-Port/Compatibility/node-pty/index.js
           test -s DeepAI-iOS-Port/OriginalServer/apps/server/dist/bin.mjs
           test -s DeepAI-iOS-Port/OriginalWebClient/index.html
       - name: Generate Xcode project
@@ -62,6 +64,9 @@ jobs:
           mkdir -p DeepAI-iOS-Port/build/diagnostics
           xcrun simctl get_app_container "$SIM" org.deepai.code.ios.embedded data > DeepAI-iOS-Port/build/diagnostics/container.txt
           DATA=$(cat DeepAI-iOS-Port/build/diagnostics/container.txt)
+          xcrun simctl spawn "$SIM" log show --last 90s --style compact --predicate 'process == "DeepAICodeIOS" OR process == "runningboardd" OR process == "SpringBoard"' > DeepAI-iOS-Port/build/diagnostics/simulator-system.log 2>&1 || true
+          find "$HOME/Library/Logs/DiagnosticReports" -name '*DeepAICodeIOS*' -type f -mmin -12 -exec cp {} DeepAI-iOS-Port/build/diagnostics/ \; 2>/dev/null || true
+          find "$DATA/Library/Logs/CrashReporter" -name '*DeepAICodeIOS*' -type f -exec cp {} DeepAI-iOS-Port/build/diagnostics/ \; 2>/dev/null || true
           test -f "$DATA/Library/Application Support/DeepAI/embedded-node.log" && cp "$DATA/Library/Application Support/DeepAI/embedded-node.log" DeepAI-iOS-Port/build/diagnostics/embedded-node.log || true
       - name: Upload simulator diagnostics
         if: always()
@@ -82,3 +87,17 @@ jobs:
           path: DeepAI-iOS-Port/build/DeepAI-Code-iOS-0.3.40-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
+
+      - name: Validate original Node server startup (not just IPA compilation)
+        shell: bash
+        run: |
+          if [ ! -s DeepAI-iOS-Port/build/diagnostics/embedded-node.log ]; then
+            echo "::error::The original DeepAI backend did not produce an iOS startup log"
+            exit 1
+          fi
+          if ! grep -q 'DeepAI Code server is ready' DeepAI-iOS-Port/build/diagnostics/embedded-node.log; then
+            tail -50 DeepAI-iOS-Port/build/diagnostics/embedded-node.log
+            echo "::error::The original DeepAI backend has not reached ready on iOS"
+            exit 1
+          fi
+          echo "Original DeepAI server started successfully inside iOS Simulator"
