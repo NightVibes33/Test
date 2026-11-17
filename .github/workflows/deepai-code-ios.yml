@@ -43,7 +43,7 @@ jobs:
           cd DeepAI-iOS-Port
           xcodebuild -project DeepAICodeIOS.xcodeproj -scheme DeepAICodeIOS -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/Simulator CODE_SIGNING_ALLOWED=NO build
+            -derivedDataPath build/Simulator ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
       - name: Simulator launch and backend diagnostics
         id: launch
         continue-on-error: true
