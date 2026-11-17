@@ -1,0 +1,59 @@
+name: DeepAI Code 0.3.40 iOS unsigned IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [deepai-ios, deepai-ios-port]
+    paths:
+      - 'DeepAI-iOS-Port/Sources/**'
+      - 'DeepAI-iOS-Port/Scripts/**'
+      - 'DeepAI-iOS-Port/project.yml'
+      - '.github/workflows/deepai-code-ios.yml'
+  pull_request:
+    paths:
+      - 'DeepAI-iOS-Port/Sources/**'
+      - 'DeepAI-iOS-Port/Scripts/**'
+      - 'DeepAI-iOS-Port/project.yml'
+      - '.github/workflows/deepai-code-ios.yml'
+jobs:
+  iphoneos:
+    name: Original UI + iOS ARM64
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Download official macOS DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 30 \
+            'https://deepai.org/download/deepai-code/mac-apple-silicon' -o "$RUNNER_TEMP/deepai-code.dmg"
+          file "$RUNNER_TEMP/deepai-code.dmg"
+      - name: Verify original 0.3.40 DMG
+        shell: bash
+        run: |
+          echo '12fc7d32446abbb4e9571c6da977890b2da12d3bca3780053ef0584963ccb973  '"$RUNNER_TEMP/deepai-code.dmg" | shasum -a 256 -c -
+      - name: Extract original UI (not a recreation)
+        run: python3 DeepAI-iOS-Port/Scripts/extract_deepai_dmg.py "$RUNNER_TEMP/deepai-code.dmg"
+      - name: Parse Swift source
+        run: swiftc -frontend -parse DeepAI-iOS-Port/Sources/*.swift
+      - name: Build iOS simulator target
+        shell: bash
+        run: |
+          cd DeepAI-iOS-Port
+          xcodegen generate --spec project.yml
+          xcodebuild -project DeepAICodeIOS.xcodeproj -scheme DeepAICodeIOS \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath build/Simulator build
+      - name: Build unsigned device IPA
+        run: DeepAI-iOS-Port/Scripts/build-ipa.sh
+      - name: Upload device IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepAI-Code-iOS-0.3.40-unsigned
+          path: DeepAI-iOS-Port/build/DeepAI-Code-iOS-0.3.40-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14

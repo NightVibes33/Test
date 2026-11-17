@@ -1,0 +1,8 @@
+{
+  "source": "DeepAI Code 0.3.40 user-supplied DMG",
+  "original_sha256": "12fc7d32446abbb4e9571c6da977890b2da12d3bca3780053ef0584963ccb973",
+  "total_original_frontend_files": 2436,
+  "source_file_count": 12,
+  "status": "iOS client port source. Not Xcode-built or functionally verified.",
+  "artifacts": []
+}

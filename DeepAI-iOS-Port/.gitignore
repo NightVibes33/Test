@@ -1,0 +1,8 @@
+# This folder is reconstructed from the user's own DeepAI Code DMG by CI.
+OriginalWebClient/
+*.dmg
+build/
+DerivedData/
+*.xcodeproj/
+.DS_Store
+*.ipa
