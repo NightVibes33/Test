@@ -93,3 +93,58 @@ jobs:
         with:
           name: windows-relay-development
           path: ps4-tailscale/ps4-relay-windows.exe
+
+  homebrew:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OpenOrbis prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 python3-pil python3-qrcode
+          curl -fL --retry 3 https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz -o /tmp/oo.tar.gz
+          mkdir -p "$RUNNER_TEMP/oo"
+          tar -xzf /tmp/oo.tar.gz -C "$RUNNER_TEMP/oo"
+          sdk=$(find "$RUNNER_TEMP/oo" -name link.x -print -quit)
+          test -n "$sdk"
+          echo "OO_PS4_TOOLCHAIN=$(dirname "$sdk")" >> "$GITHUB_ENV"
+      - name: Validate console status parser
+        run: |
+          cc -Wall -Wextra -Werror ps4-tailscale/homebrew/screen.c ps4-tailscale/homebrew/screen_test.c -o /tmp/screen-test
+          /tmp/screen-test
+      - name: Build normal PS4 homebrew and emulator fixture
+        run: make -C ps4-tailscale/homebrew
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps4-homebrew-frontend-UNVALIDATED
+          path: ps4-tailscale/homebrew/out/
+  emulator-smoke:
+    needs: homebrew
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ps4-homebrew-frontend-UNVALIDATED
+          path: homebrew-build
+      - name: Install emulator runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11-utils xdotool imagemagick mesa-vulkan-drivers libvulkan1 libfuse2t64 unzip libxkbcommon0 libwayland-client0 libpulse0
+          curl -fL --retry 3 https://github.com/shadps4-emu/shadPS4/releases/download/v.0.21.0/shadps4-linux-sdl-0.21.0.zip -o /tmp/shad.zip
+          unzip -q /tmp/shad.zip -d "$RUNNER_TEMP/shad"
+          exe=$(find "$RUNNER_TEMP/shad" -type f \( -iname shadps4 -o -iname '*.AppImage' \) -print -quit)
+          test -n "$exe"
+          chmod +x "$exe"
+          echo "SHAD_EXE=$exe" >> "$GITHUB_ENV"
+      - name: Launch shadPS4 and capture verified fixture frame
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          mkdir -p emulator-evidence
+          bash ps4-tailscale/homebrew/emulator-smoke.sh "$SHAD_EXE" homebrew-build/fixture/eboot.bin emulator-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shadps4-emulator-evidence
+          path: emulator-evidence/

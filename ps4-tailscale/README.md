@@ -44,3 +44,20 @@ a firmware research lead, not proof of compatible elfldr startup or Go.
 The relay now displays the actual Tailscale authorization URL as a terminal QR and at the local browser page http://127.0.0.1:8090. Scan from another device using its camera, or click the link. Once authorized, the page hides the QR and shows the tailnet address and relay readiness. The local-only listener rejects foreign Host headers and does not expose a control API. No account password is collected. If a local listener is unavailable, use -status "" to disable it; terminal QR still works. On a future native console build, the same page can be opened using the console's local browser; this is not yet a PS4 UI integration.
 
 Windows and Linux CI exercise relay and login UI logic. [shadPS4](https://github.com/shadps4-emu/shadPS4) is suitable for a future normal OpenOrbis homebrew UI/SDK test, but its high-level emulated OS cannot establish that a raw jailbreak payload loader, PS4 14.02 kernel ABI or Sony's Remote Play service works. Do not feed SDK diagnostic payloads into a game emulator and treat a crash as a real-console result. Native desktop testing is not emulation. A stock FreeBSD VM can test generic FreeBSD binaries, not Sony's kernel-specific compatibility.
+
+## OpenOrbis frontend and emulator evidence (major milestone)
+The separate normal PS4 homebrew frontend reads a bounded read-only status
+protocol at 127.0.0.1:8090/screen.txt, renders real login QR modules, connection
+status, IP and relay readiness. It is a frontend, not a native daemon or
+installable standalone VPN. If the daemon is absent it reports unavailable.
+The fixture executable renders the same UI from a synthetic QR linking to
+example.com, labeled as not authenticated. No credentials are included.
+CI builds both eboot.bin files with OpenOrbis v0.5.4, tests the protocol
+parser and attempts to launch the fixture in pinned shadPS4 v0.21.0 on Linux.
+The emulator job publishes logs and a screenshot only after observing the
+app's actual flip-presented marker and a visible emulator-owned window.
+A fixture screenshot does not demonstrate live Tailscale, Remote Play or
+14.02 compatibility. CI may fail because hosted runners lack Vulkan
+features or shadPS4 lacks a needed library implementation. The native
+daemon still needs a validated console-compatible runtime entry path and
+a real PS4 test. No firmware-specific patches or network changes are added.

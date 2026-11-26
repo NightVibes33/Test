@@ -3,6 +3,7 @@ package main
 
 import (
  "context"
+ "fmt"
  "html/template"
  "log"
  "net"
@@ -67,6 +68,9 @@ func(s *loginStatus)handler()http.Handler{
   case "/":
    w.Header().Set("Content-Type","text/html; charset=utf-8")
    if err:=statusHTML.Execute(w,v);err!=nil{log.Printf("status rendering: %v",err)}
+  case "/screen.txt":
+   w.Header().Set("Content-Type","text/plain; charset=us-ascii")
+   w.Write([]byte(screenText(v)))
   case "/qr.png":
    if v.Auth==""{http.NotFound(w,r);return}
    png,err:=qrcode.Encode(v.Auth,qrcode.Medium,320);if err!=nil{http.Error(w,"QR unavailable",500);return}
@@ -85,3 +89,22 @@ func startStatusPage(addr string,s *loginStatus)(func(),error){
  go func(){if err:=server.Serve(ln);err!=nil&&err!=http.ErrServerClosed{log.Printf("status page: %v",err)}}()
  return func(){server.Close()},nil
 }
+
+ // screenText is a bounded read-only protocol for the PS4 frontend.
+ // The matrix includes the QR quiet zone from the encoder.
+ func screenText(v statusView) string {
+  state:=v.State
+  switch state {case "Running","NeedsLogin","NeedsMachineAuth","Starting","Connecting","Stopped","NoState":default:state="Connecting"}
+  ip:="-";if v.IP!=""{ip=v.IP}
+  ready:=0;if v.Ready&&state=="Running"{ready=1}
+  var b strings.Builder
+  fmt.Fprintf(&b,"PS4TS1\n%s\n%s\n%d\n",state,ip,ready)
+  if !validLoginURL(v.Auth)||state=="Running"{b.WriteString("0\n");return b.String()}
+  q,err:=qrcode.New(v.Auth,qrcode.Medium)
+  if err!=nil{b.WriteString("0\n");return b.String()}
+  m:=q.Bitmap()
+  if len(m)>121{b.WriteString("0\n");return b.String()}
+  fmt.Fprintf(&b,"%d\n",len(m))
+  for _,row:=range m{for _,cell:=range row{if cell{b.WriteByte('1')}else{b.WriteByte('0')}};b.WriteByte('\n')}
+  return b.String()
+ }
