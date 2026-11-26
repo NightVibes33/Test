@@ -14,6 +14,7 @@ import (
  "os/signal"
  "path/filepath"
  "syscall"
+ _ "golang.org/x/crypto/x509roots/fallback"
  "tailscale.com/tsnet"
 )
 
@@ -36,7 +37,9 @@ func main() {
 }
 
 func run(ctx context.Context, target, dir, name string) error {
- node := &tsnet.Server{Dir:dir, Hostname:name, UserLogf:log.Printf}
+ ctx, cancel := context.WithCancel(ctx)
+ defer cancel()
+ node := &tsnet.Server{Dir:dir, Hostname:name, UserLogf:log.Printf, AuthKey:os.Getenv("TS_AUTHKEY")}
  defer node.Close()
  // Interactive login URL is written to the local console by tsnet.
  // Auth keys may be supplied through TS_AUTHKEY, never committed.

@@ -19,6 +19,7 @@ jobs:
           go-version-file: ps4-tailscale/go.mod
           cache-dependency-path: ps4-tailscale/go.sum
       - run: go test -race ./...
+      - run: go run ./runtime-probe
       - run: go build -trimpath -o ps4-relay-linux .
       - name: Build stock FreeBSD intermediate (NOT PS4-loadable)
         run: GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o ps4-relay-freebsd-NOT-A-PAYLOAD .
@@ -36,6 +37,8 @@ jobs:
         run: |
           cc -Wall -Wextra -Werror ps4-tailscale/probe/main.c -o /tmp/ps4-probe
           /tmp/ps4-probe
+          cc -Wall -Wextra -Werror -pthread ps4-tailscale/probe/abi.c -o /tmp/ps4-abi
+          /tmp/ps4-abi
       - name: Install pinned PS4 SDK
         run: |
           sudo apt-get update
@@ -46,4 +49,28 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ps4-network-probe-UNVALIDATED-14.02
-          path: ps4-tailscale/probe/ps4-network-probe.elf
+          path: |
+            ps4-tailscale/probe/ps4-network-probe.elf
+            ps4-tailscale/probe/ps4-abi-probe.elf
+
+  runtime-research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ps4-tailscale/go.mod
+          cache-dependency-path: ps4-tailscale/go.sum
+      - uses: actions/checkout@v4
+        with:
+          repository: holdmysocks/ps5-tailscale
+          ref: be639c6ccde8f456d76dd7eb9978f48837b0a1b8
+          path: upstream-ps5
+          persist-credentials: false
+      - name: Compile patched FreeBSD runtime research candidate
+        working-directory: ps4-tailscale
+        run: bash tools/build-runtime-candidate.sh "$GITHUB_WORKSPACE/upstream-ps5" "$RUNNER_TEMP/runtime-candidate"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: patched-runtime-research-NOT-PS4-LOADABLE
+          path: ${{ runner.temp }}/runtime-candidate/

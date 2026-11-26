@@ -77,6 +77,7 @@ func serveUDP(ctx context.Context, pc net.PacketConn, target string) error {
    if e==nil {
     s=&udpSession{conn:conn,peer:peer}
     sessions[key]=s
+    conn.SetReadDeadline(time.Now().Add(idle))
     wg.Add(1)
     go func(key string,s *udpSession){
      defer wg.Done()
@@ -96,11 +97,11 @@ func serveUDP(ctx context.Context, pc net.PacketConn, target string) error {
     }(key,s)
    }
   }
+  mu.Unlock()
   if s!=nil {
    s.conn.SetReadDeadline(time.Now().Add(idle))
    s.conn.SetWriteDeadline(time.Now().Add(2*time.Second))
    if _,e:=s.conn.Write(buf[:n]);e!=nil {s.conn.Close()}
   }
-  mu.Unlock()
  }
-}
+

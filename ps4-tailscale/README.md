@@ -20,3 +20,22 @@ Go 1.27.1 required. From this folder: `go test -race ./...`, then `go run . -tar
 5. Only then publish a native payload. CI green does not establish console compatibility.
 
 This branch does not change Wi-Fi, DNS, routes, jailbreak, or PSN settings. Native runtime is currently the blocker. No installable Tailscale ELF or PKG is claimed.
+
+## Runtime research (second milestone)
+
+The PS4 SDK v0.9 includes FreeBSD 9.3 headers. Its ucontext header does not
+declare the additional 48-byte field in the upstream PS5 Go patch, and its
+kevent has the old six-field shape. Header declarations alone do not establish
+the 14.02 retail kernel ABI. The CI runtime-research job uses the exact upstream
+Go patch at `be639c6`, removes the PS5-only ucontext padding assumption, and
+attempts to compile both a standalone runtime smoke program and the relay as
+FreeBSD PIE intermediates. These are **not** loadable PS4 payloads. The other
+PS5 assumptions in that patch still need hardware validation. No PS5 launcher,
+firmware offsets, or kernel patching logic is included.
+
+The ABI probe adds ordinary pthread/TLS, monotonic timer, kqueue, anonymous
+read/write memory and entropy checks without changing configuration. It
+prints SDK header sizes separately from measured behavior. A successful host
+run or SDK build is not a console test. The native probe remains unvalidated
+for 14.02. The SDK fork at https://github.com/iHaiDeeZ/ps4-payload-sdk is
+a firmware research lead, not proof of compatible elfldr startup or Go.
