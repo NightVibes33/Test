@@ -74,3 +74,22 @@ jobs:
         with:
           name: patched-runtime-research-NOT-PS4-LOADABLE
           path: ${{ runner.temp }}/runtime-candidate/
+
+  windows-host:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ps4-tailscale
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ps4-tailscale/go.mod
+          cache-dependency-path: ps4-tailscale/go.sum
+      - run: go test ./...
+      - run: go run ./runtime-probe
+      - run: go build -trimpath -o ps4-relay-windows.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-relay-development
+          path: ps4-tailscale/ps4-relay-windows.exe

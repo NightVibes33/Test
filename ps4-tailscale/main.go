@@ -21,6 +21,7 @@ import (
 func main() {
  target := flag.String("target", "127.0.0.1", "PS4 IPv4 address (loopback or private)")
  state := flag.String("state", "./ps4-tailnet-state", "private persistent identity directory")
+ statusAddr := flag.String("status", "127.0.0.1:8090", "local login/status listener; empty disables")
  name := flag.String("hostname", "ps4-remoteplay", "tailnet device name")
  flag.Parse()
  addr, err := netip.ParseAddr(*target)
@@ -33,15 +34,19 @@ func main() {
  if err = os.Chmod(dir, 0700); err != nil { log.Fatal(err) }
  ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
  defer cancel()
- if err := run(ctx, addr.String(), dir, *name); err != nil { log.Fatal(err) }
+ if err := run(ctx, addr.String(), dir, *name, *statusAddr); err != nil { log.Fatal(err) }
 }
 
-func run(ctx context.Context, target, dir, name string) error {
+func run(ctx context.Context, target, dir, name, statusAddr string) error {
  ctx, cancel := context.WithCancel(ctx)
  defer cancel()
  node := &tsnet.Server{Dir:dir, Hostname:name, UserLogf:log.Printf, AuthKey:os.Getenv("TS_AUTHKEY")}
+ if err := node.Start(); err != nil { return fmt.Errorf("start tailnet: %w",err) }
  defer node.Close()
- // Interactive login URL is written to the local console by tsnet.
+ lc, err := node.LocalClient(); if err != nil { return err }
+ status := &loginStatus{state:"Starting"}
+ stopStatus,err:=startStatusPage(statusAddr,status);if err!=nil{return err};defer stopStatus()
+ go monitorLogin(ctx,lc,status)
  // Auth keys may be supplied through TS_AUTHKEY, never committed.
  if _, err := node.Up(ctx); err != nil { return fmt.Errorf("tailnet login: %w",err) }
  ip4, _ := node.TailscaleIPs()
@@ -59,6 +64,8 @@ func run(ctx context.Context, target, dir, name string) error {
   defer pc.Close()
   go func(p net.PacketConn, destination string){ errs <- serveUDP(ctx,p,destination) }(pc,net.JoinHostPort(target,port))
  }
+ status.setReady(true)
+ defer status.setReady(false)
  log.Print("Remote Play relay ready; use the tailnet IP in your client")
  select {
  case <-ctx.Done(): return nil
