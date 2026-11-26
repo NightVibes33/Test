@@ -1,0 +1,49 @@
+name: PS4 Tailscale experimental port
+on:
+  push:
+    branches: ['temp/ps4-tailscale']
+    paths: ['ps4-tailscale/**', '.github/workflows/ps4-tailscale.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ps4-tailscale
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ps4-tailscale/go.mod
+          cache-dependency-path: ps4-tailscale/go.sum
+      - run: go test -race ./...
+      - run: go build -trimpath -o ps4-relay-linux .
+      - name: Build stock FreeBSD intermediate (NOT PS4-loadable)
+        run: GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o ps4-relay-freebsd-NOT-A-PAYLOAD .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-development-binaries
+          path: |
+            ps4-tailscale/ps4-relay-linux
+            ps4-tailscale/ps4-relay-freebsd-NOT-A-PAYLOAD
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host socket smoke test
+        run: |
+          cc -Wall -Wextra -Werror ps4-tailscale/probe/main.c -o /tmp/ps4-probe
+          /tmp/ps4-probe
+      - name: Install pinned PS4 SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 unzip
+          curl -fL --retry 3 https://github.com/ps4-payload-dev/sdk/releases/download/v0.9/ps4-payload-sdk.zip -o /tmp/sdk.zip
+          sudo unzip -q /tmp/sdk.zip -d /opt
+      - run: make -C ps4-tailscale/probe PS4_PAYLOAD_SDK=/opt/ps4-payload-sdk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps4-network-probe-UNVALIDATED-14.02
+          path: ps4-tailscale/probe/ps4-network-probe.elf

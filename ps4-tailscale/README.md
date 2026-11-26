@@ -1,0 +1,22 @@
+# PS4 Tailscale: experimental Remote Play port
+Target: already-jailbroken PS4 14.02, iOS Remote Play via a private tailnet, no PC required **after** the native runtime is proven. This is an initial implementation, not a working console release.
+
+## What is implemented
+* Real Tailscale tsnet node, persistent authentication and IPv4 tailnet address.
+* Remote Play only: TCP 9295, UDP 9295/9296/9297/987, independent UDP sessions, bounded session count and idle cleanup. No generic forwarding or public port forwarding.
+* Local TCP and UDP integration tests; separate read-only PS4 SDK network probe.
+* CI builds a Linux development binary, a stock FreeBSD amd64 intermediate (NOT a console payload), and an experimental PS4 SDK probe (not validated for 14.02).
+
+Architecture/reference: [holdmysocks/ps5-tailscale](https://github.com/holdmysocks/ps5-tailscale/tree/be639c6ccde8f456d76dd7eb9978f48837b0a1b8) (GPL-3.0). Uses the same tsnet approach and dependency versions, but not the PS5-specific loader, updater or process changes. [Remote Play port reference](https://chiaki-ng.github.io/chiaki-ng/setup/remoteconnection/). SDK: [ps4-payload-dev/sdk](https://github.com/ps4-payload-dev/sdk/tree/v0.9).
+
+## Development test (not a PS4 install)
+Go 1.27.1 required. From this folder: `go test -race ./...`, then `go run . -target 192.168.4.22` on a machine already on the console LAN (replace IP if changed). Authenticate using the URL in the terminal. Configure tailnet policy to allow only your iPhone access to these ports; never publish the auth URL or state directory. In PXPlay, pair locally first and use the printed tailnet IPv4 for manual connection. Verify video and controller traffic. On-console target would be 127.0.0.1 **if** the PS4 Remote Play service accepts loopback.
+
+## Native milestones / safety gates
+1. Confirm a PS4 SDK/loader explicitly compatible with 14.02; upstream SDK documentation does not list it. Do not load the experimental probe on 14.02 without confirming compatibility. The probe does not intentionally alter console networking.
+2. Capture console socket and runtime ABI behavior and verify Remote Play responds to loopback; if not, assess a console-local address without altering the network.
+3. Implement a PS4-compatible Go runtime and launch mechanism, validate threads, TLS, timers, kqueue, sockets, entropy and signals. The PS5 loader and runtime patch are not interchangeable with PS4. No guessed offsets or privilege changes in this branch.
+4. Test a native Tailscale login, encrypted peer connectivity, real Remote Play video/audio/controller session, direct versus relayed throughput, game coexistence and clean shutdown.
+5. Only then publish a native payload. CI green does not establish console compatibility.
+
+This branch does not change Wi-Fi, DNS, routes, jailbreak, or PSN settings. Native runtime is currently the blocker. No installable Tailscale ELF or PKG is claimed.
