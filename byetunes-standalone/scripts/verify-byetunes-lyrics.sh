@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="${BYETUNES_ROOT:-ByeTunes/MusicManager}"
+SONG="$ROOT/SongMetadata.swift"
+BUILDER="$ROOT/MediaLibraryBuilder.swift"
+SETTINGS="$ROOT/SettingsView.swift"
+ONBOARDING="$ROOT/OnboardingView.swift"
+CONTENT="$ROOT/ContentView.swift"
+
+grep -Fq 'case lrclib' "$SONG"
+grep -Fq 'case musixmatch' "$SONG"
+grep -Fq 'case netease' "$SONG"
+grep -Fq 'return "LRCLIB"' "$SONG"
+grep -Fq 'return "Musixmatch"' "$SONG"
+grep -Fq 'return "NetEase"' "$SONG"
+grep -Fq 'fetchLyricsFromLRCLIB' "$SONG"
+grep -Fq 'fetchLyricsFromMusixMatch' "$SONG"
+grep -Fq 'fetchLyricsFromNetEase' "$SONG"
+
+grep -Fq 'store_lyrics_available, time_synced_lyrics_available' "$BUILDER"
+grep -Fq 'let hasAppleCatalogMatch = shouldWriteAppleCatalogStoreFields(for: song)' "$BUILDER"
+grep -Fq 'store_saga_id, match_redownload_params, cloud_status' "$BUILDER"
+grep -Fq 'cloud_asset_available, cloud_in_my_library' "$BUILDER"
+grep -Fq 'cloud_playback_endpoint_type' "$BUILDER"
+
+! grep -Fq 'AMLL' "$SONG"
+! grep -Fq 'LyricsPlus' "$SONG"
+! grep -Fq 'lrc.red' "$SONG"
+! grep -Fq 'syncedLyricsTTML' "$SONG"
+
+grep -Fq 'Text("Fetch Lyrics")' "$SETTINGS"
+grep -Fq 'Text("Apple Synced Lyrics")' "$SETTINGS"
+grep -Fq 'Pair with ByeTunes' "$ONBOARDING"
+grep -Fq 'Replay Onboarding' "$SETTINGS"
+! grep -Fq 'showingPairingPicker' "$SETTINGS"
+! grep -Fq 'showingPairingPicker' "$ONBOARDING"
+! grep -Fq 'Import RP Pairing File' "$CONTENT"
+echo "PASS: upstream v2.5 lyrics + native catalog lyrics + on-device-only pairing"

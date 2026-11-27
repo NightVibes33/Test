@@ -1,0 +1,52 @@
+name: Build standalone ByeTunes IPA
+on:
+  push:
+    branches: ['temp/byetunes-standalone']
+    paths:
+      - 'byetunes-standalone/**'
+      - '.github/workflows/byetunes-standalone.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.2'
+      - name: Stage exact custom ByeTunes sources and compile pairing runtime
+        run: bash byetunes-standalone/prepare.sh
+      - name: Build native iOS app
+        working-directory: byetunes-standalone
+        run: |
+          set -eo pipefail
+          xcodebuild -project ByeTunes/MusicManager.xcodeproj -scheme MusicManager -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$PWD/build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" ARCHS=arm64 ONLY_ACTIVE_ARCH=NO build 2>&1 | tee build.log
+      - name: Package unsigned IPA
+        working-directory: byetunes-standalone
+        run: |
+          set -euxo pipefail
+          APP="$PWD/build/Build/Products/Release-iphoneos/ByeTunes.app"
+          test -f "$APP/ByeTunes"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")" = "com.nightvibes33.byetunes"
+          xcrun lipo -verify_arch arm64 "$APP/ByeTunes"
+          test -d "$APP/PlugIns/MusicManagerLiveActivity.appex"
+          mkdir -p dist/Payload
+          ditto "$APP" dist/Payload/ByeTunes.app
+          (cd dist && zip -qry ByeTunes-standalone-unsigned.ipa Payload && shasum -a 256 ByeTunes-standalone-unsigned.ipa > SHA256SUMS)
+          unzip -t dist/ByeTunes-standalone-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ByeTunes-standalone-unsigned
+          path: |
+            byetunes-standalone/dist/ByeTunes-standalone-unsigned.ipa
+            byetunes-standalone/dist/SHA256SUMS
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ByeTunes-build-log
+          path: byetunes-standalone/build.log
+          if-no-files-found: ignore
