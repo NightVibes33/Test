@@ -26,7 +26,7 @@ func nativeRows(w http.ResponseWriter,rows []nativeRow){
 }
 func nativeJSON(v any)string{b,_:=json.Marshal(v);return string(b)}
 func(d *daemon)nativePage(w http.ResponseWriter,r *http.Request){
- if !fromConsole(r){http.Error(w,"local only",403);return}
+ if !fromConsole(r)||r.Header.Get("X-PS4-Native")!="1"{http.Error(w,"local native client only",403);return}
  d.mu.Lock();cfg,state,lc:=d.cfg,d.state,d.lc;d.mu.Unlock()
  rows:=[]nativeRow{}
  add:=func(k,id,l,v string){rows=append(rows,nativeRow{k,id,l,v})}
@@ -47,7 +47,7 @@ func(d *daemon)nativePage(w http.ResponseWriter,r *http.Request){
   add("e","proxy","Local HTTP proxy address",cfg.HTTPProxyAddr)
   add("e","receive","Taildrop directory",cfg.ReceiveDir)
   add("e","verbose","Verbose log: true or false",strconv.FormatBool(cfg.Verbose))
-  add("e","password","Set password (blank removes)","")
+  add("r","","Browser password","Not applicable: local-only native control")
   add("r","","Status transport","Native loopback only")
   add("r","","Priority / auto update","PS4 implementation pending")
  case "3":
@@ -131,7 +131,7 @@ func(d *daemon)nativeAction(w http.ResponseWriter,r *http.Request){
  case "proxy":s.HTTPProxyAddr=val
  case "receive":s.ReceiveDir=val
  case "verbose":s.Verbose,e=strconv.ParseBool(val)
- case "password":s.Password=&val
+ case "password":fail("browser password is not a native security boundary");return
  default:fail("unknown command");return
  }
  if e!=nil{fail(e.Error());return};invoke(d.handleSetConfig,"",s)

@@ -3,12 +3,16 @@
  * overrides, or jailbreak APIs. Refuse anything except bounded RELATIVE relocs.
  */
 #include "runtime_loader.h"
+#ifdef PS4_FREESTANDING
+#include "../background/freestanding.h"
+#else
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#endif
 #if defined(__FreeBSD__) && !defined(PS4_PAYLOAD_BUILD)
 #include <orbis/libkernel.h>
 #endif
@@ -22,7 +26,7 @@ enum { DT_NULL=0,DT_NEEDED=1,DT_RELA=7,DT_RELASZ=8,DT_RELAENT=9,DT_REL=17,DT_REL
 #define IMAGE_LIMIT (128UL*1024*1024)
 static int bounded(uint64_t off,uint64_t n,uint64_t total){return off<=total&&n<=total-off;}
 static size_t page_size(void){
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(PS4_PAYLOAD_BUILD)
  return 0x4000;
 #else
  return (size_t)sysconf(_SC_PAGESIZE);

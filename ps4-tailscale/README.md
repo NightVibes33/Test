@@ -155,3 +155,15 @@ loader format, background survival and actual Remote Play require a physical
 console test before enabling AutoRun. No installation recommendation yet.
 References: ChiricoG/OneFamily app/src/installer.cpp and SirHumza/orbisRPC
 installer/goldhen.c, installer/paths.h and docs/research/loader.md.
+
+## Audit remediation
+The daemon launcher is freestanding, uses normal userspace memory syscalls,
+and does not link the SDK CRT or its firmware-specific kernel initialization.
+This is not evidence of GoldHEN loader compatibility or Go startup.
+Map-only probe is a separate CI artifact. Network requests no longer block
+the native UI; workers handle polling and actions. AutoRun enable is locked
+until hardware validation, with removal of owned entries only, original
+backup, and preservation of unrelated settings. Native-only loopback routes
+reject ordinary browser requests; the native header is NOT authentication
+against local applications. Browser password is explicitly not applicable.
+System priority and signed automatic updates remain unsupported.

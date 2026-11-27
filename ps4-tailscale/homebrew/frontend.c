@@ -20,6 +20,7 @@
 #include "screen.h"
 #include "generated.h"
 #include "native_menu.h"
+#include <pthread.h>
 
 #define W 1280
 #define H 720
@@ -46,7 +47,7 @@ static int read_live(Screen *s){
  if(rc<0&&errno!=EINPROGRESS){close(fd);return 0;}
  struct pollfd p={fd,POLLOUT,0};
  if(rc<0){int err=0;socklen_t len=sizeof(err);if(poll(&p,1,600)<=0||getsockopt(fd,SOL_SOCKET,SO_ERROR,&err,&len)<0||err){close(fd);return 0;}}
- const char req[]="GET /screen.txt HTTP/1.0\r\nHost: 127.0.0.1:8090\r\nConnection: close\r\n\r\n";
+ const char req[]="GET /screen.txt HTTP/1.0\r\nHost: 127.0.0.1:8090\r\nX-PS4-Native: 1\r\nConnection: close\r\n\r\n";
  size_t sent=0;
  while(sent<sizeof(req)-1){
   p.events=POLLOUT;if(poll(&p,1,600)<=0){close(fd);return 0;}
@@ -62,6 +63,17 @@ static int read_live(Screen *s){
  if(!complete||strncmp(buf,"HTTP/1.",7)||strncmp(buf+9,"200 ",4))return 0;
  const char *body=strstr(buf,"\r\n\r\n");return body&&screen_parse(s,body+4);
 }
+#ifndef UI_FIXTURE
+static pthread_mutex_t screen_lock=PTHREAD_MUTEX_INITIALIZER;
+static Screen latest_screen;
+static int latest_available;
+static void *screen_worker(void *unused){
+ (void)unused;
+ for(;;){Screen next;memset(&next,0,sizeof(next));strcpy(next.ip,"-");int ok=read_live(&next);
+ pthread_mutex_lock(&screen_lock);latest_screen=next;latest_available=ok;pthread_mutex_unlock(&screen_lock);sceKernelUsleep(500000);}
+ return NULL;
+}
+#endif
 /* Native adaptation of the original PS5 web dashboard's dark theme.
  * Same panel hierarchy, state dot, facts and centered QR. */
 static void panel(int x,int y,int w,int h){rect(x,y,w,h,0xff30353c);rect(x+1,y+1,w-2,h-2,0xff1e2126);}
@@ -99,7 +111,7 @@ static void draw(const Screen *s,int available){
 #ifdef UI_FIXTURE
   text(451,626,2,0xffe0a84a,"DEMO QR - DO NOT SCAN");
 #else
-  text(433,626,2,accent,"Open Tailscale on iPhone");
+  text(433,626,2,accent,"Scan with iPhone Camera");
 #endif
  }else{
   text(280,304,2,muted,"REMOTE PLAY");
@@ -107,7 +119,7 @@ static void draw(const Screen *s,int available){
   text(280,396,2,muted,"What this does, and what it does not");
   text(280,435,2,fg,"Private Remote Play, not a full VPN.");
   text(280,475,2,fg,"Normal internet settings are unchanged.");
-  text(280,560,2,muted,"Dashboard: http://127.0.0.1:8090");
+  text(280,560,2,muted,"Native management only");
  }
 }
 #ifdef EMBED_RUNTIME
@@ -130,13 +142,14 @@ int main(void){
  Screen s;int frameid=1,idx=0,available;
 #ifndef UI_FIXTURE
  native_init();
+ pthread_t worker;if(pthread_create(&worker,NULL,screen_worker,NULL)==0)pthread_detach(worker);
 #endif
  for(;;){
   memset(&s,0,sizeof(s));strcpy(s.ip,"-");
 #ifdef UI_FIXTURE
   available=screen_parse(&s,fixture);
 #else
-  available=read_live(&s);
+  pthread_mutex_lock(&screen_lock);s=latest_screen;available=latest_available;pthread_mutex_unlock(&screen_lock);
 #endif
   pixels=(uint32_t*)buffers[idx];
 #ifdef UI_FIXTURE
@@ -155,6 +168,6 @@ int main(void){
   }
   if(!shown){puts("PS4TS_FLIP_TIMEOUT");return 5;}
   if(frameid==1)puts("PS4TS_UI_FRAME_PRESENTED");
-  idx^=1;frameid++;sceKernelUsleep(100000);
+  idx^=1;frameid++;sceKernelUsleep(16000);
  }
 }

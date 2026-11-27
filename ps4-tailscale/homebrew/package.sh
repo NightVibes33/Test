@@ -71,7 +71,7 @@ if [[ "$mode" == native ]]; then
   test -n "$extracted_payload"
   cmp "$payload" "$extracted_payload"
   /usr/bin/python3 "$here/verify-embedded-runtime.py" "$extracted_payload" "$relay" | tee "$out/embedded-runtime.txt"
-  printf "%s\n" "Native UI and independent payload verified in PKG." "Firmware 14.02 execution and background persistence unverified. Do not enable AutoRun until manual testing succeeds." >"$out/BUILD-STATUS.txt"
+  printf "%s\n" "Native UI and independent payload verified in PKG." "Firmware 14.02 execution and background persistence unverified. AutoRun enable is locked pending hardware validation." >"$out/BUILD-STATUS.txt"
 elif [[ "$mode" == runtime ]]; then
   /usr/bin/python3 "$here/verify-embedded-runtime.py" "$found" "$relay" | tee "$out/embedded-runtime.txt"
   printf '%s\n' 'PKG contains the real Go Tailscale daemon and native launcher.' 'Runtime startup, authentication, background operation and hardware 14.02 compatibility remain unverified. Experimental only; do not install on production console.' >"$out/BUILD-STATUS.txt"

@@ -1,10 +1,16 @@
 package main
-import("net/http/httptest";"strings";"testing")
+import("net/http";"net/http/httptest";"strings";"testing")
 func TestPS4NativePages(t *testing.T){
  d:=&daemon{cfg:defaultConfig(),state:"NeedsLogin"}
  for _,p:=range []string{"0","1","2","3","4","5","6","7"}{
-  r:=httptest.NewRequest("GET","http://127.0.0.1:8090/native?page="+p,nil);r.RemoteAddr="127.0.0.1:1234";w:=httptest.NewRecorder();d.nativePage(w,r)
+  r:=httptest.NewRequest("GET","http://127.0.0.1:8090/native?page="+p,nil);r.RemoteAddr="127.0.0.1:1234";r.Header.Set("X-PS4-Native","1");w:=httptest.NewRecorder();d.nativePage(w,r)
   if w.Code!=200||!strings.HasPrefix(w.Body.String(),"TSN1\n"){t.Fatal(p,w.Code,w.Body.String())}
  }
  r:=httptest.NewRequest("POST","http://127.0.0.1:8090/native",strings.NewReader("quit\n"));r.RemoteAddr="127.0.0.1:1234";w:=httptest.NewRecorder();d.nativeAction(w,r);if w.Code!=403{t.Fatal("missing mutation guard")}
+}
+
+func TestPS4NativeRouteIsolation(t *testing.T){
+ h:=ps4WebGuard(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.WriteHeader(200)}))
+ for _,p:=range []string{"/","/api/config","/api/quit","/qr.png"}{r:=httptest.NewRequest("GET","http://127.0.0.1:8090"+p,nil);r.RemoteAddr="127.0.0.1:1234";r.Header.Set("X-PS4-Native","1");w:=httptest.NewRecorder();h.ServeHTTP(w,r);if w.Code!=404{t.Fatal(p,w.Code)}}
+ c:=defaultConfig();c.HTTPProxyAddr="127.0.0.1:8090";if validatePS4Config(c)==nil{t.Fatal("management port conflict accepted")}
 }

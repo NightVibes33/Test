@@ -249,7 +249,7 @@ jobs:
           bash ps4-tailscale/homebrew/package.sh "$RUNNER_TEMP/pkgtool/PkgTool.Core.dll" homebrew-build/live/eboot.bin runtime-package native background-build/TailScale.elf runtime-images/relay-NOT-PS4-LOADABLE.elf
       - uses: actions/upload-artifact@v4
         with:
-          name: TailScale-runtime-pkg
+          name: TailScale-EXPERIMENTAL-native-pkg
           path: runtime-package/
           if-no-files-found: error
 
@@ -298,10 +298,18 @@ jobs:
           sudo apt-get install -y clang-18 lld-18 unzip
           curl -fL --retry 3 https://github.com/ps4-payload-dev/sdk/releases/download/v0.9/ps4-payload-sdk.zip -o /tmp/sdk.zip
           sudo unzip -q /tmp/sdk.zip -d /opt
-      - name: Build standalone background ELF
-        run: make -C ps4-tailscale/background PS4_PAYLOAD_SDK=/opt/ps4-payload-sdk RUNTIME_DIR="$GITHUB_WORKSPACE/runtime-images"
+      - name: Build freestanding user-mode ELF and map-only probe
+        run: |
+          make -C ps4-tailscale/background RUNTIME_DIR="$GITHUB_WORKSPACE/runtime-images"
+          python3 ps4-tailscale/background/verify-launcher.py ps4-tailscale/background/TailScale.elf ps4-tailscale/background/TailScale-map-probe.elf
+      - name: Test safe GoldHEN configuration editing on host
+        run: |
+          cc -O2 -DTS_DATA_ROOT='"/tmp/ps4ts-test"' ps4-tailscale/homebrew/goldhen_setup.c ps4-tailscale/homebrew/goldhen_test.c -o /tmp/ps4ts-goldhen-test
+          /tmp/ps4ts-goldhen-test
       - uses: actions/upload-artifact@v4
         with:
           name: tailscale-background-UNVALIDATED-14.02
-          path: ps4-tailscale/background/TailScale.elf
+          path: |
+            ps4-tailscale/background/TailScale.elf
+            ps4-tailscale/background/TailScale-map-probe.elf
           if-no-files-found: error
