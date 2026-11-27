@@ -115,3 +115,22 @@ displays a fixture as a real login. The browser dashboard remains bound to
 127.0.0.1; the console uses its native view. PS5-specific privileged settings,
 self-update, uninstall, proxy, Wake-on-LAN and arbitrary forwarding controls
 are not exposed because their PS4 backends have not been implemented.
+
+## Full upstream dashboard and feature port
+The runtime artifact now builds the entire pinned upstream tsd source, not
+the earlier minimal relay. prepare-full-daemon.py preserves the original
+status.html, JavaScript, CSS, and portable APIs. Peer testing, Taildrop,
+settings, password/session handling, configurable UDP and TCP blocking,
+local forwards, Moonlight/Sunshine forwarding, proxy, Wake-on-LAN, logs and
+diagnostics use upstream implementations. The dashboard is at 127.0.0.1:8090;
+a password is required before exposing it to LAN or tailnet browsers.
+The native QR screen reads the same daemon's bounded status endpoint.
+PS5 system notifications, process termination, self-update, uninstall helper,
+and scheduling changes are not copied as executable console operations;
+the related settings are disabled or explicitly rejected. Debug/loader
+ports remain blocked, outbound listeners stay loopback-only, and Taildrop
+storage stays within the application data directory. The upstream original
+tests and adapted PS4 tests are CI prerequisites for packaging. The browser
+dashboard is a port of the complete upstream layout, not a new custom UI.
+Actual PS4 browser compatibility, Go execution, authentication and game
+coexistence still require physical-console validation.

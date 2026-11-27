@@ -1,0 +1,77 @@
+package main
+
+import (
+ "fmt"
+ "net"
+ "net/http"
+ "net/netip"
+ "net/url"
+ "path/filepath"
+ "strings"
+ qrcode "github.com/skip2/go-qrcode"
+)
+func ps4ReservedPort(p uint16)bool{
+ switch p {case 21,22,23,2121,9020,9021,9090:return true};return false
+}
+func ps4LocalListener(addr string)error{
+ if addr==""{return nil}
+ h,_,err:=net.SplitHostPort(addr);if err!=nil||h!="127.0.0.1"{return fmt.Errorf("listener must use 127.0.0.1")}
+ return nil
+}
+func validatePS4Config(c config)error{
+ h,p,err:=net.SplitHostPort(c.WebAddr)
+ if err!=nil||p!="8090"{return fmt.Errorf("PS4 status page requires port 8090")}
+ if h!="127.0.0.1"{
+  ip,e:=netip.ParseAddr(h)
+  if h!=""&&h!="0.0.0.0"&&(e!=nil||!ip.Is4()||!ip.IsPrivate()){return fmt.Errorf("status address must be loopback or private IPv4")}
+  if c.PasswordHash==""{return fmt.Errorf("set a status page password before enabling LAN access")}
+ }
+ if err:=ps4LocalListener(c.HTTPProxyAddr);err!=nil{return err}
+ for _,f:=range c.Forwards{if err:=ps4LocalListener(f.Listen);err!=nil{return err}}
+ if c.Priority==priorityHigh||c.CheckUpdates||c.PayloadPath!=""{return fmt.Errorf("PS5 priority, self-update and payload settings are not supported on PS4")}
+ root:=filepath.Clean(dataDir)
+ if c.ReceiveDir!=""{
+  rel,e:=filepath.Rel(root,filepath.Clean(c.ReceiveDir));if e!=nil||rel=="."||rel==".."||strings.HasPrefix(rel,"../"){return fmt.Errorf("Taildrop folder must stay inside the application data directory")}
+ }
+ for _,p:=range c.UDPPorts{if ps4ReservedPort(p){return fmt.Errorf("reserved debug port %d",p)}}
+ return nil
+}
+func ps4WebGuard(next http.Handler)http.Handler{
+ return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  // Reject DNS rebinding; the dashboard only accepts literal local/private/tailnet IP hosts.
+  h,_,err:=net.SplitHostPort(r.Host);if err!=nil{h=r.Host}
+  h=strings.Trim(h,"[]");ip,e:=netip.ParseAddr(h)
+  if e!=nil||!(ip.IsLoopback()||ip.IsPrivate()||netip.MustParsePrefix("100.64.0.0/10").Contains(ip)){
+   http.Error(w,"invalid status host",http.StatusForbidden);return
+  }
+  if fromConsole(r)&&!ip.IsLoopback(){http.Error(w,"invalid local host",http.StatusForbidden);return}
+  w.Header().Set("Cache-Control","no-store")
+  w.Header().Set("Referrer-Policy","no-referrer")
+  w.Header().Set("X-Content-Type-Options","nosniff")
+  w.Header().Set("X-Frame-Options","DENY")
+  next.ServeHTTP(w,r)
+ })
+}
+func ps4ManualUninstall(w http.ResponseWriter,r *http.Request){http.Error(w,"Remove the PKG from the PS4 home screen; PS5 icon helper is disabled.",http.StatusNotImplemented)}
+func ps4ManualUpdate(w http.ResponseWriter,r *http.Request){http.Error(w,"PS5 payload updates are not compatible. Install a new PS4 PKG manually.",http.StatusNotImplemented)}
+func ps4LoginURL(raw string)bool{
+ u,e:=url.Parse(raw);return e==nil&&u.Scheme=="https"&&u.User==nil&&u.Port()==""&&strings.EqualFold(u.Hostname(),"login.tailscale.com")&&u.Path!=""
+}
+func(d *daemon)handlePS4Screen(w http.ResponseWriter,r *http.Request){
+ if !fromConsole(r){http.Error(w,"console only",403);return}
+ d.mu.Lock();state,auth,lc:=d.state,d.authURL,d.lc;d.mu.Unlock()
+ ip:="-"
+ if lc!=nil{if st,err:=d.status(r.Context());err==nil{state=st.BackendState;if auth==""{auth=st.AuthURL};if st.Self!=nil{for _,a:=range st.Self.TailscaleIPs{if a.Is4(){ip=a.String();break}}}}}
+ switch state{case "Running","NeedsLogin","NeedsMachineAuth","Starting","Connecting","Stopped","NoState":default:state="Connecting"}
+ ready:=0
+ if state=="Running"&&ip!="-"&&d.udp!=nil{
+  ports:=d.udp.activePorts();for _,p:=range ports{if p==9296{ready=1;break}}
+ }
+ w.Header().Set("Content-Type","text/plain; charset=us-ascii")
+ fmt.Fprintf(w,"PS4TS1\n%s\n%s\n%d\n",state,ip,ready)
+ if state=="Running"||!ps4LoginURL(auth){fmt.Fprintln(w,0);return}
+ q,err:=qrcode.New(auth,qrcode.Medium);if err!=nil{fmt.Fprintln(w,0);return}
+ m:=q.Bitmap();if len(m)>121{fmt.Fprintln(w,0);return}
+ fmt.Fprintln(w,len(m))
+ for _,row:=range m{for _,b:=range row{if b{fmt.Fprint(w,"1")}else{fmt.Fprint(w,"0")}};fmt.Fprintln(w)}
+}

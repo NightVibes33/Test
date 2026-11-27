@@ -25,8 +25,9 @@ GOBIN="$GOROOT/bin" "$GOROOT/bin/go-bootstrap" install cmd/go cmd/link
 # cmd/link is a tool, installed directly into GOTOOLDIR by go install.
 test -x "$("$GOROOT/bin/go" env GOTOOLDIR)/link"
 mkdir -p "$out"
+python3 tools/prepare-full-daemon.py "$upstream" "$work/full-daemon"
 export GOOS=freebsd GOARCH=amd64 GOAMD64=v1 CGO_ENABLED=0
 "$GOROOT/bin/go" build -trimpath -buildmode=pie -ldflags=-linkmode=internal -o "$out/runtime-probe-NOT-PS4-LOADABLE.elf" ./runtime-probe
-"$GOROOT/bin/go" build -trimpath -buildmode=pie -ldflags=-linkmode=internal -o "$out/relay-NOT-PS4-LOADABLE.elf" .
+(cd "$work/full-daemon" && "$GOROOT/bin/go" build -trimpath -buildmode=pie -ldflags="-linkmode=internal -X main.version=0.1.0-ps4" -o "$out/relay-NOT-PS4-LOADABLE.elf" .)
 readelf -h "$out/runtime-probe-NOT-PS4-LOADABLE.elf" > "$out/elf-header.txt"
 readelf -lW "$out/relay-NOT-PS4-LOADABLE.elf" > "$out/relay-program-headers.txt"

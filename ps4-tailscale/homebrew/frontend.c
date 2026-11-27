@@ -106,7 +106,7 @@ static void draw(const Screen *s,int available){
   text(280,396,2,muted,"What this does, and what it does not");
   text(280,435,2,fg,"Private Remote Play, not a full VPN.");
   text(280,475,2,fg,"Normal internet settings are unchanged.");
-  text(280,560,2,muted,"Hardware runtime remains unverified.");
+  text(280,560,2,muted,"Dashboard: http://127.0.0.1:8090");
  }
 }
 #ifdef EMBED_RUNTIME

@@ -1,0 +1,18 @@
+package main
+import ("net/http";"net/http/httptest";"testing";"strings")
+func TestPS4PortGuard(t *testing.T){
+ c:=defaultConfig();if err:=validatePS4Config(c);err!=nil{t.Fatal(err)}
+ c.WebAddr=":8090";if validatePS4Config(c)==nil{t.Fatal("LAN without password accepted")}
+ c=defaultConfig();c.HTTPProxyAddr="0.0.0.0:8118";if validatePS4Config(c)==nil{t.Fatal("public proxy accepted")}
+ c=defaultConfig();c.CheckUpdates=true;if validatePS4Config(c)==nil{t.Fatal("PS5 update accepted")}
+ h:=ps4WebGuard(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.WriteHeader(200)}))
+ r:=httptest.NewRequest("GET","http://evil.example:8090/",nil);w:=httptest.NewRecorder();h.ServeHTTP(w,r);if w.Code!=403{t.Fatal(w.Code)}
+}
+func TestPS4OriginalDashboard(t *testing.T){
+ for _,needle:=range []string{"Tailscale on PS4","Devices on your tailnet","Received files","Game streaming","Wake a device at home","Settings","Download diagnostics","Log in again","Log out","Stop Tailscale","/api/config","/api/forwards","/api/sunshine"}{
+  if !strings.Contains(string(statusHTML),needle){t.Fatal("missing upstream section "+needle)}
+ }
+ d:=&daemon{state:"NeedsLogin",authURL:"https://login.tailscale.com/a/example"}
+ r:=httptest.NewRequest("GET","http://127.0.0.1:8090/screen.txt",nil);r.RemoteAddr="127.0.0.1:1234";w:=httptest.NewRecorder();d.handlePS4Screen(w,r)
+ if !strings.HasPrefix(w.Body.String(),"PS4TS1\nNeedsLogin\n-\n0\n"){t.Fatal(w.Body.String())}
+}

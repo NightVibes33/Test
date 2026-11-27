@@ -150,7 +150,7 @@ jobs:
           path: emulator-evidence/
 
   runtime-integration:
-    needs: runtime-research
+    needs: [runtime-research, full-daemon-tests]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -249,3 +249,32 @@ jobs:
           path: runtime-package/
           if-no-files-found: error
 
+
+  full-daemon-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ps4-tailscale/go.mod
+          cache-dependency-path: ps4-tailscale/go.sum
+      - uses: actions/checkout@v4
+        with:
+          repository: holdmysocks/ps5-tailscale
+          ref: be639c6ccde8f456d76dd7eb9978f48837b0a1b8
+          path: upstream-ps5
+          persist-credentials: false
+      - name: Test original portable upstream feature suite
+        working-directory: upstream-ps5/tsd
+        run: go test ./...
+      - name: Prepare complete adapted PS4 daemon
+        run: python3 ps4-tailscale/tools/prepare-full-daemon.py upstream-ps5 "$RUNNER_TEMP/full-daemon"
+      - name: Test PS4 compatibility adapters and compile full daemon
+        run: |
+          cd "$RUNNER_TEMP/full-daemon"
+          PS4TS_DATA="$RUNNER_TEMP/tailnet-test-data" go test -run '^TestPS4' ./...
+          go build -trimpath -o "$RUNNER_TEMP/full-daemon-host" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: full-daemon-adapted-source
+          path: ${{ runner.temp }}/full-daemon/

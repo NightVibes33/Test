@@ -42,8 +42,8 @@ int main(void){
  pthread_t t;int err=pthread_create(&t,NULL,ui,NULL);
  pthread_sigmask(SIG_SETMASK,&old,NULL);
  if(err){printf("PS4TS_UI_THREAD_FAIL %d\n",err);runtime_unmap(&im);return 3;}
- static char *argv[]={"ps4-tailscale","-state","/data/ps4-tailscale","-target","127.0.0.1",NULL};
- static char *envp[]={"HOME=/data/ps4-tailscale","TMPDIR=/data/ps4-tailscale","GOMAXPROCS=2","GODEBUG=asyncpreemptoff=1",NULL};
+ static char *argv[]={"ps4-tailscale",NULL};
+ static char *envp[]={"PS4TS_DATA=/data/ps4-tailscale","HOME=/data/ps4-tailscale","TMPDIR=/data/ps4-tailscale","GOMAXPROCS=2","GODEBUG=asyncpreemptoff=1",NULL};
 #else
  static char *argv[]={"ps4-runtime-probe",NULL};
  static char *envp[]={"GOMAXPROCS=2","GODEBUG=asyncpreemptoff=1",NULL};
