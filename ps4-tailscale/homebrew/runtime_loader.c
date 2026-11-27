@@ -61,7 +61,7 @@ int runtime_map(const void *bytes,size_t size,RuntimeImage *out){
  Ehdr e;memcpy(&e,bytes,sizeof(e));
  if(memcmp(e.ident,"\177ELF\2\1\1",7)||e.ident[7]!=9||e.type!=3||e.machine!=62||e.version!=1||e.phentsize!=sizeof(Phdr)||!e.phnum||e.phnum>64||!bounded(e.phoff,(uint64_t)e.phnum*sizeof(Phdr),size))return -2;
  Phdr h[64];memcpy(h,(const char*)bytes+e.phoff,e.phnum*sizeof(Phdr));
- uint64_t lo=UINT64_MAX,hi=0;int dynindex=-1;size_t pg=page_size();
+ uint64_t lo=UINT64_MAX,hi=0,segment_end=0;int dynindex=-1;size_t pg=page_size();
  if(!pg||(pg&(pg-1)))return -3;
  for(unsigned i=0;i<e.phnum;i++){
   Phdr *p=&h[i];
@@ -73,7 +73,7 @@ int runtime_map(const void *bytes,size_t size,RuntimeImage *out){
   if(p->vaddr+p->memsz>hi)hi=p->vaddr+p->memsz;
  }
  if(lo>=hi||dynindex<0||!within_segment(h,e.phnum,e.entry,1,PF_X))return -5;
- lo=down(lo,pg);hi=up(hi,pg);if(hi-lo>IMAGE_LIMIT)return -5;
+ segment_end=hi;lo=down(lo,pg);hi=up(hi,pg);if(hi-lo>IMAGE_LIMIT)return -5;
  size_t span=(size_t)(hi-lo);
  unsigned char *base=allocate(span);if(!base)return -6;
  unsigned char *perms=calloc(span/pg,1);if(!perms){release(base,span);return -6;}
@@ -101,7 +101,7 @@ int runtime_map(const void *bytes,size_t size,RuntimeImage *out){
  if(!ended||!rela||!relasz||relaent!=sizeof(Rela)||relasz%sizeof(Rela)||!within_segment(h,e.phnum,rela,relasz,PF_R))goto fail;
  for(uint64_t j=0;j<relasz/sizeof(Rela);j++){
   Rela v;memcpy(&v,base+rela-lo+j*sizeof(v),sizeof(v));
-  if(v.info!=8||!within_segment(h,e.phnum,v.offset,8,PF_W)||v.addend<0||(uint64_t)v.addend<lo||(uint64_t)v.addend>=hi)goto fail;
+  if(v.info!=8||!within_segment(h,e.phnum,v.offset,8,PF_W)||v.addend<0||(uint64_t)v.addend<lo||(uint64_t)v.addend>segment_end)goto fail;
   uintptr_t value=(uintptr_t)base+((uint64_t)v.addend-lo);
   memcpy(base+v.offset-lo,&value,sizeof(value));
  }

@@ -22,8 +22,8 @@ p.write_text("".join(line for line in lines if "ps5_pad" not in line))
 PY
 cp "$GOROOT/bin/go" "$GOROOT/bin/go-bootstrap"
 GOBIN="$GOROOT/bin" "$GOROOT/bin/go-bootstrap" install cmd/go cmd/link
-# cmd/link is installed into GOBIN, but go build invokes GOTOOLDIR/link.
-cp "$GOROOT/bin/link" "$("$GOROOT/bin/go" env GOTOOLDIR)/link"
+# cmd/link is a tool, installed directly into GOTOOLDIR by go install.
+test -x "$("$GOROOT/bin/go" env GOTOOLDIR)/link"
 mkdir -p "$out"
 export GOOS=freebsd GOARCH=amd64 GOAMD64=v1 CGO_ENABLED=0
 "$GOROOT/bin/go" build -trimpath -buildmode=pie -ldflags=-linkmode=internal -o "$out/runtime-probe-NOT-PS4-LOADABLE.elf" ./runtime-probe
