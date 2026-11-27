@@ -22,6 +22,8 @@ static Row rows[ROWS],workrows[ROWS],pending_rows[ROWS];static int workn,pending
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static int wanted_page=-1,job_pending,busy;static char job_id[81],job_value[241],result[241];static int job_page,job_available;static int n,page,selected,editing,confirm,handle=-1,letter,refresh;
 static char edit[241],message[241];static uint32_t last;
+static int qr_visible=1;
+int native_show_qr(void){return page==0&&qr_visible;}
 static const char *pages[]={"Status / QR","Devices","Settings","Local forwards","Game streaming","Wake-on-LAN","Taildrop","Diagnostics","GoldHEN setup"};
 static const char alphabet[]=" abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:/,@[]";
 static int request(const char *path,const char *body,char *out,size_t cap){
@@ -63,10 +65,10 @@ static void fetch_page(int page){
 static void run_action(int page,const char *id,const char *value,int available,char *reply){
  if(page==8){int e=-1;
   if(!strcmp(id,"stage"))e=goldhen_stage();
-  if(!strcmp(id,"enable"))e=available?goldhen_autorun(1):-2;
+  (void)available;
   if(!strcmp(id,"disable"))e=goldhen_autorun(0);
   if(!strcmp(id,"remove"))e=goldhen_remove();
-  snprintf(reply,241,e==0?"Done. Changes saved.":e==-2?"Start daemon successfully before enabling.":"Failed: check GoldHEN and storage permissions.");return;
+  snprintf(reply,241,e==0?"Done. Changes saved.":e==-2?"AutoRun locked until hardware validation.":"Failed: check GoldHEN and storage permissions.");return;
  }
  char body[340],out[4096];snprintf(body,sizeof(body),"%s\n%s",id,value);
  int code=request("/native",body,out,sizeof(out));if(!code)snprintf(reply,241,"Daemon did not respond");else snprintf(reply,241,"%d: %.195s",code,out);
@@ -95,6 +97,7 @@ int native_page(void){return page;}
 void native_tick(int available){
  pthread_mutex_lock(&lock);if(result[0]){snprintf(message,sizeof(message),"%s",result);result[0]=0;wanted_page=page;}if(!editing&&!confirm&&pending_page==page){memcpy(rows,pending_rows,sizeof(rows));n=pending_n;pending_page=-1;if(selected>=n)selected=n?n-1:0;}int blocked=busy;pthread_mutex_unlock(&lock);
  uint32_t b=0;OrbisPadData d;memset(&d,0,sizeof(d));if(handle>=0&&scePadReadState(handle,&d)>=0)b=d.buttons;uint32_t hit=b&~last;last=b;
+ if(page==0&&!editing&&!confirm&&(hit&ORBIS_PAD_BUTTON_OPTIONS)){qr_visible=!qr_visible;return;}
  if(editing){
   size_t len=strlen(edit);
   if(hit&ORBIS_PAD_BUTTON_UP)letter=(letter+1)%(sizeof(alphabet)-1);
@@ -109,17 +112,17 @@ void native_tick(int available){
  if(hit&ORBIS_PAD_BUTTON_L1){page=(page+8)%9;selected=0;n=0;load(available);}
  if(hit&ORBIS_PAD_BUTTON_UP&&selected>0)selected--;
  if(hit&ORBIS_PAD_BUTTON_DOWN&&selected+1<n)selected++;
- if(hit&ORBIS_PAD_BUTTON_CROSS&&n&&!blocked){Row *r=&rows[selected];if(r->kind=='e'){snprintf(edit,sizeof(edit),"%s",r->value);letter=0;editing=1;}else if(r->kind=='a')confirm=1;}
+ if(hit&ORBIS_PAD_BUTTON_CROSS&&n&&!blocked&&!(page==0&&qr_visible&&!available&&n>0&&strcmp(rows[0].label,"Daemon unavailable"))){Row *r=&rows[selected];if(r->kind=='e'){snprintf(edit,sizeof(edit),"%s",r->value);letter=0;editing=1;}else if(r->kind=='a')confirm=1;}
  if(++refresh>=180){refresh=0;load(available);}
 }
 void native_draw(NativeText text,NativeRect rect){
  const uint32_t fg=0xffe8eaed,muted=0xff9aa1ab,blue=0xff7fa4ff;
  rect(0,0,1280,720,0xff14161a);text(48,30,3,fg,"TailScale on PS4");text(48,82,2,muted,"L1 / R1  Switch section");
- for(int i=0;i<9;i++){rect(45,125+i*49,300,43,i==page?0xff35466a:0xff1e2126);text(55,134+i*49,2,i==page?blue:fg,pages[i]);}
+ for(int i=0;i<9;i++){rect(45,125+i*49,300,43,i==page?0xff35466a:0xff1e2126);text(55,134+i*49,1,i==page?blue:fg,pages[i]);}
  text(370,92,3,fg,pages[page]);int top=selected>7?selected-7:0;
  for(int i=top;i<n&&i<top+8;i++){int y=144+(i-top)*61;rect(365,y,870,57,i==selected?0xff35466a:0xff1e2126);char a[49],v[49];snprintf(a,sizeof(a),"%.48s",rows[i].label);snprintf(v,sizeof(v),"%.48s",!strcmp(rows[i].id,"password")?"":rows[i].value);text(378,y+3,2,fg,a);text(378,y+29,2,muted,v);}
  char m[67];snprintf(m,sizeof(m),"%.66s",message);text(48,635,1,blue,m);
- text(48,665,2,muted,"Up/Down Select   X Open   L1/R1 Tabs");
+ text(48,665,2,muted,"Up/Down Select   X Open   L1/R1 Tabs");if(page==0)text(48,694,1,muted,"OPTIONS: toggle QR / status controls");
  if(editing||confirm){rect(220,250,840,220,0xff30353c);rect(223,253,834,214,0xff1e2126);
   text(245,270,2,fg,editing?"Edit setting":"Confirm selected action");
   if(editing){char val[43],ch[24];size_t l=strlen(edit);snprintf(val,sizeof(val),"%.42s",edit+(l>42?l-42:0));if(!strcmp(rows[selected].id,"password"))memset(val,'*',strlen(val));snprintf(ch,sizeof(ch),"Character: [%c]",alphabet[letter]);text(245,313,2,fg,val);text(245,355,2,blue,ch);text(245,410,1,muted,"Up/Down character | X add | Square delete | Triangle save | Circle cancel");}

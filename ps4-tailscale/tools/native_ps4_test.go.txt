@@ -14,3 +14,11 @@ func TestPS4NativeRouteIsolation(t *testing.T){
  for _,p:=range []string{"/","/api/config","/api/quit","/qr.png"}{r:=httptest.NewRequest("GET","http://127.0.0.1:8090"+p,nil);r.RemoteAddr="127.0.0.1:1234";r.Header.Set("X-PS4-Native","1");w:=httptest.NewRecorder();h.ServeHTTP(w,r);if w.Code!=404{t.Fatal(p,w.Code)}}
  c:=defaultConfig();c.HTTPProxyAddr="127.0.0.1:8090";if validatePS4Config(c)==nil{t.Fatal("management port conflict accepted")}
 }
+
+func TestPS4CombinedForwardGuards(t *testing.T){
+ c:=defaultConfig()
+ c.SunshineHosts=[]sunshineHost{{Host:"pc",Port:8095}}
+ if validatePS4Config(c)==nil{t.Fatal("Sunshine overlaps management")}
+ c=defaultConfig();c.Forwards=[]forwardRule{{Proto:"tcp",Listen:"127.0.0.1:47989",Target:"pc:47989"}};c.SunshineHosts=[]sunshineHost{{Host:"pc"}}
+ if validatePS4Config(c)==nil{t.Fatal("overlapping forwards accepted")}
+}

@@ -167,3 +167,11 @@ backup, and preservation of unrelated settings. Native-only loopback routes
 reject ordinary browser requests; the native header is NOT authentication
 against local applications. Browser password is explicitly not applicable.
 System priority and signed automatic updates remain unsupported.
+
+### Follow-up audit
+The ELF verification detected compiler-generated dynamic relocations; explicit
+runtime assignments replace the static pointer tables. The zero-relocation
+check remains mandatory. Native QR can be toggled with OPTIONS. Configuration
+is saved atomically before publishing and combined forwards are validated.
+CI still cannot prove physical console execution, loader process ownership,
+background survival or live Remote Play; emulator fixtures remain labeled.

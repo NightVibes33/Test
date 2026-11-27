@@ -155,8 +155,8 @@ int main(void){
 #ifdef UI_FIXTURE
  draw(&s,available);
 #else
- native_tick(available&&s.ready);
- if(native_page()==0&&available&&s.n>0){draw(&s,available);text(280,680,1,0xff9aa1ab,"L1/R1 sections");}
+ native_tick(available&&s.n==0);
+ if(native_show_qr()&&available&&s.n>0){draw(&s,available);text(280,680,1,0xff9aa1ab,"OPTIONS: status controls   L1/R1: sections");}
  else native_draw(text,rect);
 #endif
   int rc=sceVideoOutSubmitFlip(v,idx,ORBIS_VIDEO_OUT_FLIP_VSYNC,frameid);

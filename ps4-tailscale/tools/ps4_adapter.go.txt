@@ -26,7 +26,13 @@ func validatePS4Config(c config)error{
  if h!="127.0.0.1"{return fmt.Errorf("native control endpoint must remain on loopback")}
 
  if err:=ps4LocalListener(c.HTTPProxyAddr);err!=nil{return err}
- for _,f:=range c.Forwards{if err:=ps4LocalListener(f.Listen);err!=nil{return err}}
+ if err:=validateSunshineHosts(c.SunshineHosts);err!=nil{return err}
+ combined:=append(sunshineRules(c.SunshineHosts),c.Forwards...)
+ if err:=validateForwards(combined);err!=nil{return err}
+ for _,f:=range combined{
+  if err:=ps4LocalListener(f.Listen);err!=nil{return err}
+  if f.Proto=="tcp"&&f.Listen==c.HTTPProxyAddr{return fmt.Errorf("forward conflicts with proxy")}
+ }
  if c.Priority==priorityHigh||c.CheckUpdates||c.PayloadPath!=""{return fmt.Errorf("PS5 priority, self-update and payload settings are not supported on PS4")}
  root:=filepath.Clean(dataDir)
  if c.ReceiveDir!=""{

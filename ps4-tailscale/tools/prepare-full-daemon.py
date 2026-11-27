@@ -89,3 +89,33 @@ patch("main.go",'if stopRunningInstance(cfg.WebAddr) {\n\t\tlogf("stopped the in
 patch("forward.go",'if port == d.webPort {','if port == d.webPort {\n\t\treturn nil, false\n\t}\n\tif false {')
 (dst/"native_ps4.go").write_text(pathlib.Path(__file__).with_name("native_ps4.go.txt").read_text())
 (dst/"native_ps4_test.go").write_text(pathlib.Path(__file__).with_name("native_ps4_test.go.txt").read_text())
+
+# Atomic persistence; no truncation of the live config on a failed write.
+patch("config.go",'return os.WriteFile(path, append(b, \'\\n\'), 0o600)', '''tmp, err := os.CreateTemp(filepath.Dir(path), ".tailscale-config-*")
+    if err != nil { return err }
+    defer os.Remove(tmp.Name())
+    if _, err = tmp.Write(append(b, '\\n')); err == nil { err = tmp.Sync() }
+    if closeErr := tmp.Close(); err == nil { err = closeErr }
+    if err != nil { return err }
+    return os.Rename(tmp.Name(),path)''')
+# A single instance holds its socket before touching Tailscale state. Native calls
+# must not race against partially initialized pointers.
+patch("main.go",'go d.serveWeb(d.tailnetWeb, handler)','// No management listener on the tailnet.')
+patch("main.go",'go d.serveWeb(webLn, handler)','// Defer serving native requests until the backend is initialized.')
+patch("main.go",'go d.watch(ctx)','go d.serveWeb(webLn, handler)\n\tgo d.watch(ctx)')
+# Save candidate first, only publish after success. Native mutations serialize.
+patch("settings.go",'    d.cfg = cfg\n    d.mu.Unlock()','    if err := saveConfig(d.cfgPath, cfg); err != nil { d.mu.Unlock(); http.Error(w, err.Error(), 500); return }\n    d.cfg = cfg\n    d.mu.Unlock()')
+patch("settings.go",'''if err := saveConfig(d.cfgPath, cfg); err != nil {
+		d.logf("saving config: %v", err)
+		http.Error(w, "the settings are in effect but could not be saved: "+err.Error(), http.StatusInternalServerError)
+		return
+	}''','// Config was saved before publication.')
+for name,field,val in [("web.go","SunshineHosts","hosts"),("web.go","Forwards","rules"),("wake.go","Wake","list")]:
+    patch(name, f'd.cfg.{field} = {val}\n\tcfg := d.cfg\n\td.mu.Unlock()\n\tif err := saveConfig(d.cfgPath, cfg); err != nil {{\n\t\td.logf("saving config: %v", err)\n\t}}', f'''cfg := d.cfg
+    cfg.{field} = {val}
+    if err := validatePS4Config(cfg); err != nil {{ d.mu.Unlock(); http.Error(w,err.Error(),400); return }}
+    if err := saveConfig(d.cfgPath,cfg); err != nil {{ d.mu.Unlock(); http.Error(w,err.Error(),500); return }}
+    d.cfg = cfg
+    d.mu.Unlock()''')
+
+patch("config.go",'import (','import (\n "path/filepath"')

@@ -276,7 +276,7 @@ jobs:
       - name: Test PS4 compatibility adapters and compile full daemon
         run: |
           cd "$RUNNER_TEMP/full-daemon"
-          PS4TS_DATA="$RUNNER_TEMP/tailnet-test-data" go test -run '^TestPS4' ./...
+          PS4TS_DATA="$RUNNER_TEMP/tailnet-test-data" go test -race ./...
           go build -trimpath -o "$RUNNER_TEMP/full-daemon-host" .
       - uses: actions/upload-artifact@v4
         with:
