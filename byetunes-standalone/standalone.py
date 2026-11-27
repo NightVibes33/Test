@@ -32,13 +32,13 @@ for path in app.glob("*.swift"):
     edit(path,lambda s:s.replace("com.EduAlexxis.MusicManager",newid).replace("group.com.edualexxis.MusicManager","group."+newid))
 # The app uses the exact pinned idevice C declarations and Airlift archive as Filza.
 (app/"Bridging-Header.h").write_text('#import "idevice.h"\n')
-(app/"idevice.h").write_bytes(Path("Vendor/idevice/include/idevice.h").read_bytes())
+(app/"idevice.h").write_bytes(Path("Vendor/PairingRuntime/include/idevice.h").read_bytes())
 p=project.read_text().replace("com.EduAlexxis.MusicManager",newid)
 needle='SWIFT_OBJC_BRIDGING_HEADER = "MusicManager/Bridging-Header.h";'
 assert p.count(needle)==2
 p=p.replace(needle,needle+'''
-                SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../ThirdParty/NFCARD/AirliftFFI/include";
-                OTHER_LDFLAGS = ("$(inherited)", "$(SRCROOT)/../ThirdParty/NFCARD/AirliftFFI/lib/libairlift_ffi.a", "-lc++", "-lsqlite3", "-lz", "-lxml2", "-framework", Security, "-framework", SystemConfiguration);
+                SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../Vendor/PairingRuntime/include";
+                OTHER_LDFLAGS = ("$(inherited)", "$(SRCROOT)/../Vendor/PairingRuntime/lib/libairlift_ffi.a", "-lc++", "-lsqlite3", "-lz", "-lxml2", "-framework", Security, "-framework", SystemConfiguration);
                 OTHER_SWIFT_FLAGS = ("$(inherited)", "-Xfrontend", "-solver-expression-time-threshold=300");
 ''')
 p=p.replace("IPHONEOS_DEPLOYMENT_TARGET = 16.0;","IPHONEOS_DEPLOYMENT_TARGET = 17.0;").replace("IPHONEOS_DEPLOYMENT_TARGET = 16.1;","IPHONEOS_DEPLOYMENT_TARGET = 17.0;")

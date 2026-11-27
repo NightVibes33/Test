@@ -13,8 +13,6 @@ done
 bash scripts/patch-byetunes-manage-backups-typecheck.sh
 bash scripts/verify-byetunes-lyrics.sh
 bash scripts/verify-byetunes-album-color.sh
-bash scripts/build-idevice.sh "$ROOT/Vendor/idevice"
-bash scripts/stage-nfcard.sh
-bash scripts/build-nfcard-ffi.sh "$ROOT/ThirdParty/NFCARD" "$ROOT/ThirdParty/NFCARD/AirliftFFI"
+bash scripts/build-pairing-runtime.sh
 cp ByeTunesMetadataCompat.swift ByeTunesDownloadParityCompat.swift ByeTunesOnDevicePairing.swift StandalonePairingImport.swift ByeTunes/MusicManager/
 python3 standalone.py
