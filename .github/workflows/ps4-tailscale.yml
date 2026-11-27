@@ -130,7 +130,7 @@ jobs:
       - name: Install emulator runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb x11-utils xdotool imagemagick mesa-vulkan-drivers libvulkan1 libfuse2t64 unzip libxkbcommon0 libwayland-client0 libpulse0
+          sudo apt-get install -y xvfb x11-utils xdotool imagemagick mesa-vulkan-drivers vulkan-tools libvulkan1 libfuse2t64 unzip libxkbcommon0 libwayland-client0 libpulse0
           curl -fL --retry 3 https://github.com/shadps4-emu/shadPS4/releases/download/v.0.21.0/shadps4-linux-sdl-0.21.0.zip -o /tmp/shad.zip
           unzip -q /tmp/shad.zip -d "$RUNNER_TEMP/shad"
           exe=$(find "$RUNNER_TEMP/shad" -type f \( -iname shadps4 -o -iname '*.AppImage' \) -print -quit)
@@ -139,7 +139,7 @@ jobs:
           echo "SHAD_EXE=$exe" >> "$GITHUB_ENV"
       - name: Launch shadPS4 and capture verified fixture frame
         env:
-          APPIMAGE_EXTRACT_AND_RUN: '1'
+          APPIMAGE_EXTRACT_AND_RUN: '0'
         run: |
           mkdir -p emulator-evidence
           bash ps4-tailscale/homebrew/emulator-smoke.sh "$SHAD_EXE" homebrew-build/fixture/eboot.bin emulator-evidence
