@@ -14,5 +14,5 @@ bash scripts/patch-byetunes-manage-backups-typecheck.sh
 bash scripts/verify-byetunes-lyrics.sh
 bash scripts/verify-byetunes-album-color.sh
 bash scripts/build-pairing-runtime.sh
-cp ByeTunesMetadataCompat.swift ByeTunesDownloadParityCompat.swift ByeTunesOnDevicePairing.swift StandalonePairingImport.swift ByeTunes/MusicManager/
+cp ByeTunesMetadataCompat.swift ByeTunesDownloadParityCompat.swift ByeTunesOnDevicePairing.swift StandalonePairingImport.swift MP3SkullBackground.swift ByeTunes/MusicManager/
 python3 standalone.py

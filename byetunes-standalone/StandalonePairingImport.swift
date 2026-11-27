@@ -46,6 +46,7 @@ struct StandaloneDevicePairingScreen: View {
                 Text("Enable LocalDevVPN before connecting. A saved pairing record does not guarantee an active tunnel.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+            .listRowBackground(MP3SkullTheme.card)
             Section("Pair this iPhone") {
                 Button {
                     pairing.start(manager: manager)
@@ -63,6 +64,7 @@ struct StandaloneDevicePairingScreen: View {
                 Text(supportsOnDevice ? "Open Settings → Privacy & Security → Developer Mode → Pair with ByeTunes. Approve the request and enter the PIN." : "On-device pairing requires iOS 27. Import a pairing record instead.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+            .listRowBackground(MP3SkullTheme.card)
             Section("Import an existing pairing record") {
                 Button {
                     showingImporter = true
@@ -73,6 +75,7 @@ struct StandaloneDevicePairingScreen: View {
                 Text("Select a valid pairing record from Files. ByeTunes validates and stores it in its own private container.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+            .listRowBackground(MP3SkullTheme.card)
             Section("Connection tools") {
                 Button {
                     manager.refreshExpectedPairingFileState()
@@ -88,10 +91,15 @@ struct StandaloneDevicePairingScreen: View {
                 }
                 .disabled(!manager.hasValidExpectedPairingFile || pairing.isPairing)
             }
+            .listRowBackground(MP3SkullTheme.card)
             if let message {
                 Section("Status") { Text(message).font(.footnote) }
+                    .listRowBackground(MP3SkullTheme.card)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background { MP3SkullBackground() }
+        .preferredColorScheme(.dark)
         .navigationTitle("Device Pairing")
         .task { manager.refreshExpectedPairingFileState() }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.item]) { result in

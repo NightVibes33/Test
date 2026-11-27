@@ -11,7 +11,7 @@ verify_runtime() {
   test -s "$OUT/include/idevice.h"
   test -s "$OUT/include/AirliftFFI/airlift.h"
   test "$(cat "$OUT/SOURCE_REVISION")" = "$PIN"
-  xcrun lipo -verify_arch arm64 "$OUT/lib/libairlift_ffi.a"
+  xcrun lipo "$OUT/lib/libairlift_ffi.a" -verify_arch arm64
   local symbols
   symbols="$(mktemp)"
   xcrun nm -gU "$OUT/lib/libairlift_ffi.a" > "$symbols"

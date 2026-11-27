@@ -107,3 +107,33 @@ assert "Pair with MP3 Skull" in (app/"StandalonePairingImport.swift").read_text(
 
 assert "Pair with ByeTunes" not in (app/"StandalonePairingImport.swift").read_text()
 print("PASS: MP3 Skull pairing label, native app icon and Xcode product configuration")
+
+
+# Reference-based backgrounds only; preserve original ByeTunes onboarding,
+# its post-connection tutorial, all existing controls, and tab layout.
+for filename in ["MusicView.swift","SettingsView.swift","TabViews.swift"]:
+    path=app/filename
+    text=path.read_text()
+    text,n=re.subn(r'Color\(\.systemGroupedBackground\)(\s*\n\s*\.ignoresSafeArea\(\))',r'MP3SkullBackground()\1',text)
+    assert n>=1, (filename,"root background missing")
+    if filename=="SettingsView.swift":
+        text=text.replace(".background(Color(.systemBackground))",".background(MP3SkullTheme.card)")
+        assert "Pairing is managed by Filza 27" not in text
+    path.write_text(text)
+
+onboarding=app/"OnboardingView.swift"
+text=onboarding.read_text()
+text,n=re.subn(r'LinearGradient\(\s*gradient: Gradient\(colors: \[Color\(\.systemBackground\), Color\(\.secondarySystemBackground\)\]\),\s*startPoint: \.top,\s*endPoint: \.bottom\s*\)',"MP3SkullBackground()",text,count=1)
+assert n==1,"onboarding root gradient missing"
+text=text.replace(".fill(Color(.systemBackground))",".fill(MP3SkullTheme.card)")
+onboarding.write_text(text)
+
+# Original connection card still leads to the original heartbeat-driven
+# completion; manual import and on-device PIN remain available.
+assert "if ready {" in text and "isComplete = true" in text
+assert "StandalonePairingEntry(manager: manager)" in text
+assert "onDevicePairing.start(manager: manager)" in text
+
+edit(app/"MusicManagerApp.swift",lambda s:once(s,"            ContentView()","            ContentView()\n                .preferredColorScheme(.dark)"))
+edit(app/"ContentView.swift",lambda s:s.replace(".fill(Color(.systemBackground))\n        )\n        .overlay(\n            Capsule()",".fill(MP3SkullTheme.card)\n        )\n        .overlay(\n            Capsule()"))
+print("PASS: reference background applied; original onboarding and connection actions retained")

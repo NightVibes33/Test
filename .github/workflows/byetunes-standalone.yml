@@ -43,7 +43,7 @@ jobs:
           test -f "$APP/MP3 Skull"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")" = "com.nightvibes33.mp3skull"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleDisplayName' "$APP/Info.plist")" = "MP3 Skull"
-          xcrun lipo -verify_arch arm64 "$APP/MP3 Skull"
+          xcrun lipo "$APP/MP3 Skull" -verify_arch arm64
           test -f "$APP/Assets.car"
           test -d "$APP/PlugIns/MusicManagerLiveActivity.appex"
           mkdir -p dist/Payload
