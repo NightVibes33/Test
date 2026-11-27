@@ -61,3 +61,15 @@ A fixture screenshot does not demonstrate live Tailscale, Remote Play or
 features or shadPS4 lacks a needed library implementation. The native
 daemon still needs a validated console-compatible runtime entry path and
 a real PS4 test. No firmware-specific patches or network changes are added.
+
+## Experimental PKG container
+The package-frontend CI job builds a proper PS4 homebrew PKG container from
+the **live frontend only**, using LibOrbisPkg v0.2 (pinned source, rebuilt
+for .NET 8). It generates original artwork, title metadata and a GP4 manifest,
+then extracts the result and compares its eboot.bin with the input binary.
+The output is named PS4-Tailscale-Frontend-TEST.pkg with a SHA-256 digest.
+No demo QR fixture, stock FreeBSD executable, or unvalidated kernel payload
+is embedded. This is an experimental UI package, not a standalone native
+VPN; 14.02 installation, background runtime and actual Remote Play remain
+unverified. No proprietary right.sprx is bundled. Do not claim a working
+hardware release based on container validation.

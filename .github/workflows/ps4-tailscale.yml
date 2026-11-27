@@ -148,3 +148,36 @@ jobs:
         with:
           name: shadps4-emulator-evidence
           path: emulator-evidence/
+
+  package-frontend:
+    needs: homebrew
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ps4-homebrew-frontend-UNVALIDATED
+          path: homebrew-build
+      - uses: actions/checkout@v4
+        with:
+          repository: maxton/LibOrbisPkg
+          ref: 72370ca3739e0708250695046b3886e50452dee7
+          path: pkgtool-source
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build pinned open-source package tool against supported .NET
+        run: |
+          sed -i 's/netcoreapp3.0/net8.0/g' pkgtool-source/PkgTool.Core/PkgTool.Core.csproj pkgtool-source/LibOrbisPkg.Core/LibOrbisPkg.Core.csproj
+          dotnet publish pkgtool-source/PkgTool.Core/PkgTool.Core.csproj -c Release -o "$RUNNER_TEMP/pkgtool"
+      - name: Build and round-trip verify PS4 frontend PKG
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pil fonts-dejavu-core
+          bash ps4-tailscale/homebrew/package.sh "$RUNNER_TEMP/pkgtool/PkgTool.Core.dll" homebrew-build/live/eboot.bin frontend-package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS4-Tailscale-Frontend-TEST-pkg
+          path: frontend-package/
+          if-no-files-found: error
