@@ -92,7 +92,11 @@ static void draw(const Screen *s,int available){
  text(72,580,2,0xff94a3b8,"NO PSN LOGIN OR PUBLIC PORT FORWARDING");
  text(72,625,2,0xff94a3b8,"LOCAL STATUS UI - NETWORK SETTINGS UNCHANGED");
 }
+#ifdef EMBED_RUNTIME
+int frontend_main(void){
+#else
 int main(void){
+#endif
  setvbuf(stdout,NULL,_IONBF,0);
  int v=sceVideoOutOpen(ORBIS_VIDEO_USER_MAIN,ORBIS_VIDEO_OUT_BUS_MAIN,0,0);
  if(v<0){printf("PS4TS_VIDEO_FAIL %d\n",v);return 1;}

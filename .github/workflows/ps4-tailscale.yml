@@ -181,3 +181,64 @@ jobs:
           name: PS4-Tailscale-Frontend-TEST-pkg
           path: frontend-package/
           if-no-files-found: error
+
+  runtime-integration:
+    needs: runtime-research
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: patched-runtime-research-NOT-PS4-LOADABLE
+          path: runtime-images
+      - name: Validate both actual Go PIE images with userspace loader
+        run: |
+          cc -Wall -Wextra -Werror -O2 ps4-tailscale/homebrew/runtime_loader.c ps4-tailscale/homebrew/runtime_map_test.c -o /tmp/runtime-map-test
+          /tmp/runtime-map-test runtime-images/runtime-probe-NOT-PS4-LOADABLE.elf
+          /tmp/runtime-map-test runtime-images/relay-NOT-PS4-LOADABLE.elf
+      - name: Install OpenOrbis
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 python3-pil python3-qrcode
+          curl -fL --retry 3 https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz -o /tmp/oo.tar.gz
+          mkdir -p "$RUNNER_TEMP/oo"
+          tar -xzf /tmp/oo.tar.gz -C "$RUNNER_TEMP/oo"
+          sdk=$(find "$RUNNER_TEMP/oo" -name link.x -print -quit)
+          test -n "$sdk"
+          echo "OO_PS4_TOOLCHAIN=$(dirname "$sdk")" >> "$GITHUB_ENV"
+      - name: Link runtime into native console launchers
+        run: make -C ps4-tailscale/homebrew -f Makefile.runtime RUNTIME_DIR="$GITHUB_WORKSPACE/runtime-images"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps4-runtime-launchers-UNVALIDATED-DO-NOT-INSTALL
+          path: ps4-tailscale/homebrew/runtime-out/*/eboot.bin
+          if-no-files-found: error
+  runtime-map-emulator:
+    needs: runtime-integration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ps4-runtime-launchers-UNVALIDATED-DO-NOT-INSTALL
+          path: runtime-launchers
+      - name: Install pinned emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11-utils xdotool imagemagick mesa-vulkan-drivers vulkan-tools libvulkan1 libfuse2t64 unzip libxkbcommon0 libwayland-client0 libpulse0
+          curl -fL --retry 3 https://github.com/shadps4-emu/shadPS4/releases/download/v.0.21.0/shadps4-linux-sdl-0.21.0.zip -o /tmp/shad.zip
+          unzip -q /tmp/shad.zip -d "$RUNNER_TEMP/shad"
+          exe=$(find "$RUNNER_TEMP/shad" -type f \( -iname shadps4 -o -iname '*.AppImage' \) -print -quit)
+          test -n "$exe"
+          chmod +x "$exe"
+          echo "SHAD_EXE=$exe" >> "$GITHUB_ENV"
+      - name: Map and relocate real embedded runtime in shadPS4, without executing FreeBSD syscalls
+        run: |
+          mkdir -p runtime-map-evidence
+          bash ps4-tailscale/homebrew/emulator-smoke.sh "$SHAD_EXE" runtime-launchers/map-only/eboot.bin runtime-map-evidence
+          grep -r 'PS4TS_RUNTIME_MAP_OK' runtime-map-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ps4-runtime-map-evidence
+          path: runtime-map-evidence/

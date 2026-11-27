@@ -1,0 +1,44 @@
+ifndef OO_PS4_TOOLCHAIN
+$(error OO_PS4_TOOLCHAIN required)
+endif
+ifndef RUNTIME_DIR
+$(error RUNTIME_DIR required)
+endif
+SDK := $(OO_PS4_TOOLCHAIN)
+CC := clang-18
+LD := ld.lld-18
+CFLAGS := --target=x86_64-pc-freebsd12-elf -fPIC -O2 -isysroot $(SDK) -isystem $(SDK)/include
+LDFLAGS := -m elf_x86_64 -pie --script $(SDK)/link.x --eh-frame-hdr -L$(SDK)/lib -lc -lkernel -lSceVideoOut $(SDK)/lib/crt1.o
+.PHONY: all
+all: runtime-out/probe/eboot.bin runtime-out/daemon/eboot.bin runtime-out/map-only/eboot.bin
+generated.h: generate.py
+	/usr/bin/python3 generate.py
+runtime-out/loader.o: runtime_loader.c runtime_loader.h
+	mkdir -p runtime-out
+	$(CC) $(CFLAGS) -c $< -o $@
+runtime-out/screen.o: screen.c screen.h
+	mkdir -p runtime-out
+	$(CC) $(CFLAGS) -c $< -o $@
+runtime-out/ui.o: frontend.c generated.h screen.h
+	mkdir -p runtime-out
+	$(CC) $(CFLAGS) -DEMBED_RUNTIME -c $< -o $@
+runtime-out/ui-fixture.o: frontend.c generated.h screen.h
+	mkdir -p runtime-out
+	$(CC) $(CFLAGS) -DEMBED_RUNTIME -DUI_FIXTURE -c $< -o $@
+runtime-out/probe/main.o: runtime_main.c
+	mkdir -p $(@D)
+	$(CC) $(CFLAGS) -DRUNTIME_IMAGE='"$(RUNTIME_DIR)/runtime-probe-NOT-PS4-LOADABLE.elf"' -c $< -o $@
+runtime-out/daemon/main.o: runtime_main.c
+	mkdir -p $(@D)
+	$(CC) $(CFLAGS) -DRUNTIME_DAEMON -DRUNTIME_IMAGE='"$(RUNTIME_DIR)/relay-NOT-PS4-LOADABLE.elf"' -c $< -o $@
+runtime-out/map-only/main.o: runtime_main.c
+	mkdir -p $(@D)
+	$(CC) $(CFLAGS) -DRUNTIME_MAP_ONLY -DRUNTIME_IMAGE='"$(RUNTIME_DIR)/relay-NOT-PS4-LOADABLE.elf"' -c $< -o $@
+runtime-out/probe/boot.elf: runtime-out/probe/main.o runtime-out/loader.o
+	$(LD) $^ -o $@ $(LDFLAGS)
+runtime-out/daemon/boot.elf: runtime-out/daemon/main.o runtime-out/loader.o runtime-out/ui.o runtime-out/screen.o
+	$(LD) $^ -o $@ $(LDFLAGS)
+runtime-out/map-only/boot.elf: runtime-out/map-only/main.o runtime-out/loader.o runtime-out/ui-fixture.o runtime-out/screen.o
+	$(LD) $^ -o $@ $(LDFLAGS)
+runtime-out/%/eboot.bin: runtime-out/%/boot.elf
+	$(SDK)/bin/linux/create-fself -in=$< -out=$(@D)/boot.oelf --eboot $@ --paid 0x3800000000000011

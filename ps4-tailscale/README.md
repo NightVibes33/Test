@@ -73,3 +73,20 @@ is embedded. This is an experimental UI package, not a standalone native
 VPN; 14.02 installation, background runtime and actual Remote Play remain
 unverified. No proprietary right.sprx is bundled. Do not claim a working
 hardware release based on container validation.
+
+## Integrated runtime launcher research
+Unlike the frontend-only package, the runtime-integration job embeds the
+actual Go relay in a normal OpenOrbis executable. A separate Go runtime
+probe and map-only emulator test use the same loader. The loader validates
+ELF bounds and dependencies, applies relative relocations, enforces W^X
+using ordinary userspace protection, and refuses execution if mapping fails.
+The daemon candidate starts the C UI on a separate signal-blocked thread
+and transfers the initial thread to Go using the FreeBSD startup ABI.
+It refuses to create state if the normal application sandbox does not allow it.
+No kernel permission modifications are included. No real PS4 syscall ABI,
+Go signal/TLS behavior, or concurrent UI operation is proven yet. The map-only
+emulator test deliberately does not execute raw FreeBSD syscalls because
+shadPS4 is not a full PS4 kernel. The native daemon launcher is NOT an
+installation release. Background operation during a game remains unproven.
+Do not install these unvalidated runtime launchers on 14.02. The old frontend
+PKG is only a UI test, not the final app.
