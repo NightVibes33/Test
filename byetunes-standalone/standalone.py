@@ -63,14 +63,26 @@ print("Standalone source staged; custom pairing, metadata, album colors and app 
 
 # MP3 Skull branding; retain upstream Swift symbols, license and dependency paths.
 import re, json, subprocess
+
+def rebrand_text(s):
+    # A period ending a sentence is not a source-code identifier separator.
+    return re.sub(r'(?<![A-Za-z0-9_./-])ByeTunes(?![A-Za-z0-9_/-]|\.[A-Za-z0-9_])','MP3 Skull',s)
+
+assert rebrand_text("Pair with ByeTunes. Approve the request") == "Pair with MP3 Skull. Approve the request"
+assert rebrand_text("ByeTunesOnDevicePairingController") == "ByeTunesOnDevicePairingController"
+assert rebrand_text("https://github.com/EduAlexxis/ByeTunes.git") == "https://github.com/EduAlexxis/ByeTunes.git"
 for folder in [app, root/"MusicManagerLiveActivity", root/"MusicManagerActivityShared"]:
     for path in folder.rglob("*.swift"):
         s=path.read_text()
-        s=re.sub(r'(?<![A-Za-z0-9_./-])ByeTunes(?![A-Za-z0-9_./-])','MP3 Skull',s)
+        s=rebrand_text(s)
         s=s.replace('"byetunes"','"mp3skull"').replace("byetunes://","mp3skull://")
         path.write_text(s)
 p=project.read_text().replace("ByeTunes.app","MP3 Skull.app").replace("PRODUCT_NAME = ByeTunes;",'PRODUCT_NAME = "MP3 Skull";').replace("productName = ByeTunes;",'productName = "MP3 Skull";').replace("INFOPLIST_KEY_CFBundleDisplayName = ByeTunes;",'INFOPLIST_KEY_CFBundleDisplayName = "MP3 Skull";')
+p=p.replace("path = MP3 Skull.app;", 'path = "MP3 Skull.app";')
+p=p.replace("$(BUILT_PRODUCTS_DIR)/MusicManager.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MusicManager", "$(BUILT_PRODUCTS_DIR)/MP3 Skull.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MP3 Skull")
+assert 'path = "MP3 Skull.app";' in p
 project.write_text(p)
+subprocess.run(["plutil","-lint",str(project)],check=True)
 for scheme in (root/"MusicManager.xcodeproj/xcshareddata/xcschemes").glob("*.xcscheme"):
     edit(scheme,lambda s:s.replace("ByeTunes.app","MP3 Skull.app"))
 with info.open("rb") as f: data=plistlib.load(f)
@@ -92,3 +104,6 @@ for dirname,images in [
     (folder/"Contents.json").write_text(json.dumps({"images":images,"info":{"author":"xcode","version":1}},indent=2)+"\n")
 assert '"MP3 Skull".withCString' in (app/"ByeTunesOnDevicePairing.swift").read_text()
 assert "Pair with MP3 Skull" in (app/"StandalonePairingImport.swift").read_text()
+
+assert "Pair with ByeTunes" not in (app/"StandalonePairingImport.swift").read_text()
+print("PASS: MP3 Skull pairing label, native app icon and Xcode product configuration")

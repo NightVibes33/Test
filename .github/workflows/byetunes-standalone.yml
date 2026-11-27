@@ -6,6 +6,9 @@ on:
       - 'byetunes-standalone/**'
       - '.github/workflows/byetunes-standalone.yml'
   workflow_dispatch:
+concurrency:
+  group: mp3-skull-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -18,7 +21,10 @@ jobs:
         with:
           xcode-version: '26.2'
       - name: Stage MP3 Skull custom sources and compile pairing runtime
-        run: bash byetunes-standalone/prepare.sh
+        run: |
+          set -o pipefail
+          python3 -m py_compile byetunes-standalone/standalone.py
+          bash byetunes-standalone/prepare.sh 2>&1 | tee byetunes-standalone/prepare.log
       - name: Build native iOS app
         working-directory: byetunes-standalone
         run: |
@@ -36,7 +42,7 @@ jobs:
           test -f "$APP/Assets.car"
           test -d "$APP/PlugIns/MusicManagerLiveActivity.appex"
           mkdir -p dist/Payload
-          ditto "$APP" dist/Payload/MP3 Skull.app
+          ditto "$APP" "dist/Payload/MP3 Skull.app"
           (cd dist && zip -qry MP3-Skull-unsigned.ipa Payload && shasum -a 256 MP3-Skull-unsigned.ipa > SHA256SUMS)
           unzip -t dist/MP3-Skull-unsigned.ipa
       - uses: actions/upload-artifact@v4
@@ -50,5 +56,7 @@ jobs:
         if: always()
         with:
           name: MP3-Skull-build-log
-          path: byetunes-standalone/build.log
+          path: |
+            byetunes-standalone/prepare.log
+            byetunes-standalone/build.log
           if-no-files-found: ignore
