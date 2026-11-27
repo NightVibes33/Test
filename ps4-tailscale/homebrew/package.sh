@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Packages only the live OpenOrbis frontend, not the fixture or research ELF.
+# Runtime mode requires the entire original Go relay inside the daemon SELF.
 set -euo pipefail
 tool=$(realpath "$1")
 eboot=$(realpath "$2")
 out=$(realpath -m "$3")
+mode=${4:-frontend}
 here=$(cd "$(dirname "$0")" && pwd)
 test -s "$eboot"
 mkdir -p "$out"
@@ -15,6 +16,17 @@ cp "$eboot" "$stage/eboot.bin"
 title_id=BREW00127
 content_id=IV0000-BREW00127_00-PS4TAILSCALE0000
 title='PS4 Tailscale Frontend'
+filename=PS4-Tailscale-Frontend-TEST.pkg
+if [[ "$mode" == runtime ]]; then
+  relay=$(realpath "${5:?original Go relay image required}")
+  title_id=BREW00128
+  content_id=IV0000-BREW00128_00-PS4TAILSCALE0000
+  title='PS4 Tailscale Runtime Test'
+  filename=PS4-Tailscale-Runtime-EXPERIMENTAL.pkg
+  /usr/bin/python3 "$here/verify-embedded-runtime.py" "$eboot" "$relay"
+elif [[ "$mode" != frontend ]]; then
+  exit 2
+fi
 pkgtool(){ dotnet "$tool" "$@"; }
 sfo="$stage/sce_sys/param.sfo"
 pkgtool sfo_new "$sfo"
@@ -32,7 +44,7 @@ str TITLE_ID 12 "$title_id"
 pkgtool sfo_listentries "$sfo" | tee "$out/param-sfo.txt"
 grep -F "$content_id" "$out/param-sfo.txt"
 grep -F "$title" "$out/param-sfo.txt"
-/usr/bin/python3 "$here/package-assets.py" "$stage" "$content_id"
+/usr/bin/python3 "$here/package-assets.py" "$stage" "$content_id" "$mode"
 pkgtool pkg_build "$stage/project.gp4" "$work"
 pkg="$work/$content_id.pkg"
 test -s "$pkg"
@@ -40,11 +52,16 @@ test -s "$pkg"
 test "$(od -An -tx1 -N4 "$pkg" | tr -d ' \n')" = 7f434e54
 pkgtool pkg_listentries "$pkg" | tee "$out/pkg-entries.txt"
 pkgtool pkg_extract --passcode 00000000000000000000000000000000 "$pkg" "$work/extracted"
-# Round trip the executable. No fixture data or research runtime is bundled.
+# Round trip the executable, then check the actual embedded runtime again.
 found=$(find "$work/extracted" -type f -name eboot.bin -print -quit)
 test -n "$found"
 cmp "$eboot" "$found"
-cp "$pkg" "$out/PS4-Tailscale-Frontend-TEST.pkg"
-(cd "$out" && sha256sum PS4-Tailscale-Frontend-TEST.pkg > SHA256SUMS)
+if [[ "$mode" == runtime ]]; then
+  /usr/bin/python3 "$here/verify-embedded-runtime.py" "$found" "$relay" | tee "$out/embedded-runtime.txt"
+  printf '%s\n' 'PKG contains the real Go Tailscale daemon and native launcher.' 'Runtime startup, authentication, background operation and hardware 14.02 compatibility remain unverified. Experimental only; do not install on production console.' >"$out/BUILD-STATUS.txt"
+else
 printf '%s\n' 'PKG container verified; extracted eboot matches live frontend.' 'Native Tailscale daemon not included; hardware 14.02 installation untested.' >"$out/BUILD-STATUS.txt"
+fi
+cp "$pkg" "$out/$filename"
+(cd "$out" && sha256sum "$filename" > SHA256SUMS)
 cat "$out/BUILD-STATUS.txt"

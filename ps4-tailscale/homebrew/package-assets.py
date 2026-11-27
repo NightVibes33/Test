@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 root = Path(sys.argv[1])
 cid = sys.argv[2]
+mode = sys.argv[3] if len(sys.argv) > 3 else "frontend"
 im = Image.new("RGB", (512, 512), "#101827")
 d = ImageDraw.Draw(im)
 d.rounded_rectangle((28,28,484,484), radius=70, fill="#192538", outline="#55a9ff", width=5)
@@ -17,7 +18,7 @@ for y in range(3):
 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
 small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
 d.text((256, 375), "PS4 TAILNET", anchor="mm", font=font, fill="#f1f5f9")
-d.text((256, 429), "FRONTEND TEST", anchor="mm", font=small, fill="#94a3b8")
+d.text((256, 429), ("RUNTIME TEST" if mode == "runtime" else "FRONTEND TEST"), anchor="mm", font=small, fill="#94a3b8")
 im.save(root/"sce_sys/icon0.png")
 project = ET.Element("psproject", fmt="gp4", version="1000")
 volume = ET.SubElement(project, "volume")

@@ -90,3 +90,10 @@ shadPS4 is not a full PS4 kernel. The native daemon launcher is NOT an
 installation release. Background operation during a game remains unproven.
 Do not install these unvalidated runtime launchers on 14.02. The old frontend
 PKG is only a UI test, not the final app.
+
+The current CI package-runtime job supersedes package-frontend. It takes the
+actual daemon launcher (not map-only or fixture), verifies that the complete
+Go relay is embedded byte-for-byte, round-trips the PKG, and repeats the
+embedded-runtime check on the extracted SELF. The separate title ID avoids
+replacing the previous UI-only test. It is still experimental: mapping success
+is not proof of working native Go execution or background service support.
