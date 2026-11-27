@@ -24,7 +24,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: byetunes-standalone/Vendor/PairingRuntime
-          key: mp3-pairing-v1-${{ runner.os }}-${{ runner.arch }}-xcode26.2-${{ hashFiles('byetunes-standalone/scripts/build-pairing-runtime.sh') }}
+          key: mp3-pairing-rust198-v2-${{ runner.os }}-${{ runner.arch }}-xcode26.2-${{ hashFiles('byetunes-standalone/scripts/build-pairing-runtime.sh') }}
       - name: Stage MP3 Skull custom sources and compile pairing runtime
         run: |
           set -o pipefail

@@ -5,20 +5,34 @@ OUT="$ROOT/Vendor/PairingRuntime"
 PIN=a8dc7e48b13e130e69c28269a43fc4a8b456952a
 SRC="$ROOT/.theos/pairing-source"
 TARGET=aarch64-apple-ios
+RUST_TOOLCHAIN=1.98.0
+# Use the LLVM tools shipped with the exact Rust compiler producing the archive.
+# Apple nm in Xcode 26.2 cannot decode LLVM 22 attributes.
+rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component llvm-tools-preview --target "$TARGET"
+RUST_HOST="$(rustc +"$RUST_TOOLCHAIN" -vV | sed -n 's/^host: //p')"
+RUST_SYSROOT="$(rustc +"$RUST_TOOLCHAIN" --print sysroot)"
+LLVM_NM="$RUST_SYSROOT/lib/rustlib/$RUST_HOST/bin/llvm-nm"
+test -x "$LLVM_NM"
+"$LLVM_NM" --version
 
 verify_runtime() {
-  test -s "$OUT/lib/libairlift_ffi.a"
-  test -s "$OUT/include/idevice.h"
-  test -s "$OUT/include/AirliftFFI/airlift.h"
-  test "$(cat "$OUT/SOURCE_REVISION")" = "$PIN"
-  xcrun lipo "$OUT/lib/libairlift_ffi.a" -verify_arch arm64
+  test -s "$OUT/lib/libairlift_ffi.a" || return 1
+  test -s "$OUT/include/idevice.h" || return 1
+  test -s "$OUT/include/AirliftFFI/airlift.h" || return 1
+  test "$(cat "$OUT/SOURCE_REVISION")" = "$PIN" || return 1
+  test "$(cat "$OUT/RUST_TOOLCHAIN")" = "$RUST_TOOLCHAIN" || return 1
+  xcrun lipo "$OUT/lib/libairlift_ffi.a" -verify_arch arm64 || return 1
   local symbols
   symbols="$(mktemp)"
-  xcrun nm -gU "$OUT/lib/libairlift_ffi.a" > "$symbols"
+  if ! "$LLVM_NM" --extern-only --defined-only --no-demangle --format=posix "$OUT/lib/libairlift_ffi.a" > "$symbols"; then
+    rm -f "$symbols"
+    echo "Rust-matched LLVM symbol inspection failed" >&2
+    return 1
+  fi
   for symbol in al_pairing_run_host al_pairing_result_free rp_pairing_file_read tunnel_create_rppairing afc_client_connect_rsd notification_proxy_connect_rsd; do
-    grep -Eq "[[:space:]]_$symbol$" "$symbols" || { echo "Missing runtime symbol $symbol" >&2; rm -f "$symbols"; return 1; }
+    grep -Eq "^_?$symbol[[:space:]]" "$symbols" || { echo "Missing runtime symbol $symbol" >&2; rm -f "$symbols"; return 1; }
   done
-  if grep -Eq '[[:space:]]_al_(exploit_|passthm_|zip_extract_|find_app_container|list_app_containers|device_respring|syslog_stream_)' "$symbols"; then
+  if grep -Eq '^_?al_(exploit_|passthm_|zip_extract_|find_app_container|list_app_containers|device_respring|syslog_stream_)' "$symbols"; then
     echo "Unexpected unrelated Airlift API in pairing-only archive" >&2
     rm -f "$symbols"
     return 1
@@ -65,13 +79,13 @@ PY
 export SDKROOT="$(xcrun --sdk iphoneos --show-sdk-path)"
 export IPHONEOS_DEPLOYMENT_TARGET=17.0
 export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="$(xcrun --sdk iphoneos --find clang)"
-rustup target add "$TARGET"
-(cd "$CORE" && cargo build --release --target "$TARGET")
+(cd "$CORE" && CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_DEBUG=0 RUSTFLAGS="-C embed-bitcode=no" cargo +"$RUST_TOOLCHAIN" build --release --target "$TARGET")
 mkdir -p "$OUT/lib" "$OUT/include/AirliftFFI"
 cp "$CORE/target/$TARGET/release/libairlift_ffi.a" "$OUT/lib/"
 cp "$CORE/vendor/idevice-ffi/idevice.h" "$OUT/include/idevice.h"
 cp "$CORE/include/airlift.h" "$OUT/include/AirliftFFI/"
 printf 'module AirliftFFI { header "airlift.h" export * }\n' > "$OUT/include/AirliftFFI/module.modulemap"
 printf '%s\n' "$PIN" > "$OUT/SOURCE_REVISION"
+printf '%s\n' "$RUST_TOOLCHAIN" > "$OUT/RUST_TOOLCHAIN"
 verify_runtime
 echo "PASS: one pairing-only archive, matching idevice header, required transport symbols, no unrelated Airlift exports"
