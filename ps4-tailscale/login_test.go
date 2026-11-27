@@ -24,3 +24,11 @@ func TestConsoleScreenProtocol(t *testing.T){
  s.update("Running","","100.64.0.1");s.setReady(true);w=httptest.NewRecorder();s.handler().ServeHTTP(w,r)
  if w.Body.String()!="PS4TS1\nRunning\n100.64.0.1\n1\n0\n"{t.Fatal(w.Body.String())}
 }
+
+func TestUpstreamDashboardPort(t *testing.T){
+ s:=&loginStatus{state:"Running",ip:"100.64.0.1",ready:true,hostname:"ps4-remoteplay",peers:[]peerView{{Name:"<script>bad</script>",IP:"100.64.0.2",OS:"iOS",Online:true}}}
+ r:=httptest.NewRequest("GET","http://127.0.0.1:8090/",nil);w:=httptest.NewRecorder();s.handler().ServeHTTP(w,r)
+ body:=w.Body.String()
+ for _,want:=range []string{"TailScale on PS4","Devices on your tailnet","100.64.0.2","Connected","&lt;script&gt;bad&lt;/script&gt;"}{if !strings.Contains(body,want){t.Fatal("missing "+want)}}
+ if strings.Contains(body,"<script>bad</script>")||strings.Contains(body,"/qr.png"){t.Fatal("unsafe or stale content")}
+}

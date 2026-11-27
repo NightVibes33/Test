@@ -105,3 +105,13 @@ b12728a809e132ce1ad0ba93ae2bed131907663a, verified by its Git blob hash.
 This is an unofficial experimental PS4 port, not an official Tailscale release.
 Tailscale branding belongs to its owner; native runtime execution on 14.02
 remains unverified. Package contents are unchanged by the branding update.
+
+## PS5 dashboard port
+The original upstream status.html (be639c6) provides the CSS, panel ordering,
+state dot, facts, QR panel, and devices table for the PS4 local web status page.
+The OpenOrbis frontend renders a native adaptation of the same dark palette
+and login layout. The web UI uses actual local-client peer data and never
+displays a fixture as a real login. The browser dashboard remains bound to
+127.0.0.1; the console uses its native view. PS5-specific privileged settings,
+self-update, uninstall, proxy, Wake-on-LAN and arbitrary forwarding controls
+are not exposed because their PS4 backends have not been implemented.

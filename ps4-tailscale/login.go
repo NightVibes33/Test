@@ -3,6 +3,8 @@ package main
 
 import (
  "context"
+ _ "embed"
+ "sort"
  "fmt"
  "html/template"
  "log"
@@ -20,9 +22,26 @@ import (
 type loginStatus struct {
  mu sync.RWMutex
  state,auth,ip string
+ hostname,tailnet string
+ peers []peerView
  ready bool
 }
-type statusView struct { State, Auth, IP string; Ready bool }
+type peerView struct { Name, IP, OS string; Online bool }
+type statusView struct { State, Auth, IP string; Ready bool; Hostname, Tailnet string; Peers []peerView }
+func(v statusView) Label()string{
+ switch v.State {
+ case "Running": if v.Ready{return "Connected"};return "Connected - starting relay"
+ case "NeedsLogin":return "Log in required"
+ case "NeedsMachineAuth":return "Device approval required"
+ case "Stopped":return "Stopped"
+ case "Starting":return "Starting"
+ default:return "Connecting"
+ }
+}
+func(s *loginStatus)view()statusView{
+ s.mu.RLock();defer s.mu.RUnlock()
+ return statusView{State:s.state,Auth:s.auth,IP:s.ip,Ready:s.ready&&s.state=="Running",Hostname:s.hostname,Tailnet:s.tailnet,Peers:append([]peerView(nil),s.peers...)}
+}
 func(s *loginStatus)setReady(v bool){s.mu.Lock();s.ready=v;s.mu.Unlock()}
 func(s *loginStatus)update(state,auth,ip string){
  if !validLoginURL(auth)||state=="Running"{auth=""}
@@ -49,11 +68,29 @@ func monitorLogin(ctx context.Context,lc *local.Client,s *loginStatus){
   if err==nil{
    ip:="";for _,a:=range st.TailscaleIPs{if a.Is4(){ip=a.String();break}}
    s.update(st.BackendState,st.AuthURL,ip)
+   peers:=make([]peerView,0,len(st.Peer))
+   if st.BackendState=="Running"{
+    for _,p:=range st.Peer{
+     if p==nil{continue}
+     addr:="";for _,a:=range p.TailscaleIPs{if a.Is4(){addr=a.String();break}}
+     name:=p.HostName;if name==""{name=strings.TrimSuffix(p.DNSName,".")}
+     peers=append(peers,peerView{Name:name,IP:addr,OS:p.OS,Online:p.Online})
+    }
+    sort.Slice(peers,func(i,j int)bool{return peers[i].Name<peers[j].Name})
+    if len(peers)>256{peers=peers[:256]}
+   }
+   s.mu.Lock()
+   if st.Self!=nil{s.hostname=st.Self.HostName}
+   s.tailnet="";if st.CurrentTailnet!=nil&&st.BackendState=="Running"{s.tailnet=st.CurrentTailnet.Name}
+   s.peers=peers
+   s.mu.Unlock()
   }else if ctx.Err()==nil{s.update("Connecting","","")}
   select{case <-ctx.Done():return;case <-t.C:}
  }
 }
-var statusHTML=template.Must(template.New("status").Parse(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="5"><title>PS4 Tailscale</title><style>body{background:#101827;color:#f1f5f9;font:18px system-ui;margin:2rem auto;padding:1rem;max-width:34rem}main{border:1px solid #475569;border-radius:18px;padding:1.5rem}img{display:block;width:min(280px,100%);margin:1rem auto}a{color:#93c5fd}code{color:#86efac}p{line-height:1.5}</style></head><body><main><h1>PS4 Tailscale</h1><p>Connection: {{.State}}</p>{{if .Auth}}<p>Scan using your iPhone Camera to authorize this device.</p><img alt="Tailscale authorization QR" src="/qr.png"><p><a rel="noreferrer" href="{{.Auth}}">Open Tailscale login</a></p>{{end}}{{if .IP}}<p>Tailnet IP: <code>{{.IP}}</code></p>{{end}}{{if .Ready}}<p>Remote Play relay ready. Use the tailnet IP in PXPlay.</p>{{else}}<p>Waiting for relay startup. Device approval may be required.</p>{{end}}<p>Local status only. No network settings are modified.</p></main></body></html>`))
+//go:embed status.html
+var statusSource string
+var statusHTML=template.Must(template.New("status").Parse(statusSource))
 func(s *loginStatus)handler()http.Handler{
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   // Prevent DNS rebinding and cross-origin access to the authorization URL.
@@ -63,7 +100,7 @@ func(s *loginStatus)handler()http.Handler{
   w.Header().Set("Referrer-Policy","no-referrer")
   w.Header().Set("X-Content-Type-Options","nosniff")
   w.Header().Set("Content-Security-Policy","default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'")
-  s.mu.RLock();v:=statusView{State:s.state,Auth:s.auth,IP:s.ip,Ready:s.ready};s.mu.RUnlock()
+  v:=s.view()
   switch r.URL.Path{
   case "/":
    w.Header().Set("Content-Type","text/html; charset=utf-8")

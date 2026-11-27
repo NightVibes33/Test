@@ -61,36 +61,53 @@ static int read_live(Screen *s){
  if(!complete||strncmp(buf,"HTTP/1.",7)||strncmp(buf+9,"200 ",4))return 0;
  const char *body=strstr(buf,"\r\n\r\n");return body&&screen_parse(s,body+4);
 }
+/* Native adaptation of the original PS5 web dashboard's dark theme.
+ * Same panel hierarchy, state dot, facts and centered QR. */
+static void panel(int x,int y,int w,int h){rect(x,y,w,h,0xff30353c);rect(x+1,y+1,w-2,h-2,0xff1e2126);}
+static const char *state_label(const Screen *s,int available){
+ if(!available)return "Not responding";
+ if(!strcmp(s->state,"Running"))return s->ready?"Connected":"Starting relay";
+ if(!strcmp(s->state,"NeedsLogin"))return "Log in required";
+ if(!strcmp(s->state,"NeedsMachineAuth"))return "Device approval required";
+ if(!strcmp(s->state,"Stopped"))return "Stopped";
+ return "Connecting";
+}
 static void draw(const Screen *s,int available){
- rect(0,0,W,H,0xff101827);rect(36,32,1208,656,0xff192538);
- rect(36,32,1208,8,0xff55a9ff);
- text(70,78,4,0xfff1f5f9,"TailScale");
+ const uint32_t fg=0xffe8eaed,muted=0xff9aa1ab,accent=0xff7fa4ff;
+ rect(0,0,W,H,0xff14161a);
+ text(280,26,3,fg,"TailScale on PS4");
 #ifdef UI_FIXTURE
- text(70,144,2,0xffffc46b,"EMULATOR FIXTURE - NOT AUTHENTICATED");
+ text(280,68,2,0xffe0a84a,"EMULATOR FIXTURE - NOT AUTHENTICATED");
 #else
- text(70,144,2,0xff94a3b8,"PRIVATE REMOTE PLAY");
+ text(280,68,2,muted,"Unofficial PS4 port");
 #endif
- rect(70,190,650,350,0xff101827);rect(746,190,462,350,0xff101827);
- text(94,214,2,0xff94a3b8,"CONNECTION");
- text(94,252,3,s->ready?0xff75e0ad:0xffffc46b,available?s->state:"Backend unavailable");
- text(94,316,2,0xff94a3b8,"TAILNET ADDRESS");
- text(94,352,3,0xffe2e8f0,available?s->ip:"-");
- text(94,420,2,0xff94a3b8,"REMOTE PLAY");
- text(94,454,2,0xffe2e8f0,s->ready?"READY - OPEN PXPLAY":"WAITING FOR BACKEND");
+ panel(260,104,760,166);
+ rect(280,128,15,15,s->ready?0xff56c488:available?0xffe0a84a:0xfff0796f);
+ text(308,123,2,fg,state_label(s,available));
+ text(280,169,2,muted,"Tailnet address");
+ text(590,169,2,fg,available?s->ip:"-");
+ text(280,216,2,muted,"Remote Play");
+ text(590,216,2,s->ready?0xff56c488:muted,s->ready?"Relay listening":"Waiting");
+ panel(260,282,760,385);
  if(available&&s->n>0){
-  int k=300/s->n,span=k*s->n,x=977-span/2,y=208;
+  text(588,296,2,muted,"LOG IN");
+  text(345,329,2,fg,"Scan this with your phone to log in");
+  int k=240/s->n,span=k*s->n,x=640-span/2,y=370;
   rect(x,y,span,span,0xffffffff);
   for(int j=0;j<s->n;j++)for(int i=0;i<s->n;i++)if(s->cells[j][i])rect(x+i*k,y+j*k,k,k,0xff000000);
 #ifdef UI_FIXTURE
-  text(783,512,2,0xffffc46b,"DEMO QR - DO NOT SCAN");
+  text(451,626,2,0xffe0a84a,"DEMO QR - DO NOT SCAN");
 #else
-  text(795,512,2,0xffe2e8f0,"SCAN WITH IPHONE");
+  text(433,626,2,accent,"Open Tailscale on iPhone");
 #endif
  }else{
-  text(782,300,2,0xff94a3b8,s->ready?"LOGIN COMPLETE":"NO LOGIN QR YET");
+  text(280,304,2,muted,"REMOTE PLAY");
+  text(280,346,2,fg,s->ready?"Use your tailnet address in PXPlay.":"Waiting for Tailscale startup.");
+  text(280,396,2,muted,"What this does, and what it does not");
+  text(280,435,2,fg,"Private Remote Play, not a full VPN.");
+  text(280,475,2,fg,"Normal internet settings are unchanged.");
+  text(280,560,2,muted,"Hardware runtime remains unverified.");
  }
- text(72,580,2,0xff94a3b8,"NO PSN LOGIN OR PUBLIC PORT FORWARDING");
- text(72,625,2,0xff94a3b8,"LOCAL STATUS UI - NETWORK SETTINGS UNCHANGED");
 }
 #ifdef EMBED_RUNTIME
 int frontend_main(void){

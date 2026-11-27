@@ -1,0 +1,156 @@
+<!doctype html>
+<!-- Adapted from holdmysocks/ps5-tailscale tsd/status.html, be639c6.
+     GPL-3.0-or-later; see LICENSE. Original upstream CSS preserved. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="5">
+<title>TailScale on PS4</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --text: #1c1e21; --muted: #646a73;
+    --line: #dfe2e6; --accent: #2f5fd0; --ok: #1f8a4c; --warn: #b26a00; --bad: #c0362c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --panel: #1e2126; --text: #e8eaed; --muted: #9aa1ab;
+      --line: #30353c; --accent: #7fa4ff; --ok: #56c488; --warn: #e0a84a; --bad: #f0796f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2, summary .heading { font-size: 15px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  h2 { margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  .banner { border-color: var(--accent); }
+  .state { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 600; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 14px 0 0; }
+  dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+  code { font: 14px ui-monospace, SFMono-Regular, Consolas, monospace; }
+  a { color: var(--accent); }
+  .login { text-align: center; }
+  .login img { width: 240px; height: 240px; image-rendering: pixelated; background: #fff; padding: 8px; border-radius: 8px; }
+  .login .url { display: block; margin: 12px 0 4px; font-size: 18px; overflow-wrap: anywhere; }
+  .msg { color: var(--bad); margin: 12px 0 0; overflow-wrap: anywhere; }
+  .okmsg { color: var(--ok); margin: 12px 0 0; overflow-wrap: anywhere; }
+  .health { color: var(--warn); margin: 12px 0 0; padding-left: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px 8px 0; }
+  td { padding: 7px 8px 7px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  td.off { color: var(--muted); }
+  /* Names may wrap anywhere; addresses, OS and status stay in one piece. */
+  #peers td:nth-child(n+2), th { white-space: nowrap; overflow-wrap: normal; }
+  code.copy { cursor: pointer; border-bottom: 1px dotted var(--muted); }
+  code.copy:hover, code.copy:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+  code.copy.done { color: var(--ok); border-bottom-color: transparent; }
+  @media (max-width: 480px) {
+    #peers code { font-size: 12.5px; } table { font-size: 14px; }
+    /* Label above value, so that names and addresses get the full width. */
+    dl { grid-template-columns: 1fr; gap: 0; }
+    dt { font-size: 13px; margin-top: 10px; }
+    /* The device gets a line of its own; port, protocol and Remove share the next. */
+    .fwd .hostrow { flex-wrap: wrap; }
+    .fwd .hostrow .host { flex: 1 1 100%; }
+    #wakerows .host, #wakerows .mac { flex: 1 1 100%; }
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  button {
+    font: inherit; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.danger { color: var(--bad); }
+  button.small { padding: 6px 10px; font-size: 14px; }
+  pre { margin: 0; max-height: 320px; overflow: auto; font: 12.5px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  details summary { cursor: pointer; color: var(--muted); }
+  summary .count { font-size: 14px; margin-left: 8px; }
+  summary .count { white-space: nowrap; }
+  details[open] > table, details[open] > form { margin-top: 12px; }
+  .note { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); margin-bottom: 14px; }
+  label.check { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); width: 100%;
+  }
+  textarea { font: 14px ui-monospace, Consolas, monospace; min-height: 70px; resize: vertical; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 12px; }
+  .filters input[type=search] {
+    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); flex: 1 1 200px; min-width: 0;
+  }
+  .filters label.check { margin: 0; font-size: 14px; }
+  tr.group td { color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding-top: 14px; border-top: 0; }
+  td .tag { display: block; color: var(--muted); font-size: 13px; }
+  .hostrow { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .hostrow .host { flex: 3; min-width: 0; }
+  .hostrow .port { flex: 1; min-width: 90px; }
+  .hostrow select { flex: 0 0 auto; width: auto; }
+  .fwd { margin-bottom: 12px; }
+  .fwd .hostrow { margin-bottom: 4px; }
+  .fwd .use { font-size: 14px; color: var(--muted); }
+  button.link { border: 0; padding: 0; background: none; color: var(--accent); font-size: inherit; text-decoration: underline; cursor: pointer; }
+  ul.about { margin: 12px 0 0; padding-left: 20px; }
+  ul.about li { margin-bottom: 8px; }
+  .hostrow .mac { flex: 2; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
+  .result { font-size: 14px; color: var(--muted); }
+  .result.good { color: var(--ok); } .result.bad { color: var(--bad); }
+  .hidden { display: none; }
+</style>
+</head>
+<body><main>
+  <h1>TailScale on PS4</h1>
+  <p class="sub">Unofficial PS4 port · Runtime development</p>
+  <section class="panel">
+    <div class="state"><span class="dot {{if .Ready}}ok{{else}}warn{{end}}"></span><span>{{.Label}}</span></div>
+    <dl>
+      <dt>Name</dt><dd>{{.Hostname}}</dd>
+      {{if .IP}}<dt>Tailnet address</dt><dd><code>{{.IP}}</code></dd>{{end}}
+      {{if .Tailnet}}<dt>Tailnet</dt><dd>{{.Tailnet}}</dd>{{end}}
+      <dt>Remote Play</dt><dd>{{if .Ready}}Relay listening{{else}}Waiting for relay startup{{end}}</dd>
+      <dt>Reachable from tailnet</dt><dd>TCP 9295; UDP 9295, 9296, 9297, 987</dd>
+    </dl>
+  </section>
+  <section class="panel"><details {{if .Auth}}open{{end}}>
+    <summary><span class="heading">What this does, and what it does not</span></summary>
+    <ul class="about">
+      <li>Private Remote Play relay to your PS4 through your own tailnet.</li>
+      <li>Not a full VPN. Games, PSN and the browser keep using the normal internet connection.</li>
+      <li>Native runtime and gameplay coexistence on PS4 hardware still require validation.</li>
+    </ul>
+  </details></section>
+  {{if .Auth}}
+  <section class="panel login">
+    <h2>Log in</h2>
+    <p>Scan this with your phone, or open the link on any device, to add this PS4 to your tailnet.</p>
+    <img alt="QR code for the login link" src="/qr.png">
+    <a class="url" href="{{.Auth}}" rel="noreferrer noopener">{{.Auth}}</a>
+  </section>
+  {{end}}
+  {{if .Peers}}
+  <section class="panel">
+    <details open><summary><span class="heading">Devices on your tailnet</span><span class="count">{{len .Peers}}</span></summary>
+      <table><thead><tr><th>Name</th><th>Address</th><th>OS</th><th>Status</th></tr></thead>
+      <tbody id="peers">{{range .Peers}}<tr><td>{{.Name}}</td><td><code>{{.IP}}</code></td><td>{{.OS}}</td><td {{if not .Online}}class="off"{{end}}>{{if .Online}}online{{else}}offline{{end}}</td></tr>{{end}}</tbody></table>
+    </details>
+  </section>
+  {{end}}
+  <section class="panel">
+    <h2>Remote Play</h2>
+    <p class="note">{{if .Ready}}Use the tailnet address in your registered Remote Play client. Relay readiness does not confirm a successful stream.{{else}}Log in and approve this device if required.{{end}}</p>
+  </section>
+  <section class="panel"><details><summary><span class="heading">Settings</span></summary>
+    <p class="note">This build uses fixed Remote Play ports and a local-only status page. PS5-specific settings, automatic updates, uninstall and other services are not available in this port.</p>
+  </details></section>
+</main></body></html>
