@@ -21,7 +21,7 @@ for filename, marker in [
 ]:
     def add(s):
         indent=marker[:len(marker)-len(marker.lstrip())]
-        return once(s,marker,indent+"StandalonePairingImport(manager: manager)\n"+indent+"Text(onDevicePairing.status).font(.caption).foregroundColor(.secondary)\n\n"+marker)
+        return once(s,marker,indent+"StandalonePairingEntry(manager: manager)\n"+indent+"Text(onDevicePairing.status).font(.caption).foregroundColor(.secondary)\n\n"+marker)
     edit(app/filename,add)
 
 edit(app/"OnboardingView.swift",lambda s:s.replace('Text("Music Library")','Text("ByeTunes")').replace("Tap Pair This iPhone below","Pair This iPhone on iOS 27+, or import your pairing file"))
@@ -57,6 +57,6 @@ with info.open("wb") as f: plistlib.dump(data,f)
 ent=app/"MusicManager.entitlements"
 with ent.open("wb") as f: plistlib.dump({},f)
 assert "ByeTunesOnDevicePairingController" in (app/"OnboardingView.swift").read_text()
-assert "StandalonePairingImport" in (app/"SettingsView.swift").read_text()
+assert "StandalonePairingEntry" in (app/"SettingsView.swift").read_text()
 assert "@main" in (app/"MusicManagerApp.swift").read_text()
 print("Standalone source staged; custom pairing, metadata, album colors and app lifecycle present.")
