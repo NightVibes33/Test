@@ -102,10 +102,7 @@ for dirname,images in [
 ]:
     folder=app/"Assets.xcassets"/dirname
     for old in folder.glob("*.png"): old.unlink()
-    from PIL import Image
-    with Image.open(icon) as source:
-        assert source.size == (1254, 1254), source.size
-        source.convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS).save(folder/"MP3-Skull.png", format="PNG")
+    subprocess.run([sys.executable,"scripts/prepare-icon.py",str(icon),str(folder/"MP3-Skull.png")],check=True)
     (folder/"Contents.json").write_text(json.dumps({"images":images,"info":{"author":"xcode","version":1}},indent=2)+"\n")
 assert '"MP3 Skull".withCString' in (app/"ByeTunesOnDevicePairing.swift").read_text()
 assert "Pair with MP3 Skull" in (app/"StandalonePairingImport.swift").read_text()
