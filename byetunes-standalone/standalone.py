@@ -178,7 +178,20 @@ path.write_text(text)
 path=app/"SettingsView.swift"
 text=path.read_text()
 text=once(text,'Link(destination: URL(string: "https://www.icloud.com/shortcuts/49de36f87bf44b21a38056d3c33e41fe")!) {','Link(destination: URL(string: "shortcuts://")!) {')
-text=once(text,'Text("Add MP3 Skull Shortcut")\n                                    .font(.body)\n                                    .foregroundColor(.primary)','VStack(alignment: .leading, spacing: 4) {\n                                    Text("Add MP3 Skull Shortcut")\n                                        .font(.body)\n                                        .foregroundColor(.primary)\n                                    Text("In Shortcuts, choose MP3 Skull → Add Music to Library.")\n                                        .font(.caption)\n                                        .foregroundColor(.secondary)\n                                }')
+# Filza's parity patch already renamed the upstream shortcut to Add Music Library Shortcut.
+# Accept either staged spelling, independently of formatting.
+shortcut_label_pattern=r'Text\("(?:Add Music Library Shortcut|Add MP3 Skull Shortcut|Add ByeTunes Shortcut)"\)\s*\.font\(\.body\)\s*\.foregroundColor\(\.primary\)'
+shortcut_label='''VStack(alignment: .leading, spacing: 4) {
+                                    Text("Add MP3 Skull Shortcut")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    Text("In Shortcuts, choose MP3 Skull → Add Music to Library.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }'''
+text,n=re.subn(shortcut_label_pattern,lambda _: shortcut_label,text)
+assert n==1, ("native shortcut row",n)
+assert 'Text("Add MP3 Skull Shortcut")' in text
 # Make status rows fit at narrow sizes and large text settings.
 text=text.replace('Text("Refresh")\n                                        .font(.caption.weight(.semibold))','Text("Refresh")\n                                        .font(.caption.weight(.semibold))\n                                        .fixedSize(horizontal: true, vertical: false)')
 assert "49de36f87bf44b21a38056d3c33e41fe" not in text
