@@ -94,7 +94,7 @@ void native_init(void){
  pthread_t th;if(pthread_create(&th,NULL,menu_worker,NULL)==0){pthread_detach(th);load(0);}else snprintf(message,sizeof(message),"Network worker unavailable");
 }
 int native_page(void){return page;}
-void native_tick(int available){
+void native_tick(int qr_present){
  pthread_mutex_lock(&lock);if(result[0]){snprintf(message,sizeof(message),"%s",result);result[0]=0;wanted_page=page;}if(!editing&&!confirm&&pending_page==page){memcpy(rows,pending_rows,sizeof(rows));n=pending_n;pending_page=-1;if(selected>=n)selected=n?n-1:0;}int blocked=busy;pthread_mutex_unlock(&lock);
  uint32_t b=0;OrbisPadData d;memset(&d,0,sizeof(d));if(handle>=0&&scePadReadState(handle,&d)>=0)b=d.buttons;uint32_t hit=b&~last;last=b;
  if(page==0&&!editing&&!confirm&&(hit&ORBIS_PAD_BUTTON_OPTIONS)){qr_visible=!qr_visible;return;}
@@ -104,16 +104,16 @@ void native_tick(int available){
   if(hit&ORBIS_PAD_BUTTON_DOWN)letter=(letter+(int)sizeof(alphabet)-2)%(sizeof(alphabet)-1);
   if(hit&ORBIS_PAD_BUTTON_CROSS&&len<240){edit[len]=alphabet[letter];edit[len+1]=0;}
   if(hit&ORBIS_PAD_BUTTON_SQUARE&&len)edit[len-1]=0;
-  if(hit&ORBIS_PAD_BUTTON_TRIANGLE){execute(rows[selected].id,edit,available);memset(edit,0,sizeof(edit));editing=0;load(available);}
+  if(hit&ORBIS_PAD_BUTTON_TRIANGLE){execute(rows[selected].id,edit,qr_present);memset(edit,0,sizeof(edit));editing=0;load(qr_present);}
   if(hit&ORBIS_PAD_BUTTON_CIRCLE){memset(edit,0,sizeof(edit));editing=0;}return;
  }
- if(confirm){if(hit&ORBIS_PAD_BUTTON_CROSS){execute(rows[selected].id,"",available);confirm=0;load(available);}if(hit&ORBIS_PAD_BUTTON_CIRCLE)confirm=0;return;}
- if(hit&ORBIS_PAD_BUTTON_R1){page=(page+1)%9;selected=0;n=0;load(available);}
- if(hit&ORBIS_PAD_BUTTON_L1){page=(page+8)%9;selected=0;n=0;load(available);}
+ if(confirm){if(hit&ORBIS_PAD_BUTTON_CROSS){execute(rows[selected].id,"",qr_present);confirm=0;load(qr_present);}if(hit&ORBIS_PAD_BUTTON_CIRCLE)confirm=0;return;}
+ if(hit&ORBIS_PAD_BUTTON_R1){page=(page+1)%9;selected=0;n=0;load(qr_present);}
+ if(hit&ORBIS_PAD_BUTTON_L1){page=(page+8)%9;selected=0;n=0;load(qr_present);}
  if(hit&ORBIS_PAD_BUTTON_UP&&selected>0)selected--;
  if(hit&ORBIS_PAD_BUTTON_DOWN&&selected+1<n)selected++;
- if(hit&ORBIS_PAD_BUTTON_CROSS&&n&&!blocked&&!(page==0&&qr_visible&&!available&&n>0&&strcmp(rows[0].label,"Daemon unavailable"))){Row *r=&rows[selected];if(r->kind=='e'){snprintf(edit,sizeof(edit),"%s",r->value);letter=0;editing=1;}else if(r->kind=='a')confirm=1;}
- if(++refresh>=180){refresh=0;load(available);}
+ if(hit&ORBIS_PAD_BUTTON_CROSS&&n&&!blocked&&!(page==0&&qr_visible&&!qr_present&&n>0&&strcmp(rows[0].label,"Daemon unqr_present"))){Row *r=&rows[selected];if(r->kind=='e'){snprintf(edit,sizeof(edit),"%s",r->value);letter=0;editing=1;}else if(r->kind=='a')confirm=1;}
+ if(++refresh>=180){refresh=0;load(qr_present);}
 }
 void native_draw(NativeText text,NativeRect rect){
  const uint32_t fg=0xffe8eaed,muted=0xff9aa1ab,blue=0xff7fa4ff;

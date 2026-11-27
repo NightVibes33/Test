@@ -119,3 +119,77 @@ for name,field,val in [("web.go","SunshineHosts","hosts"),("web.go","Forwards","
     d.mu.Unlock()''')
 
 patch("config.go",'import (','import (\n "path/filepath"')
+
+# Test adaptation is intentional: the original suite still runs independently.
+patch("access_test.go",'// With the default setting nothing is asked and everything is allowed.','// PS4 defaults to owner-only; explicit all still respects tailnet ACLs.')
+patch("access_test.go",'''if !d.allowedFrom(netip.MustParseAddr("100.64.0.9")) {
+		t.Error("the default setting turned a device away")
+	}''','''if d.allowedFrom(netip.MustParseAddr("100.64.0.9")) {
+        t.Error("unknown peer allowed by default")
+    }
+    d.cfg.AllowFrom = accessAll
+    if !d.allowedFrom(netip.MustParseAddr("100.64.0.9")) { t.Error("explicit all rejected peer") }''')
+# The upstream test's recorder was shared between TCP and UDP goroutines.
+patch("localforward_test.go",'"strings"','"strings"\n "sync"')
+patch("localforward_test.go",'var dialed []string','var dialed []string\n var dialMu sync.Mutex')
+patch("localforward_test.go",'dialed = append(dialed, network+" "+addr)','dialMu.Lock(); dialed = append(dialed, network+" "+addr); dialMu.Unlock()')
+patch("localforward_test.go",'if got := strings.Join(dialed, ","); got != want {','dialMu.Lock(); got := strings.Join(dialed, ","); dialMu.Unlock()\n if got != want {')
+# No remote browser service or high-priority PS5 scheduler on this platform.
+# Replace the incompatible behavioral tests, not their security coverage.
+def replace_test(name, func, next_func, body):
+    p=dst/name
+    text=p.read_text()
+    start=text.index("func "+func+"(")
+    end=text.index("func "+next_func+"(",start)
+    p.write_text(text[:start]+body+"\n\n"+text[end:])
+replace_test("settings_test.go","TestPasswordProtection","TestStateChangesNeedHeader",'''func TestPasswordProtection(t *testing.T) {
+    d := newTestDaemon(t)
+    h := d.webHandler()
+    for _, remote := range []string{"192.168.1.20:5000","100.64.0.9:5000"} {
+        for _, path := range []string{"/native?page=0","/screen.txt","/api/status","/api/config","/"} {
+            r := httptest.NewRequest("GET","http://127.0.0.1:8090"+path,nil)
+            r.RemoteAddr=remote; r.Header.Set("X-PS4-Native","1")
+            w:=httptest.NewRecorder();h.ServeHTTP(w,r)
+            if w.Code!=403 { t.Fatalf("remote access %s %s: %d",remote,path,w.Code) }
+        }
+    }
+    for _, path:=range []string{"/","/api/config","/api/quit","/api/auth","/qr.png"} {
+        r:=httptest.NewRequest("POST","http://127.0.0.1:8090"+path,nil)
+        r.RemoteAddr="127.0.0.1:1";r.Header.Set("X-PS4-Native","1")
+        w:=httptest.NewRecorder();h.ServeHTTP(w,r)
+        if w.Code!=404 { t.Fatalf("obsolete browser route %s: %d",path,w.Code) }
+    }
+}''')
+replace_test("settings_test.go","TestSettingsRoundTrip","TestConfigMigration",'''func TestSettingsRoundTrip(t *testing.T) {
+    d:=newTestDaemon(t); d.cfg.ReceiveDir=filepath.Join(dataDir,"received")
+    h:=d.webHandler()
+    call:=func(id,value string) *httptest.ResponseRecorder {
+        r:=httptest.NewRequest("POST","http://127.0.0.1:8090/native",strings.NewReader(id+"\\n"+value))
+        r.RemoteAddr="127.0.0.1:1";r.Header.Set("X-PS4-Native","1")
+        w:=httptest.NewRecorder();h.ServeHTTP(w,r);return w
+    }
+    for _, p:=range [][2]string{{"hostname","living-room-ps4"},{"blocked","9021"},{"udp","9296"},{"access","own"},{"verbose","true"}}{
+        if w:=call(p[0],p[1]);w.Code!=200 {t.Fatalf("%s: %d %s",p[0],w.Code,w.Body)}
+    }
+    cfg,err:=loadConfig(d.cfgPath);if err!=nil{t.Fatal(err)}
+    if cfg.Hostname!="living-room-ps4" || cfg.AllowFrom!=accessOwn || !cfg.Verbose || len(cfg.UDPPorts)!=1 || cfg.UDPPorts[0]!=9296 {t.Fatalf("saved config: %+v",cfg)}
+    for _,p:=range [][2]string{{"hostname","bad name!"},{"udp","9020"},{"proxy","0.0.0.0:8118"},{"proxy","127.0.0.1:8090"},{"receive","/data"},{"password","test"},{"access","bad"}}{
+        if w:=call(p[0],p[1]);w.Code!=400 {t.Fatalf("accepted bad %s: %d %s",p[0],w.Code,w.Body)}
+    }
+    before,_:=os.ReadFile(d.cfgPath);old:=d.cfgPath;d.cfgPath=filepath.Join(old,"missing","config.json")
+    if w:=call("hostname","not-saved");w.Code!=500{t.Fatalf("failed write: %d",w.Code)}
+    after,_:=os.ReadFile(old);if !bytes.Equal(before,after)||d.cfg.Hostname!="living-room-ps4"{t.Fatal("failed write changed config")}
+}''')
+patch("settings_test.go",'''if !cfg.CheckUpdates {
+		t.Error("update checks should default to on for an existing config")
+	}''','''if cfg.CheckUpdates || cfg.WebAddr!="127.0.0.1:8090" {
+        t.Error("legacy PS5 update or listener configuration was retained")
+    }''')
+# Normalize a legacy wildcard listener; never start PS5 updater or priority mode.
+patch("config.go",'if cfg.WebAddr == "" {','if cfg.WebAddr == "" || cfg.WebAddr == ":8090" {')
+patch("config.go",'cfg.normalize()','cfg.normalize()\n cfg.CheckUpdates=false; cfg.PayloadPath=""; cfg.Priority=""')
+# Startup failure is explicit instead of silently substituting configuration defaults.
+patch("main.go",'logf("config: %v (using defaults)", err)','logf("configuration unavailable: %v", err); os.Exit(1)')
+# Keep settings and diagnostics private; constrain received files to a dedicated subtree.
+patch("taildrop.go",'os.MkdirAll(dir, 0o755)','os.MkdirAll(dir, 0o700)')
+patch("taildrop.go",'os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644','os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600')

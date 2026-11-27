@@ -175,3 +175,12 @@ check remains mandatory. Native QR can be toggled with OPTIONS. Configuration
 is saved atomically before publishing and combined forwards are validated.
 CI still cannot prove physical console execution, loader process ownership,
 background survival or live Remote Play; emulator fixtures remain labeled.
+
+### Full-suite fixes
+The original PS5 tests run unchanged before port generation. The adapted
+suite now asserts PS4 owner-only defaults, rejects remote browser access,
+checks native settings round-trip and failed-write preservation, and tests
+migration with PS5 updates disabled. A mutex protects the upstream test's
+TCP/UDP dial recorder. All adapted tests retain race detection. The
+freestanding launcher build runs independently of host tests; packaging
+still depends on both. The hardware release gate remains closed.

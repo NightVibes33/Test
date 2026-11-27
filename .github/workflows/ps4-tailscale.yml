@@ -284,7 +284,7 @@ jobs:
           path: ${{ runner.temp }}/full-daemon/
 
   background-payload:
-    needs: [runtime-research, full-daemon-tests]
+    needs: runtime-research
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

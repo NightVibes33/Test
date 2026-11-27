@@ -155,7 +155,7 @@ int main(void){
 #ifdef UI_FIXTURE
  draw(&s,available);
 #else
- native_tick(available&&s.n==0);
+ native_tick(available&&s.n>0);
  if(native_show_qr()&&available&&s.n>0){draw(&s,available);text(280,680,1,0xff9aa1ab,"OPTIONS: status controls   L1/R1: sections");}
  else native_draw(text,rect);
 #endif

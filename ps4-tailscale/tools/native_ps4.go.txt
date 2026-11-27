@@ -35,6 +35,7 @@ func(d *daemon)nativePage(w http.ResponseWriter,r *http.Request){
   add("r","","Connection",state);add("r","","Name",cfg.Hostname)
   if lc!=nil{if st,e:=d.status(r.Context());e==nil{add("r","","Backend",st.BackendState);if st.Self!=nil{for _,ip:=range st.Self.TailscaleIPs{add("r","","Tailnet address",ip.String())}};for _,h:=range st.Health{add("r","","Health",h)}}}
   add("r","","Remote Play","Use paired client and tailnet IP")
+  if d.udp!=nil{add("r","","Active UDP ports",nativePorts(d.udp.activePorts()))}
   add("a","login","Log in again","");add("a","logout","Log out","");add("a","quit","Stop daemon","")
  case "1":
   if lc!=nil{if st,e:=d.status(r.Context());e==nil{peers,_:=peersFromStatus(st,false);for _,p:=range peers{add("a","ping:"+p.IP,p.Name,p.IP+" "+p.OS+" "+p.Conn)}}}
@@ -78,6 +79,7 @@ func(d *daemon)nativeAction(w http.ResponseWriter,r *http.Request){
  b,e:=io.ReadAll(http.MaxBytesReader(w,r.Body,4096));if e!=nil{http.Error(w,"invalid body",400);return}
  id,val,ok:=strings.Cut(string(b),"\n");if !ok||len(id)>80||len(val)>240{http.Error(w,"invalid command",400);return}
  nativeMutation.Lock();defer nativeMutation.Unlock()
+ if d.fwd==nil{http.Error(w,"daemon initializing",503);return}
  d.mu.Lock();cfg:=d.cfg;d.mu.Unlock()
  // Reuse upstream validation and persistence, never duplicate protocol logic.
  invoke:=func(h http.HandlerFunc,query string,v any){
