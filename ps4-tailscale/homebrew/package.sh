@@ -21,8 +21,8 @@ if [[ "$mode" == runtime ]]; then
   relay=$(realpath "${5:?original Go relay image required}")
   title_id=BREW00128
   content_id=IV0000-BREW00128_00-PS4TAILSCALE0000
-  title='PS4 Tailscale Runtime Test'
-  filename=PS4-Tailscale-Runtime-EXPERIMENTAL.pkg
+  title='TailScale'
+  filename=TailScale.pkg
   /usr/bin/python3 "$here/verify-embedded-runtime.py" "$eboot" "$relay"
 elif [[ "$mode" != frontend ]]; then
   exit 2

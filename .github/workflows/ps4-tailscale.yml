@@ -239,11 +239,13 @@ jobs:
       - name: Build and round-trip verify embedded daemon PKG
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pil fonts-dejavu-core
+          sudo apt-get install -y python3-pil
+          curl -fL --retry 3 https://raw.githubusercontent.com/tailscale/tailscale-android/b12728a809e132ce1ad0ba93ae2bed131907663a/android/src/main/ic_launcher-playstore.png -o ps4-tailscale/homebrew/tailscale-official.png
+          test "$(git hash-object ps4-tailscale/homebrew/tailscale-official.png)" = 329755224bae83cbd3a1c1cc50c39fd036d58adc
           bash ps4-tailscale/homebrew/package.sh "$RUNNER_TEMP/pkgtool/PkgTool.Core.dll" runtime-launchers/daemon/eboot.bin runtime-package runtime runtime-images/relay-NOT-PS4-LOADABLE.elf
       - uses: actions/upload-artifact@v4
         with:
-          name: PS4-Tailscale-Runtime-EXPERIMENTAL-pkg
+          name: TailScale-runtime-pkg
           path: runtime-package/
           if-no-files-found: error
 

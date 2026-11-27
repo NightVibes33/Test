@@ -97,3 +97,11 @@ Go relay is embedded byte-for-byte, round-trips the PKG, and repeats the
 embedded-runtime check on the extracted SELF. The separate title ID avoids
 replacing the previous UI-only test. It is still experimental: mapping success
 is not proof of working native Go execution or background service support.
+
+## Branding
+The runtime package is named TailScale.pkg and its PS4 title is TailScale.
+The app icon is the original Tailscale Android store icon from pinned commit
+b12728a809e132ce1ad0ba93ae2bed131907663a, verified by its Git blob hash.
+This is an unofficial experimental PS4 port, not an official Tailscale release.
+Tailscale branding belongs to its owner; native runtime execution on 14.02
+remains unverified. Package contents are unchanged by the branding update.

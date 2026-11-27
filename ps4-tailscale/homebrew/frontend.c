@@ -64,7 +64,7 @@ static int read_live(Screen *s){
 static void draw(const Screen *s,int available){
  rect(0,0,W,H,0xff101827);rect(36,32,1208,656,0xff192538);
  rect(36,32,1208,8,0xff55a9ff);
- text(70,78,4,0xfff1f5f9,"PS4 TAILSCALE");
+ text(70,78,4,0xfff1f5f9,"TailScale");
 #ifdef UI_FIXTURE
  text(70,144,2,0xffffc46b,"EMULATOR FIXTURE - NOT AUTHENTICATED");
 #else

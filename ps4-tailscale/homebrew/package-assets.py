@@ -3,23 +3,20 @@ from pathlib import Path
 import sys
 import datetime
 import xml.etree.ElementTree as ET
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 root = Path(sys.argv[1])
 cid = sys.argv[2]
 mode = sys.argv[3] if len(sys.argv) > 3 else "frontend"
-im = Image.new("RGB", (512, 512), "#101827")
-d = ImageDraw.Draw(im)
-d.rounded_rectangle((28,28,484,484), radius=70, fill="#192538", outline="#55a9ff", width=5)
-for y in range(3):
-    for x in range(3):
-        cx, cy = 160 + x * 96, 134 + y * 96
-        d.ellipse((cx-24,cy-24,cx+24,cy+24),fill="#e2e8f0" if (x+y)%2==0 else "#55a9ff")
-font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
-small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-d.text((256, 375), "PS4 TAILNET", anchor="mm", font=font, fill="#f1f5f9")
-d.text((256, 429), ("RUNTIME TEST" if mode == "runtime" else "FRONTEND TEST"), anchor="mm", font=small, fill="#94a3b8")
-im.save(root/"sce_sys/icon0.png")
+# Original app icon from Tailscale's own Android repository, pinned revision.
+# CI supplies the official PNG; preserve its artwork and aspect ratio.
+icon = Path(__file__).with_name("tailscale-official.png")
+with Image.open(icon) as source:
+    assert source.width == source.height, "official app icon must be square"
+    im = source.convert("RGBA").resize((512, 512), Image.Resampling.LANCZOS)
+    background = Image.new("RGBA", im.size, "white")
+    background.alpha_composite(im)
+    background.convert("RGB").save(root/"sce_sys/icon0.png")
 project = ET.Element("psproject", fmt="gp4", version="1000")
 volume = ET.SubElement(project, "volume")
 ET.SubElement(volume,"volume_type").text = "pkg_ps4_app"
