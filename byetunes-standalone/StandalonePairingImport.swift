@@ -33,6 +33,15 @@ struct StandaloneDevicePairingScreen: View {
     @State private var showingImporter = false
     @State private var confirmForget = false
     @State private var message: String?
+    private static var pairingFileTypes: [UTType] {
+        var types: [UTType] = [.item, .data, .content, .propertyList, .xml, .json, .plainText]
+        for ext in ["mobiledevicepairing", "pairing", "rppairing", "pairingfile", "plist"] {
+            if let type = UTType(filenameExtension: ext), !types.contains(type) {
+                types.append(type)
+            }
+        }
+        return types
+    }
     private var supportsOnDevice: Bool {
         ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
     }
@@ -98,30 +107,17 @@ struct StandaloneDevicePairingScreen: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background { MP3SkullBackground() }
+        .background { MP3SkullBackground().ignoresSafeArea() }
         .preferredColorScheme(.dark)
         .navigationTitle("Device Pairing")
         .task { manager.refreshExpectedPairingFileState() }
-        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.item]) { result in
-            do {
-                let url = try result.get()
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                manager.setAutoReconnectSuspended(true)
-                defer { manager.setAutoReconnectSuspended(false) }
-                try manager.importPairingFile(from: url)
-                manager.refreshExpectedPairingFileState()
-                guard manager.hasValidExpectedPairingFile else {
-                    message = "The imported pairing record did not validate."
-                    return
-                }
-                message = "Pairing imported. Connecting through LocalDevVPN…"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                    manager.startHeartbeat(forceReconnect: true)
-                }
-            } catch {
-                message = error.localizedDescription
+        .sheet(isPresented: $showingImporter) {
+            DocumentPicker(types: Self.pairingFileTypes, asCopy: true) { (url: URL?) in
+                showingImporter = false
+                guard let url else { return }
+                importRecord(url)
             }
+            .ignoresSafeArea()
         }
         .confirmationDialog("Forget local pairing records?", isPresented: $confirmForget, titleVisibility: .visible) {
             Button("Forget pairing", role: .destructive) {
@@ -141,6 +137,27 @@ struct StandaloneDevicePairingScreen: View {
                 }
             }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func importRecord(_ url: URL) {
+        do {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            manager.setAutoReconnectSuspended(true)
+            defer { manager.setAutoReconnectSuspended(false) }
+            try manager.importPairingFile(from: url)
+            manager.refreshExpectedPairingFileState()
+            guard manager.hasValidExpectedPairingFile else {
+                message = "The imported pairing record did not validate."
+                return
+            }
+            message = "Pairing imported. Connecting through LocalDevVPN…"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+                manager.startHeartbeat(forceReconnect: true)
+            }
+        } catch {
+            message = error.localizedDescription
         }
     }
 }

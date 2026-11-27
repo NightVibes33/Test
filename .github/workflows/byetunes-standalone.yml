@@ -25,6 +25,11 @@ jobs:
         with:
           path: byetunes-standalone/Vendor/PairingRuntime
           key: mp3-pairing-rust198-v2-${{ runner.os }}-${{ runner.arch }}-xcode26.2-${{ hashFiles('byetunes-standalone/scripts/build-pairing-runtime.sh') }}
+      - name: Install icon preprocessing tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/mp3-python"
+          "$RUNNER_TEMP/mp3-python/bin/python" -m pip install --disable-pip-version-check Pillow==12.0.0
+          echo "$RUNNER_TEMP/mp3-python/bin" >> "$GITHUB_PATH"
       - name: Stage MP3 Skull custom sources and compile pairing runtime
         run: |
           set -o pipefail

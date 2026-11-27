@@ -62,7 +62,6 @@ struct MP3SkullBackground: View {
             context.stroke(upper, with: topLight, lineWidth: 0.9)
             context.stroke(lower, with: bottomLight, lineWidth: 1.2)
         }
-        .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -70,4 +69,14 @@ struct MP3SkullBackground: View {
 
 enum MP3SkullTheme {
     static let card = Color(red: 0.035, green: 0.05, blue: 0.10).opacity(0.69)
+}
+
+/// Background can extend behind system UI without changing its parent's safe area.
+struct MP3SkullBackdrop: View {
+    var body: some View {
+        Color.clear
+            .background { MP3SkullBackground().ignoresSafeArea() }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
 }
