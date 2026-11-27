@@ -4,7 +4,7 @@ import plistlib
 root=Path("ByeTunes")
 app=root/"MusicManager"
 project=root/"MusicManager.xcodeproj/project.pbxproj"
-newid="com.nightvibes33.byetunes"
+newid="com.nightvibes33.mp3skull"
 
 def edit(path, fn):
     s=path.read_text()
@@ -60,3 +60,35 @@ assert "ByeTunesOnDevicePairingController" in (app/"OnboardingView.swift").read_
 assert "StandalonePairingEntry" in (app/"SettingsView.swift").read_text()
 assert "@main" in (app/"MusicManagerApp.swift").read_text()
 print("Standalone source staged; custom pairing, metadata, album colors and app lifecycle present.")
+
+# MP3 Skull branding; retain upstream Swift symbols, license and dependency paths.
+import re, json, subprocess
+for folder in [app, root/"MusicManagerLiveActivity", root/"MusicManagerActivityShared"]:
+    for path in folder.rglob("*.swift"):
+        s=path.read_text()
+        s=re.sub(r'(?<![A-Za-z0-9_./-])ByeTunes(?![A-Za-z0-9_./-])','MP3 Skull',s)
+        s=s.replace('"byetunes"','"mp3skull"').replace("byetunes://","mp3skull://")
+        path.write_text(s)
+p=project.read_text().replace("ByeTunes.app","MP3 Skull.app").replace("PRODUCT_NAME = ByeTunes;",'PRODUCT_NAME = "MP3 Skull";').replace("productName = ByeTunes;",'productName = "MP3 Skull";').replace("INFOPLIST_KEY_CFBundleDisplayName = ByeTunes;",'INFOPLIST_KEY_CFBundleDisplayName = "MP3 Skull";')
+project.write_text(p)
+for scheme in (root/"MusicManager.xcodeproj/xcshareddata/xcschemes").glob("*.xcscheme"):
+    edit(scheme,lambda s:s.replace("ByeTunes.app","MP3 Skull.app"))
+with info.open("rb") as f: data=plistlib.load(f)
+data["CFBundleDisplayName"]="MP3 Skull"
+data["CFBundleName"]="MP3 Skull"
+data["NSLocalNetworkUsageDescription"]="MP3 Skull uses LocalDevVPN to connect to your iPhone."
+for item in data.get("CFBundleURLTypes",[]):
+    item["CFBundleURLName"]=newid
+    item["CFBundleURLSchemes"]=["mp3skull"]
+with info.open("wb") as f: plistlib.dump(data,f)
+icon=Path("MP3-Skull-icon.jpg").resolve()
+for dirname,images in [
+    ("AppIcon.appiconset",[{"filename":"MP3-Skull.png","idiom":"universal","platform":"ios","size":"1024x1024"}]),
+    ("AppIconImage.imageset",[{"filename":"MP3-Skull.png","idiom":"universal"}]),
+]:
+    folder=app/"Assets.xcassets"/dirname
+    for old in folder.glob("*.png"): old.unlink()
+    subprocess.run(["sips","-s","format","png","-z","1024","1024",str(icon),"--out",str(folder/"MP3-Skull.png")],check=True)
+    (folder/"Contents.json").write_text(json.dumps({"images":images,"info":{"author":"xcode","version":1}},indent=2)+"\n")
+assert '"MP3 Skull".withCString' in (app/"ByeTunesOnDevicePairing.swift").read_text()
+assert "Pair with MP3 Skull" in (app/"StandalonePairingImport.swift").read_text()
