@@ -94,13 +94,18 @@ for item in data.get("CFBundleURLTypes",[]):
     item["CFBundleURLSchemes"]=["mp3skull"]
 with info.open("wb") as f: plistlib.dump(data,f)
 icon=Path("MP3-Skull-icon.jpg").resolve()
+import hashlib
+assert hashlib.sha256(icon.read_bytes()).hexdigest() == "80b1dc47658e524dba7a5f2b4afd686e8f4cc3bb43fec8447132c6afc562a3ed", "Original icon bytes changed"
 for dirname,images in [
     ("AppIcon.appiconset",[{"filename":"MP3-Skull.png","idiom":"universal","platform":"ios","size":"1024x1024"}]),
     ("AppIconImage.imageset",[{"filename":"MP3-Skull.png","idiom":"universal"}]),
 ]:
     folder=app/"Assets.xcassets"/dirname
     for old in folder.glob("*.png"): old.unlink()
-    subprocess.run([sys.executable,"scripts/clean-icon.py",str(icon),str(folder/"MP3-Skull.png")],check=True)
+    from PIL import Image
+    with Image.open(icon) as source:
+        assert source.size == (1254, 1254), source.size
+        source.convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS).save(folder/"MP3-Skull.png", format="PNG")
     (folder/"Contents.json").write_text(json.dumps({"images":images,"info":{"author":"xcode","version":1}},indent=2)+"\n")
 assert '"MP3 Skull".withCString' in (app/"ByeTunesOnDevicePairing.swift").read_text()
 assert "Pair with MP3 Skull" in (app/"StandalonePairingImport.swift").read_text()
