@@ -10,7 +10,7 @@ concurrency:
   group: mp3-skull-${{ github.ref }}
   cancel-in-progress: true
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: macos-26-intel
@@ -40,6 +40,14 @@ jobs:
         run: |
           set -eo pipefail
           xcodebuild -project ByeTunes/MusicManager.xcodeproj -scheme MusicManager -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$PWD/build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" ARCHS=arm64 ONLY_ACTIVE_ARCH=NO build 2>&1 | tee build.log
+      - name: Build and sign prebuilt MP3 Skull shortcut
+        working-directory: byetunes-standalone
+        env:
+          MP3_SKULL_TEAM_ID: ${{ vars.MP3_SKULL_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          python3 scripts/build-shortcut.py "$RUNNER_TEMP/MP3 Skull.shortcut"
+          cp "$RUNNER_TEMP/MP3 Skull.shortcut" "$PWD/build/Build/Products/Release-iphoneos/MP3 Skull.app/MP3 Skull.shortcut"
       - name: Package unsigned IPA
         working-directory: byetunes-standalone
         run: |
@@ -50,17 +58,32 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleDisplayName' "$APP/Info.plist")" = "MP3 Skull"
           xcrun lipo "$APP/MP3 Skull" -verify_arch arm64
           test -f "$APP/Assets.car"
+          test -s "$APP/MP3 Skull.shortcut"
           test -d "$APP/PlugIns/MusicManagerLiveActivity.appex"
           mkdir -p dist/Payload
           ditto "$APP" "dist/Payload/MP3 Skull.app"
           (cd dist && zip -qry MP3-Skull-unsigned.ipa Payload && shasum -a 256 MP3-Skull-unsigned.ipa > SHA256SUMS)
           unzip -t dist/MP3-Skull-unsigned.ipa
+      - name: Publish signed shortcut on isolated branch
+        if: github.ref == 'refs/heads/temp/byetunes-standalone'
+        run: |
+          set -euo pipefail
+          mkdir -p shortcuts
+          cp "$RUNNER_TEMP/MP3 Skull.shortcut" shortcuts/MP3-Skull.shortcut
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add shortcuts/MP3-Skull.shortcut
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish signed MP3 Skull shortcut [skip ci]"
+            git push origin HEAD:refs/heads/temp/byetunes-standalone
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: MP3-Skull-unsigned
           path: |
             byetunes-standalone/dist/MP3-Skull-unsigned.ipa
             byetunes-standalone/dist/SHA256SUMS
+            shortcuts/MP3-Skull.shortcut
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()

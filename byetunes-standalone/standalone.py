@@ -182,7 +182,7 @@ path.write_text(text)
 # Use the installed app's native App Intent instead, never that old link.
 path=app/"SettingsView.swift"
 text=path.read_text()
-text=once(text,'Link(destination: URL(string: "https://www.icloud.com/shortcuts/49de36f87bf44b21a38056d3c33e41fe")!) {','Link(destination: URL(string: "shortcuts://")!) {')
+text=once(text,'Link(destination: URL(string: "https://www.icloud.com/shortcuts/49de36f87bf44b21a38056d3c33e41fe")!) {','Link(destination: MP3SkullShortcutInstaller.importURL) {')
 # Filza's parity patch already renamed the upstream shortcut to Add Music Library Shortcut.
 # Accept either staged spelling, independently of formatting.
 shortcut_label_pattern=r'Text\("(?:Add Music Library Shortcut|Add MP3 Skull Shortcut|Add ByeTunes Shortcut)"\)\s*\.font\(\.body\)\s*\.foregroundColor\(\.primary\)'
@@ -190,7 +190,7 @@ shortcut_label='''VStack(alignment: .leading, spacing: 4) {
                                     Text("Add MP3 Skull Shortcut")
                                         .font(.body)
                                         .foregroundColor(.primary)
-                                    Text("In Shortcuts, choose MP3 Skull → Add Music to Library.")
+                                    Text("Install the prebuilt music import workflow.")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }'''
@@ -200,6 +200,7 @@ assert 'Text("Add MP3 Skull Shortcut")' in text
 # Make status rows fit at narrow sizes and large text settings.
 text=text.replace('Text("Refresh")\n                                        .font(.caption.weight(.semibold))','Text("Refresh")\n                                        .font(.caption.weight(.semibold))\n                                        .fixedSize(horizontal: true, vertical: false)')
 assert "49de36f87bf44b21a38056d3c33e41fe" not in text
+assert "MP3SkullShortcutInstaller.importURL" in text
 path.write_text(text)
 path=app/"MusicManagerIntents.swift"
 text=path.read_text()
@@ -223,3 +224,42 @@ data["UTImportedTypeDeclarations"]=types
 with info.open("wb") as f: plistlib.dump(data,f)
 assert "DocumentPicker(types: Self.pairingFileTypes" in (app/"StandalonePairingImport.swift").read_text()
 print("PASS: pairing document picker, safe-area foreground, native MP3 Skull shortcuts")
+
+
+# Keep the import URL and an offline export alternative together.
+path=app/"SettingsView.swift"
+text=path.read_text()
+anchor='Link(destination: MP3SkullShortcutInstaller.importURL) {'
+assert text.count(anchor)==1
+start=text.index(anchor)
+end=text.index("\n                        }",start)+len("\n                        }")
+text=text[:end]+'''
+                        if let file = Bundle.main.url(forResource: "MP3 Skull", withExtension: "shortcut") {
+                            Divider().padding(.leading, 56)
+                            ShareLink(item: file) {
+                                Label("Export prebuilt shortcut file", systemImage: "square.and.arrow.up")
+                                    .font(.subheadline)
+                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 16)
+                            }
+                        }'''+text[end:]
+path.write_text(text)
+# Add helper to existing compiled Swift source (no additional Xcode target wiring).
+path=app/"MusicManagerIntents.swift"
+with path.open("a") as f:
+    f.write('''
+enum MP3SkullShortcutInstaller {
+    static var importURL: URL {
+        var components = URLComponents()
+        components.scheme = "shortcuts"
+        components.host = "import-shortcut"
+        components.path = "/"
+        components.queryItems = [
+            URLQueryItem(name: "name", value: "MP3 Skull"),
+            URLQueryItem(name: "url", value: "https://raw.githubusercontent.com/NightVibes33/Test/temp/byetunes-standalone/shortcuts/MP3-Skull.shortcut")
+        ]
+        return components.url!
+    }
+}
+''')
+print("PASS: actual signed shortcut import URL and bundled export alternative")
