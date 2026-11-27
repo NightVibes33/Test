@@ -16,6 +16,16 @@ export XDG_CACHE_HOME="$work/cache"
 export XDG_RUNTIME_DIR="$work/runtime"
 mkdir -p "$XDG_DATA_HOME/shadPS4" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
+# v0.21.0 UserManager::CreateDefaultUsers() calls AskMigrationOption()
+# unconditionally when home/1000 is absent, even with no legacy saves.
+# Prepare ONLY this disposable profile; never touch a real user's saves.
+for uid in 1000 1001 1002 1003; do
+ mkdir -p "$XDG_DATA_HOME/shadPS4/home/$uid"/{savedata,trophy,inputs}
+done
+# Force standalone CLI mode instead of waiting for launcher IPC commands.
+unset SHADPS4_ENABLE_IPC
+# Avoid initial settings migration and enable readable guest logs.
+printf '%s\n' '{"Log":{"sync":true,"skip_duplicate":false,"filter":"*:Info","flush_level":"info"}}' >"$XDG_DATA_HOME/shadPS4/config.json"
 export DISPLAY=:95
 export SDL_VIDEODRIVER=x11
 export SDL_AUDIODRIVER=dummy
@@ -38,6 +48,9 @@ cleanup(){
  if [[ -d "$XDG_DATA_HOME/shadPS4/log" ]]; then cp -a "$XDG_DATA_HOME/shadPS4/log" "$out/shad-logs" || true; fi
  if [[ -d "$XDG_DATA_HOME/shadPS4/logs" ]]; then cp -a "$XDG_DATA_HOME/shadPS4/logs" "$out/shad-logs" || true; fi
  if [[ -f "$out/emulator.log" ]]; then tail -n 100 "$out/emulator.log" || true; fi
+ if [[ -d "$out/shad-logs" ]]; then
+  find "$out/shad-logs" -type f -name '*.log' -exec sh -c 'echo "=== $1 ==="; tail -n 80 "$1"' _ {} \;
+ fi
  if [[ -f "$out/result.txt" ]]; then cat "$out/result.txt"; fi
  rm -rf "$work"
  exit "$rc"
@@ -46,7 +59,7 @@ trap cleanup EXIT
 for i in $(seq 1 20); do xdpyinfo >/dev/null 2>&1 && break; sleep 1; done
 xdpyinfo >/dev/null
 if command -v vulkaninfo >/dev/null; then vulkaninfo --summary >"$out/vulkan.txt" 2>&1 || true; fi
-"$emulator" --config-clean "$game" >"$out/emulator.log" 2>&1 &
+"$emulator" "$game" >"$out/emulator.log" 2>&1 &
 pid=$!
 for i in $(seq 1 90); do
  if ! kill -0 "$pid" 2>/dev/null; then
@@ -71,5 +84,13 @@ for i in $(seq 1 90); do
  fi
  sleep 1
 done
-echo "No verified emulator frame/window; no screenshot published." >"$out/result.txt"
+# Diagnostic evidence only: a dialog screenshot is NOT a rendered app frame.
+xdotool search --onlyvisible --class '.*' >"$out/windows.txt" 2>&1 || true
+while read -r win; do
+ [[ "$win" =~ ^[0-9]+$ ]] || continue
+ { echo "Window $win"; xdotool getwindowname "$win"; xdotool getwindowgeometry "$win"; } >>"$out/window-details.txt" 2>&1 || true
+done <"$out/windows.txt"
+import -window root "$out/diagnostic-desktop-NOT-APP.png" 2>/dev/null || true
+ps -T -p "$pid" -o pid,tid,stat,wchan:32,comm >"$out/process-state.txt" 2>&1 || true
+echo "No verified emulator frame/window; no app screenshot published." >"$out/result.txt"
 exit 1
