@@ -27,8 +27,12 @@ chunks = ET.SubElement(volume,"chunk_info",chunk_count="1",scenario_count="1")
 ET.SubElement(ET.SubElement(chunks,"chunks"),"chunk",id="0",layer_no="0",label="Chunk #0")
 ET.SubElement(ET.SubElement(chunks,"scenarios",default_id="0"),"scenario",id="0",type="sp",initial_chunk_count="1",label="Scenario #0").text="0"
 files=ET.SubElement(project,"files",img_no="0")
-for name in ("eboot.bin","sce_sys/param.sfo","sce_sys/icon0.png"):
+names=["eboot.bin","sce_sys/param.sfo","sce_sys/icon0.png"]
+if mode=="native": names.append("assets/TailScale.elf")
+for name in names:
     assert (root/name).is_file()
     ET.SubElement(files,"file",targ_path=name,orig_path=name)
-ET.SubElement(ET.SubElement(project,"rootdir"),"dir",targ_name="sce_sys")
+dirs=ET.SubElement(project,"rootdir")
+ET.SubElement(dirs,"dir",targ_name="sce_sys")
+if mode=="native": ET.SubElement(dirs,"dir",targ_name="assets")
 ET.ElementTree(project).write(root/"project.gp4", encoding="utf-8",xml_declaration=True)

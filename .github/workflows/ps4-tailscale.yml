@@ -211,14 +211,18 @@ jobs:
           path: runtime-map-evidence/
 
   package-runtime:
-    needs: [runtime-integration, runtime-map-emulator]
+    needs: [runtime-integration, runtime-map-emulator, background-payload, homebrew]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: ps4-runtime-launchers-UNVALIDATED-DO-NOT-INSTALL
-          path: runtime-launchers
+          name: ps4-homebrew-frontend-UNVALIDATED
+          path: homebrew-build
+      - uses: actions/download-artifact@v4
+        with:
+          name: tailscale-background-UNVALIDATED-14.02
+          path: background-build
       - uses: actions/download-artifact@v4
         with:
           name: patched-runtime-research-NOT-PS4-LOADABLE
@@ -242,7 +246,7 @@ jobs:
           sudo apt-get install -y python3-pil
           curl -fL --retry 3 https://raw.githubusercontent.com/tailscale/tailscale-android/b12728a809e132ce1ad0ba93ae2bed131907663a/android/src/main/ic_launcher-playstore.png -o ps4-tailscale/homebrew/tailscale-official.png
           test "$(git hash-object ps4-tailscale/homebrew/tailscale-official.png)" = 329755224bae83cbd3a1c1cc50c39fd036d58adc
-          bash ps4-tailscale/homebrew/package.sh "$RUNNER_TEMP/pkgtool/PkgTool.Core.dll" runtime-launchers/daemon/eboot.bin runtime-package runtime runtime-images/relay-NOT-PS4-LOADABLE.elf
+          bash ps4-tailscale/homebrew/package.sh "$RUNNER_TEMP/pkgtool/PkgTool.Core.dll" homebrew-build/live/eboot.bin runtime-package native background-build/TailScale.elf runtime-images/relay-NOT-PS4-LOADABLE.elf
       - uses: actions/upload-artifact@v4
         with:
           name: TailScale-runtime-pkg
@@ -278,3 +282,26 @@ jobs:
         with:
           name: full-daemon-adapted-source
           path: ${{ runner.temp }}/full-daemon/
+
+  background-payload:
+    needs: [runtime-research, full-daemon-tests]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: patched-runtime-research-NOT-PS4-LOADABLE
+          path: runtime-images
+      - name: Install pinned PS4 payload SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 unzip
+          curl -fL --retry 3 https://github.com/ps4-payload-dev/sdk/releases/download/v0.9/ps4-payload-sdk.zip -o /tmp/sdk.zip
+          sudo unzip -q /tmp/sdk.zip -d /opt
+      - name: Build standalone background ELF
+        run: make -C ps4-tailscale/background PS4_PAYLOAD_SDK=/opt/ps4-payload-sdk RUNTIME_DIR="$GITHUB_WORKSPACE/runtime-images"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-background-UNVALIDATED-14.02
+          path: ps4-tailscale/background/TailScale.elf
+          if-no-files-found: error

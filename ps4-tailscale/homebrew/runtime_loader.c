@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) && !defined(PS4_PAYLOAD_BUILD)
 #include <orbis/libkernel.h>
 #endif
 typedef struct { unsigned char ident[16]; uint16_t type,machine; uint32_t version; uint64_t entry,phoff,shoff; uint32_t flags; uint16_t ehsize,phentsize,phnum,shentsize,shnum,shstr; } Ehdr;
@@ -31,21 +31,21 @@ static size_t page_size(void){
 static uintptr_t down(uintptr_t n,size_t p){return n&~(p-1);}
 static uintptr_t up(uintptr_t n,size_t p){return (n+p-1)&~(p-1);}
 static void *allocate(size_t n){
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) && !defined(PS4_PAYLOAD_BUILD)
  void *p=0;return sceKernelMmap(0,n,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0,&p)<0?NULL:p;
 #else
  void *p=mmap(0,n,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);return p==MAP_FAILED?NULL:p;
 #endif
 }
 static int protect(void *p,size_t n,int flags){
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) && !defined(PS4_PAYLOAD_BUILD)
  return sceKernelMprotect(p,n,flags);
 #else
  return mprotect(p,n,flags);
 #endif
 }
 static void release(void *p,size_t n){
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) && !defined(PS4_PAYLOAD_BUILD)
  sceKernelMunmap(p,n);
 #else
  munmap(p,n);
@@ -117,7 +117,7 @@ int runtime_map(const void *bytes,size_t size,RuntimeImage *out){
 fail:free(perms);release(base,span);return rc;
 }
 void runtime_unmap(RuntimeImage *im){if(im->base)release(im->base,im->size);memset(im,0,sizeof(*im));}
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(PS4_PAYLOAD_BUILD)
 extern void runtime_jump(uintptr_t entry,uintptr_t *args,void *stack) __attribute__((noreturn));
 __asm__(".text\n.global runtime_jump\nruntime_jump:\nmov %rdi,%rax\nmov %rsi,%rdi\nmov %rdx,%rsp\nxor %ebp,%ebp\njmp *%rax\n");
 int runtime_enter(const RuntimeImage *im,char *const argv[],char *const envp[]){

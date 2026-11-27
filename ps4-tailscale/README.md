@@ -134,3 +134,24 @@ tests and adapted PS4 tests are CI prerequisites for packaging. The browser
 dashboard is a port of the complete upstream layout, not a new custom UI.
 Actual PS4 browser compatibility, Go execution, authentication and game
 coexistence still require physical-console validation.
+
+## Native companion + standalone background payload
+The package now contains a separate OpenOrbis app and assets/TailScale.elf.
+The app uses DualShock 4 controls, native framebuffer drawing, and a private
+loopback API. No browser is required or served. The UI exposes status/QR,
+devices and peer tests, settings, forwarding, Sunshine hosts, Wake-on-LAN,
+Taildrop, diagnostics, and GoldHEN setup. L1/R1 switch tabs; Cross selects;
+text editing uses the controller character selector. Unsupported platform
+operations are labeled, not simulated.
+GoldHEN setup stages the independent payload at /data/payloads/TailScale.elf.
+Start it manually using GoldHEN PayLoader. AutoRun is an explicit action
+only available when the live daemon reports ready, and preserves other
+payload entries with an original backup. Disable removes the app's exact
+entry. No system network settings are edited. No automatic injection into
+games or privileged changes are made by the app.
+The pinned SDK CRT has no confirmed 14.02 support. Build and map tests are
+not a successful real payload launch. Native execution, storage access,
+loader format, background survival and actual Remote Play require a physical
+console test before enabling AutoRun. No installation recommendation yet.
+References: ChiricoG/OneFamily app/src/installer.cpp and SirHumza/orbisRPC
+installer/goldhen.c, installer/paths.h and docs/research/loader.md.

@@ -17,7 +17,17 @@ title_id=BREW00127
 content_id=IV0000-BREW00127_00-PS4TAILSCALE0000
 title='PS4 Tailscale Frontend'
 filename=PS4-Tailscale-Frontend-TEST.pkg
-if [[ "$mode" == runtime ]]; then
+if [[ "$mode" == native ]]; then
+  payload=$(realpath "${5:?background payload required}")
+  relay=$(realpath "${6:?original Go relay required}")
+  title_id=BREW00128
+  content_id=IV0000-BREW00128_00-PS4TAILSCALE0000
+  title=TailScale
+  filename=TailScale.pkg
+  mkdir -p "$stage/assets"
+  cp "$payload" "$stage/assets/TailScale.elf"
+  /usr/bin/python3 "$here/verify-embedded-runtime.py" "$payload" "$relay"
+elif [[ "$mode" == runtime ]]; then
   relay=$(realpath "${5:?original Go relay image required}")
   title_id=BREW00128
   content_id=IV0000-BREW00128_00-PS4TAILSCALE0000
@@ -56,7 +66,13 @@ pkgtool pkg_extract --passcode 00000000000000000000000000000000 "$pkg" "$work/ex
 found=$(find "$work/extracted" -type f -name eboot.bin -print -quit)
 test -n "$found"
 cmp "$eboot" "$found"
-if [[ "$mode" == runtime ]]; then
+if [[ "$mode" == native ]]; then
+  extracted_payload=$(find "$work/extracted" -type f -name TailScale.elf -print -quit)
+  test -n "$extracted_payload"
+  cmp "$payload" "$extracted_payload"
+  /usr/bin/python3 "$here/verify-embedded-runtime.py" "$extracted_payload" "$relay" | tee "$out/embedded-runtime.txt"
+  printf "%s\n" "Native UI and independent payload verified in PKG." "Firmware 14.02 execution and background persistence unverified. Do not enable AutoRun until manual testing succeeds." >"$out/BUILD-STATUS.txt"
+elif [[ "$mode" == runtime ]]; then
   /usr/bin/python3 "$here/verify-embedded-runtime.py" "$found" "$relay" | tee "$out/embedded-runtime.txt"
   printf '%s\n' 'PKG contains the real Go Tailscale daemon and native launcher.' 'Runtime startup, authentication, background operation and hardware 14.02 compatibility remain unverified. Experimental only; do not install on production console.' >"$out/BUILD-STATUS.txt"
 else

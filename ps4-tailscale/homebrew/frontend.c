@@ -19,6 +19,7 @@
 #include <orbis/VideoOut.h>
 #include "screen.h"
 #include "generated.h"
+#include "native_menu.h"
 
 #define W 1280
 #define H 720
@@ -127,6 +128,9 @@ int main(void){
  if(sceVideoOutRegisterBuffers(v,0,buffers,2,&attr)<0){puts("PS4TS_REGISTER_FAIL");return 3;}
  sceVideoOutSetFlipRate(v,0);
  Screen s;int frameid=1,idx=0,available;
+#ifndef UI_FIXTURE
+ native_init();
+#endif
  for(;;){
   memset(&s,0,sizeof(s));strcpy(s.ip,"-");
 #ifdef UI_FIXTURE
@@ -134,7 +138,14 @@ int main(void){
 #else
   available=read_live(&s);
 #endif
-  pixels=(uint32_t*)buffers[idx];draw(&s,available);
+  pixels=(uint32_t*)buffers[idx];
+#ifdef UI_FIXTURE
+ draw(&s,available);
+#else
+ native_tick(available&&s.ready);
+ if(native_page()==0&&available&&s.n>0){draw(&s,available);text(280,680,1,0xff9aa1ab,"L1/R1 sections");}
+ else native_draw(text,rect);
+#endif
   int rc=sceVideoOutSubmitFlip(v,idx,ORBIS_VIDEO_OUT_FLIP_VSYNC,frameid);
   if(rc<0){printf("PS4TS_FLIP_FAIL %d\n",rc);return 4;}
   int shown=0;for(int i=0;i<120;i++){
@@ -144,6 +155,6 @@ int main(void){
   }
   if(!shown){puts("PS4TS_FLIP_TIMEOUT");return 5;}
   if(frameid==1)puts("PS4TS_UI_FRAME_PRESENTED");
-  idx^=1;frameid++;sceKernelUsleep(500000);
+  idx^=1;frameid++;sceKernelUsleep(100000);
  }
 }

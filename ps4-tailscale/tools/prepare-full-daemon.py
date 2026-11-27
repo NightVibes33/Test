@@ -80,3 +80,12 @@ replaceall("web.go","ps5-tailscale ","ps4-tailscale ")
 # Keep Go tests upstream source in checkout; run port-specific tests separately.
 (dst/"ps4_adapter.go").write_text(pathlib.Path(__file__).with_name("ps4_adapter.go.txt").read_text())
 (dst/"ps4_adapter_test.go").write_text(pathlib.Path(__file__).with_name("ps4_adapter_test.go.txt").read_text())
+
+# Native-only management transport; no browser page or remotely accessible API.
+patch("web.go",'mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {','mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {')
+patch("web.go",'w.Write(statusHTML)','http.NotFound(w, r)')
+patch("web.go",'mux.HandleFunc("GET /screen.txt", d.handlePS4Screen)','mux.HandleFunc("GET /screen.txt", d.handlePS4Screen)\n\tmux.HandleFunc("GET /native", d.nativePage)\n\tmux.HandleFunc("POST /native", d.nativeAction)')
+patch("main.go",'if stopRunningInstance(cfg.WebAddr) {\n\t\tlogf("stopped the instance that was already running")\n\t}','// Existing instance is never killed by a new launch.')
+patch("forward.go",'if port == d.webPort {','if port == d.webPort {\n\t\treturn nil, false\n\t}\n\tif false {')
+(dst/"native_ps4.go").write_text(pathlib.Path(__file__).with_name("native_ps4.go.txt").read_text())
+(dst/"native_ps4_test.go").write_text(pathlib.Path(__file__).with_name("native_ps4_test.go.txt").read_text())

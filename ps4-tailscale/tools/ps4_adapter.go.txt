@@ -21,7 +21,8 @@ func ps4LocalListener(addr string)error{
 func validatePS4Config(c config)error{
  h,p,err:=net.SplitHostPort(c.WebAddr)
  if err!=nil||p!="8090"{return fmt.Errorf("PS4 status page requires port 8090")}
- if h!="127.0.0.1"{
+ if h!="127.0.0.1"{return fmt.Errorf("native control endpoint must remain on loopback")}
+ if false {
   ip,e:=netip.ParseAddr(h)
   if h!=""&&h!="0.0.0.0"&&(e!=nil||!ip.Is4()||!ip.IsPrivate()){return fmt.Errorf("status address must be loopback or private IPv4")}
   if c.PasswordHash==""{return fmt.Errorf("set a status page password before enabling LAN access")}
@@ -39,6 +40,7 @@ func validatePS4Config(c config)error{
 func ps4WebGuard(next http.Handler)http.Handler{
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   // Reject DNS rebinding; the dashboard only accepts literal local/private/tailnet IP hosts.
+  if !fromConsole(r){http.Error(w,"native console only",403);return}
   h,_,err:=net.SplitHostPort(r.Host);if err!=nil{h=r.Host}
   h=strings.Trim(h,"[]");ip,e:=netip.ParseAddr(h)
   if e!=nil||!(ip.IsLoopback()||ip.IsPrivate()||netip.MustParsePrefix("100.64.0.0/10").Contains(ip)){

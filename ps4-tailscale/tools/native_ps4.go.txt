@@ -1,0 +1,138 @@
+package main
+import(
+ "bytes"
+ "encoding/json"
+ "fmt"
+ "io"
+ "net/http"
+ "net/http/httptest"
+ "net/url"
+ "os"
+ "path/filepath"
+ "strconv"
+ "strings"
+ "sync"
+)
+var nativeMutation sync.Mutex
+type nativeRow struct{ kind,id,label,value string }
+func nativeClean(s string)string{
+ s=strings.Map(func(r rune)rune{if r<32||r>126{return ' '};return r},s)
+ if len(s)>240{s=s[:240]};return s
+}
+func nativeRows(w http.ResponseWriter,rows []nativeRow){
+ w.Header().Set("Content-Type","text/plain; charset=us-ascii")
+ fmt.Fprintln(w,"TSN1")
+ for i,r:=range rows{if i>=96{break};fmt.Fprintf(w,"%s\t%s\t%s\t%s\n",nativeClean(r.kind),nativeClean(r.id),nativeClean(r.label),nativeClean(r.value))}
+}
+func nativeJSON(v any)string{b,_:=json.Marshal(v);return string(b)}
+func(d *daemon)nativePage(w http.ResponseWriter,r *http.Request){
+ if !fromConsole(r){http.Error(w,"local only",403);return}
+ d.mu.Lock();cfg,state,lc:=d.cfg,d.state,d.lc;d.mu.Unlock()
+ rows:=[]nativeRow{}
+ add:=func(k,id,l,v string){rows=append(rows,nativeRow{k,id,l,v})}
+ switch r.URL.Query().Get("page"){
+ case "0":
+  add("r","","Connection",state);add("r","","Name",cfg.Hostname)
+  if lc!=nil{if st,e:=d.status(r.Context());e==nil{add("r","","Backend",st.BackendState);if st.Self!=nil{for _,ip:=range st.Self.TailscaleIPs{add("r","","Tailnet address",ip.String())}};for _,h:=range st.Health{add("r","","Health",h)}}}
+  add("r","","Remote Play","Use paired client and tailnet IP")
+  add("a","login","Log in again","");add("a","logout","Log out","");add("a","quit","Stop daemon","")
+ case "1":
+  if lc!=nil{if st,e:=d.status(r.Context());e==nil{peers,_:=peersFromStatus(st,false);for _,p:=range peers{add("a","ping:"+p.IP,p.Name,p.IP+" "+p.OS+" "+p.Conn)}}}
+  if len(rows)==0{add("r","","Devices","No devices available")}
+ case "2":
+  add("e","hostname","Device name",cfg.Hostname)
+  add("e","udp","Inbound UDP ports",nativePorts(cfg.UDPPorts))
+  add("e","blocked","Blocked TCP ports",nativePorts(cfg.BlockedPorts))
+  add("e","access","Access: own or all",settingsFromConfig(cfg).AllowFrom)
+  add("e","proxy","Local HTTP proxy address",cfg.HTTPProxyAddr)
+  add("e","receive","Taildrop directory",cfg.ReceiveDir)
+  add("e","verbose","Verbose log: true or false",strconv.FormatBool(cfg.Verbose))
+  add("e","password","Set password (blank removes)","")
+  add("r","","Status transport","Native loopback only")
+  add("r","","Priority / auto update","PS4 implementation pending")
+ case "3":
+  for i,v:=range cfg.Forwards{add("e",fmt.Sprintf("forward:%d",i),"Forward: proto local-port target",v.Proto+" "+strings.TrimPrefix(v.Listen,"127.0.0.1:")+" "+v.Target);add("a",fmt.Sprintf("rmforward:%d",i),"Remove "+v.Target,"")}
+  add("e","forward:-1","Add: tcp 8096 device:8096","")
+ case "4":
+  for i,v:=range cfg.SunshineHosts{add("e",fmt.Sprintf("sun:%d",i),"Sunshine: host port",v.Host+" "+strconv.Itoa(v.basePort()));add("a",fmt.Sprintf("rmsun:%d",i),"Remove "+v.Host,"")}
+  add("e","sun:-1","Add: host port","")
+ case "5":
+  for i,v:=range cfg.Wake{add("a","wake:"+v.MAC,"Wake "+v.Name,v.MAC);add("a",fmt.Sprintf("rmwake:%d",i),"Remove "+v.Name,"")}
+  add("e","wakeadd","Add: MAC name","")
+ case "6":
+  for _,v:=range listReceived(d.receiveDir(),80){add("r","",v.Name,fmt.Sprintf("%d bytes",v.Size))}
+  if len(rows)==0{add("r","","Taildrop","No received files")}
+ case "7":
+  add("a","diag","Save diagnostics","")
+  for _,l:=range recentLogs.snapshot(){add("r","","Log",l)}
+ default: http.Error(w,"unknown page",400);return
+ }
+ nativeRows(w,rows)
+}
+func nativePorts(p []uint16)string{v:=[]string{};for _,n:=range p{v=append(v,strconv.Itoa(int(n)))};return strings.Join(v,",")}
+func nativeParsePorts(s string)([]uint16,error){
+ p:=[]uint16{};if s==""{return p,nil};for _,v:=range strings.Split(s,","){n,e:=strconv.ParseUint(strings.TrimSpace(v),10,16);if e!=nil||n==0{return nil,fmt.Errorf("invalid port")};p=append(p,uint16(n))};return p,nil
+}
+func(d *daemon)nativeAction(w http.ResponseWriter,r *http.Request){
+ if !fromConsole(r)||r.Header.Get("X-PS4-Native")!="1"{http.Error(w,"local native client only",403);return}
+ b,e:=io.ReadAll(http.MaxBytesReader(w,r.Body,4096));if e!=nil{http.Error(w,"invalid body",400);return}
+ id,val,ok:=strings.Cut(string(b),"\n");if !ok||len(id)>80||len(val)>240{http.Error(w,"invalid command",400);return}
+ nativeMutation.Lock();defer nativeMutation.Unlock()
+ d.mu.Lock();cfg:=d.cfg;d.mu.Unlock()
+ // Reuse upstream validation and persistence, never duplicate protocol logic.
+ invoke:=func(h http.HandlerFunc,query string,v any){
+  body:=[]byte(nil);if v!=nil{body,_=json.Marshal(v)}
+  req:=httptest.NewRequest("POST","http://127.0.0.1:8090/"+query,bytes.NewReader(body)).WithContext(r.Context());req.RemoteAddr="127.0.0.1:1"
+  out:=httptest.NewRecorder();h(out,req)
+  w.WriteHeader(out.Code);fmt.Fprint(w,nativeClean(out.Body.String()))
+ }
+ fail:=func(s string){http.Error(w,s,400)}
+ switch id{
+ case "login":invoke(d.handleLogin,"",nil);return
+ case "logout":invoke(d.handleLogout,"",nil);return
+ case "quit":invoke(d.handleQuit,"",nil);return
+ case "diag":
+  out:=httptest.NewRecorder();d.handleDiagnostics(out,r)
+  if out.Code!=200{http.Error(w,"diagnostics unavailable",500);return}
+  if e:=os.WriteFile(filepath.Join(dataDir,"diagnostics.txt"),out.Body.Bytes(),0600);e!=nil{http.Error(w,e.Error(),500);return}
+  fmt.Fprint(w,"Saved diagnostics.txt");return
+ }
+ if strings.HasPrefix(id,"ping:"){invoke(d.handlePingPeer,"?ip="+url.QueryEscape(strings.TrimPrefix(id,"ping:")),nil);return}
+ if strings.HasPrefix(id,"wake:"){invoke(d.handleWake,"?mac="+url.QueryEscape(strings.TrimPrefix(id,"wake:")),nil);return}
+ kind,idx,has:=strings.Cut(id,":")
+ if has{
+  i,e:=strconv.Atoi(idx);if e!=nil||i< -1{fail("invalid index");return}
+  fields:=strings.Fields(val)
+  switch kind{
+  case "forward","rmforward":
+   v:=append([]forwardRule{},cfg.Forwards...)
+   if kind=="rmforward"{if i<0||i>=len(v){fail("invalid index");return};v=append(v[:i],v[i+1:]...)}else{
+    if len(fields)!=3{fail("enter protocol local-port target");return}
+    item:=forwardRule{Proto:fields[0],Listen:"127.0.0.1:"+fields[1],Target:fields[2]}
+    if i==-1{v=append(v,item)}else if i<len(v){v[i]=item}else{fail("invalid index");return}
+   };invoke(d.handleForwards,"",v);return
+  case "sun","rmsun":
+   v:=append([]sunshineHost{},cfg.SunshineHosts...)
+   if kind=="rmsun"{if i<0||i>=len(v){fail("invalid index");return};v=append(v[:i],v[i+1:]...)}else{
+    if len(fields)!=2{fail("enter host port");return};p,e:=strconv.Atoi(fields[1]);if e!=nil{fail("invalid port");return};item:=sunshineHost{Host:fields[0],Port:p}
+    if i==-1{v=append(v,item)}else if i<len(v){v[i]=item}else{fail("invalid index");return}
+   };invoke(d.handleSunshine,"",v);return
+  case "rmwake":
+   v:=append([]wakeTarget{},cfg.Wake...);if i<0||i>=len(v){fail("invalid index");return};v=append(v[:i],v[i+1:]...);invoke(d.handleWakeList,"",v);return
+  }
+ }
+ if id=="wakeadd"{mac,name,ok:=strings.Cut(val," ");if !ok{fail("enter MAC name");return};v:=append(append([]wakeTarget{},cfg.Wake...),wakeTarget{Name:name,MAC:mac});invoke(d.handleWakeList,"",v);return}
+ s:=settingsFromConfig(cfg)
+ switch id{
+ case "hostname":s.Hostname=val
+ case "udp":s.UDPPorts,e=nativeParsePorts(val)
+ case "blocked":s.BlockedPorts,e=nativeParsePorts(val)
+ case "access":s.AllowFrom=val
+ case "proxy":s.HTTPProxyAddr=val
+ case "receive":s.ReceiveDir=val
+ case "verbose":s.Verbose,e=strconv.ParseBool(val)
+ case "password":s.Password=&val
+ default:fail("unknown command");return
+ }
+ if e!=nil{fail(e.Error());return};invoke(d.handleSetConfig,"",s)
+}
