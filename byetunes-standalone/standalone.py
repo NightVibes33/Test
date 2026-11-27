@@ -187,7 +187,7 @@ shortcut_label='''VStack(alignment: .leading, spacing: 4) {
                                     Text("Add MP3 Skull Shortcut")
                                         .font(.body)
                                         .foregroundColor(.primary)
-                                    Text("Install the prebuilt music import workflow.")
+                                    Text("Open the signed, prebuilt shortcut file.")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }'''
@@ -223,40 +223,83 @@ assert "DocumentPicker(types: Self.pairingFileTypes" in (app/"StandalonePairingI
 print("PASS: pairing document picker, safe-area foreground, native MP3 Skull shortcuts")
 
 
-# Keep the import URL and an offline export alternative together.
+# Import the actual bundled signed shortcut file via native document sharing.
+# The legacy shortcuts://import-shortcut URL rejects non-iCloud download URLs
+# on current iOS. Never send users there or claim we can silently install.
 path=app/"SettingsView.swift"
 text=path.read_text()
 anchor='Link(destination: MP3SkullShortcutInstaller.importURL) {'
 assert text.count(anchor)==1
 start=text.index(anchor)
 end=text.index("\n                        }",start)+len("\n                        }")
-text=text[:end]+'''
-                        if let file = Bundle.main.url(forResource: "MP3 Skull", withExtension: "shortcut") {
-                            Divider().padding(.leading, 56)
-                            ShareLink(item: file) {
-                                Label("Export prebuilt shortcut file", systemImage: "square.and.arrow.up")
-                                    .font(.subheadline)
-                                    .padding(.vertical, 12)
-                                    .padding(.horizontal, 16)
-                            }
-                        }'''+text[end:]
+text=text[:start]+'''MP3SkullShortcutInstallRow()'''+text[end:]
+assert "MP3SkullShortcutInstaller.importURL" not in text
+assert "shortcuts://" not in text
 path.write_text(text)
-# Add helper to existing compiled Swift source (no additional Xcode target wiring).
 path=app/"MusicManagerIntents.swift"
 with path.open("a") as f:
     f.write('''
-enum MP3SkullShortcutInstaller {
-    static var importURL: URL {
-        var components = URLComponents()
-        components.scheme = "shortcuts"
-        components.host = "import-shortcut"
-        components.path = "/"
-        components.queryItems = [
-            URLQueryItem(name: "name", value: "MP3 Skull"),
-            URLQueryItem(name: "url", value: "https://raw.githubusercontent.com/NightVibes33/Test/temp/byetunes-standalone/shortcuts/MP3-Skull.shortcut")
-        ]
-        return components.url!
+
+import SwiftUI
+import UniformTypeIdentifiers
+
+/// Shares the prebuilt workflow, not a link to the Shortcuts app.
+struct MP3SkullShortcutInstallRow: View {
+    @State private var showInstructions = false
+
+    private var shortcutFile: URL? {
+        Bundle.main.url(forResource: "MP3 Skull", withExtension: "shortcut")
+    }
+
+    var body: some View {
+        if let file = shortcutFile {
+            VStack(alignment: .leading, spacing: 12) {
+                ShareLink(item: file) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "bolt.fill")
+                            .foregroundStyle(.purple)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Add MP3 Skull Shortcut")
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                            Text("Open the signed, prebuilt shortcut file.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    showInstructions = true
+                } label: {
+                    Label("How to install", systemImage: "questionmark.circle")
+                        .font(.footnote)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                }
+                .buttonStyle(.plain)
+            }
+            .alert("Install MP3 Skull Shortcut", isPresented: $showInstructions) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Tap Add MP3 Skull Shortcut. Choose Shortcuts if it appears in the share sheet. Otherwise choose Save to Files, open Files, and tap MP3 Skull.shortcut. Review the workflow and tap Add Shortcut.")
+            }
+        } else {
+            Label("The bundled shortcut is missing. Reinstall the latest build.", systemImage: "exclamationmark.triangle")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding()
+        }
     }
 }
 ''')
-print("PASS: actual signed shortcut import URL and bundled export alternative")
+print("PASS: native sharing of the bundled prebuilt shortcut; no legacy import URL")
